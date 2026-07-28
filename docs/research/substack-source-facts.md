@@ -116,7 +116,44 @@ Still open, and genuinely decisions:
 - Whether the right v1 source for *this* creator is the writing at all, given that most of the output is audio.
 - Whether v1 carries **two adapters**, which the map currently rules out of scope.
 
-## 8. The two sources are not symmetrical
+## 8. YouTube publishes RSS too — and that unifies discovery
+
+`GET /feeds/videos.xml?channel_id=UC0C-17n9iuUQPylguM1d-lQ` returns **15 entries** as Atom, with
+`yt:videoId`, `title`, `author`, `published` and `updated` — **the publish dates yt-dlp would not give up.**
+No API key, no cookies, no bot gate.
+
+Which makes the two sources structurally identical at the discovery layer:
+
+| | Substack `/feed` | YouTube `videos.xml` |
+|---|---|---|
+| Window | 20 items | 15 items |
+| Stable id | `guid` / archive `id` | `yt:videoId` |
+| Publish date | `pubDate` | `published` |
+| Body | truncated | absent |
+
+Both are a **rolling window with metadata and no body.** Neither is an archive, and neither is a text source.
+
+**This answers the ticket's generic-vs-platform question directly.** The layers split cleanly and they split
+the same way for both platforms:
+
+- **Discovery and cursor — generic.** One RSS reader serves Substack and YouTube. Adding a third RSS-publishing
+  source is a config entry.
+- **Backfill beyond the window — per platform.** Substack has `/api/v1/archive` (581 items). YouTube needs the
+  flat channel listing. Different code, and this is where "one adapter" stops being true.
+- **Body retrieval — per platform, and this is the expensive half.** Substack: fetch the canonical URL, and
+  93% of the time hit a paywall. YouTube: fetch the caption track, and get unpunctuated auto-captions.
+
+So *adding source #2 is a config entry for discovery and new code for everything else* — which is a more
+useful answer than either "generic" or "platform-specific" alone.
+
+### One confirmed shadow pair
+
+*"How to Use AI on Files You're Not Allowed to Upload"* published `2026-07-24T14:00Z`, one hour after the
+Substack post `use-ai-sensitive-files` at `2026-07-24T13:03Z`, which is `only_paid`. Same-day, same subject,
+one paid and one free — the clearest single instance of the partial overlap described in §6. One pair is an
+illustration, not a rule; the 5% title-match rate above remains the measured figure.
+
+## 9. The two sources are not symmetrical
 
 Worth stating plainly, because "do both" sounds cheaper than it is. Neither source gives braintrust a
 clean item with a body attached, but they fail in opposite directions:
