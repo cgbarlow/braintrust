@@ -75,7 +75,27 @@ real finding for the walking skeleton, and it is a *source-choice* problem, not 
 MP3. So for this creator "Substack" and "podcast transcript" are not two source types — they are one
 publication with two representations, and the audio is the larger half.
 
-## 6. What this settles, and what it doesn't
+## 6. YouTube, measured the same way
+
+Because most of this creator's output is audio, the channel was measured alongside the newsletter.
+
+- **400 videos, 131 hours, median 19.1 min.** At ~150 spoken words/minute that implies a **~1.18M-word**
+  transcript corpus — roughly **14× the free Substack corpus**, and all of it publicly available.
+- **Bulk extraction is bot-gated in this environment.** The flat channel listing (titles, ids, durations,
+  view counts) returns fine. Per-video metadata fails on every request with *"Sign in to confirm you're not
+  a bot."* A single video's caption track downloaded successfully earlier the same day, so this is a
+  rate/pattern gate rather than a hard block — but **an unattended poller cannot rely on it without cookies.**
+- **`timestamp` is present on flat entries and null on all of them**, exactly like `body_html` on the
+  Substack archive. So publish dates are not obtainable from the cheap endpoint.
+
+**Does the channel shadow the paywalled newsletter?** Partly. Matching all 400 video titles against all 581
+post slugs, **28 posts have a strongly title-similar video, and 24 of those 28 are paywalled** — the free
+video really is sometimes the open rendering of a paid post. But 28/581 is 5%, and without dates the match
+cannot be tightened. **The honest claim is that the overlap is real and partial, not that YouTube is a
+back door to the newsletter.** Treating it as one would also be a way of routing around a paywall the
+project has committed to respecting, which is the consent ticket's call, not this one's.
+
+## 7. What this settles, and what it doesn't
 
 Settled by measurement, no decision required:
 
@@ -94,3 +114,22 @@ Still open, and genuinely decisions:
   is stronger and single-platform.
 - Whether ~83,000 words across 38 posts is enough corpus to prove the skeleton walks.
 - Whether the right v1 source for *this* creator is the writing at all, given that most of the output is audio.
+- Whether v1 carries **two adapters**, which the map currently rules out of scope.
+
+## 8. The two sources are not symmetrical
+
+Worth stating plainly, because "do both" sounds cheaper than it is. Neither source gives braintrust a
+clean item with a body attached, but they fail in opposite directions:
+
+| | Substack | YouTube |
+|---|---|---|
+| Catalogue | complete, 581 items, paged | complete, 400 items, flat listing |
+| Stable id | integer `id` | video id |
+| Publish date | `post_date`, reliable | **unavailable** on the cheap endpoint |
+| Body | withheld — paywalled for 93% | available, but as unpunctuated auto-captions |
+| Legitimately ingestible | ~83K words | ~1.18M words |
+| Unattended polling | works | **bot-gated without cookies** |
+
+Substack has the metadata and not the text. YouTube has the text and not the metadata. A design that wants
+dated, citable, contradiction-preserving positions needs both halves — which is an argument *for* two
+adapters, and simultaneously the reason two adapters cost more than one plus one.
