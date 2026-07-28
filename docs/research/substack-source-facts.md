@@ -116,6 +116,23 @@ Still open, and genuinely decisions:
 - Whether the right v1 source for *this* creator is the writing at all, given that most of the output is audio.
 - Whether v1 carries **two adapters**, which the map currently rules out of scope.
 
+### Sizing the 12-month window
+
+| | items | words |
+|---|---:|---:|
+| Substack, free, in window | 15 | ~53,000 |
+| Substack, paywalled, in window (skipped) | 304 | ~1,372,000 |
+| YouTube long-form, in window | ~395 | ~1,173,000 |
+
+The channel publishes ~1.5 videos/day, so the 400-video listing is roughly one year deep — the 12-month
+window and the whole listing are nearly the same set.
+
+**The two halves are 22:1 in YouTube's favour.** A persona compiled from this corpus is ~96% transcript.
+That is not a reason to drop the Substack half — it carries dated, clean, tagged prose and the `audience`
+flag that makes paywall-respect demonstrable — but whether the compiler weights sources, or simply pools
+them, is a real question and it belongs to
+[Shape a persona](https://github.com/cgbarlow/braintrust/issues/7).
+
 ## 8. YouTube publishes RSS too — and that unifies discovery
 
 `GET /feeds/videos.xml?channel_id=UC0C-17n9iuUQPylguM1d-lQ` returns **15 entries** as Atom, with
@@ -153,7 +170,28 @@ Substack post `use-ai-sensitive-files` at `2026-07-24T13:03Z`, which is `only_pa
 one paid and one free — the clearest single instance of the partial overlap described in §6. One pair is an
 illustration, not a rule; the 5% title-match rate above remains the measured figure.
 
-## 9. The two sources are not symmetrical
+## 9. The bot gate is narrower than it first looked
+
+The "Sign in to confirm you're not a bot" failure in §6 turned out to be **path-specific, not account-specific**.
+
+- `extract_info()` for full per-video metadata: **fails on every request.**
+- `writeautomaticsub` + `skip_download` + `subtitlesformat: json3`: **4 of 4 succeeded** at 4-second spacing.
+
+So captions are reachable; rich metadata is not. That is survivable precisely because §8 established the
+Atom feed already supplies the metadata captions can't come with — `videoId`, `title`, `published`.
+**The two cheap endpoints compose into a complete record, and neither one alone is enough.**
+
+Measured yields, long-form: ~4,072 and ~4,082 words for videos of ~24 and ~21 minutes — about 170 wpm,
+so the ~150 wpm estimate in §6 was conservative. Two Shorts in the same sample returned 203 and 313 words.
+
+**Cost of the 12-month YouTube backfill: ~395 fetches at 4s spacing ≈ 26 minutes**, one time, then
+incremental. This is not a blocker. It is also not a licence to hammer the endpoint — the spacing is the
+reason it worked, and an unattended crawl should keep it.
+
+**Shorts should be excluded.** 5 of ~400 videos are under 5 minutes and yield a few hundred words of
+promotional copy. They add noise to a persona and nothing to it.
+
+## 10. The two sources are not symmetrical
 
 Worth stating plainly, because "do both" sounds cheaper than it is. Neither source gives braintrust a
 clean item with a body attached, but they fail in opposite directions:
