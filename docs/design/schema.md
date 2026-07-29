@@ -356,6 +356,16 @@ Not optional if braintrust is to compose cleanly with a user's OB1:
   the user pastes the file into the Supabase SQL editor.
 - `NOTIFY pgrst, 'reload schema';` at the end.
 
+**braintrust itself uses none of this, and the requirements stay anyway.** It connects to Postgres
+directly, over Supabase's session pooler, rather than through PostgREST with the service-role key the way
+every other OB1 extension does — because promoting a compile is a multi-statement transaction and PostgREST
+has none. Over PostgREST that promotion would have to become a stored procedure, moving the compiler's most
+important step into SQL for no gain.
+
+So the grants, the RLS policies and the schema reload are there for the *user's* tooling, not braintrust's:
+they are what makes the `braintrust_*` tables behave correctly if a supabase-js client ever looks at them.
+They cost nothing and keep the composability this section exists for.
+
 ## Deliberately not modelled in v1
 
 - **Persona history.** No archive of previous compiles. Keeping them would be drift tracking, which is out
