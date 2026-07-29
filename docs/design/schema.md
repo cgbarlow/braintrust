@@ -98,8 +98,19 @@ only decides whether a source is *due* when it runs.
 **allow-list**: live Substack values include `only_paid`, `founding` and `everyone`, and a deny-list would
 silently ingest the next tier Substack invents.
 
-`blocked_at` exists because the terms posture says *a block is an answer, not an obstacle*. The behaviour
-is still unspecified (it sits in the map's **Not yet specified**), but the column is where the fact lands.
+`blocked_at` exists because the terms posture says *a block is an answer, not an obstacle*, and it is set
+when a source stops serving braintrust — **measured as consecutive failures across distinct items, never
+inferred from a response code.** A single failure is already `retrieval = 'failed'`; a captcha arrives as a
+200 with HTML in it, so classifying one response is a guess where counting many is a measurement.
+
+Setting it stops the crawl **for that source only** — the two sources share nothing but a person — and
+**suppresses that source's backlog** (see below), which is what keeps a source that can never finish its
+backfill out of a permanent repair loop. The next daily run sends one ordinary request, unchanged; success
+clears `blocked_at`. That is self-healing rather than evasion, which would mean changing *how* braintrust
+asks — and it crawls from one address with nothing to rotate.
+
+It is deliberately **not** the same fact as `braintrust_people.paused_at`: one is the source refusing
+braintrust, the other is the user choosing to stop.
 
 ```sql
 create table braintrust_items (
@@ -378,6 +389,15 @@ retrieval. They are one job, and its queue is already here as state:
 **Because the backlog is rows rather than a queue, every long job is resumable by construction.** A run
 killed at minute 12 of 26 has written twelve minutes of real rows and the next run continues. No job table,
 no checkpointing.
+
+**A blocked source is not in the backlog either, and that is the whole repair-loop fix.** `blocked_at`
+suppresses all three row-states for that source, for exactly the reason `retrieval = 'failed'` is excluded
+below — a terminal recorded outcome is not a pending item. `backfill_complete` stays `false`, because the
+corpus genuinely *is* incomplete and that remains true whatever the reason; it simply stops asking for work.
+**The flag keeps telling the truth and only stops generating requests**, which is how one column goes on
+serving as both the repair trigger and the honesty flag without a source that can never finish its backfill
+re-crawling forever. A compile still runs, on what braintrust actually has — freezing the persona instead
+would hand a platform a veto over whether braintrust works at all.
 
 **`retrieval = 'failed'` is deliberately not in the backlog.** It is a terminal outcome that coverage
 reports, not a pending item — otherwise one permanently unfetchable video would block every future compile.
