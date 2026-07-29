@@ -42,7 +42,17 @@ Add your first council member through your AI client rather than the command lin
 
 The first run after following someone is the backfill, and for a prolific channel that takes about half an hour.
 
-The data model is documented in [docs/design/schema.md](docs/design/schema.md), and the vocabulary in [CONTEXT.md](CONTEXT.md).
+## The design
+
+braintrust is specified before it is built. These five documents are the spec — everything v1 does, and every cost it accepts:
+
+- [**Ingestion**](docs/design/ingestion.md) — the two sources, registration, the daily cycle, the backlog, and what happens when a source blocks us
+- [**The compiler**](docs/design/compiler.md) — read-once notes, the six persona layers, revision detection, chunking and embedding, and the publish gate
+- [**The MCP surface**](docs/design/mcp-surface.md) — the six tools, their return shapes, and the three rules that hold across all of them
+- [**Deployment**](docs/design/deployment.md) — server plus scheduled job, auth, configuration, and how to stand it up
+- [**The tables**](docs/design/schema.md) — the three-tier store everything above writes to
+
+The vocabulary they all use is in [CONTEXT.md](CONTEXT.md), and the three choices a reader would find surprising are recorded as [ADRs](docs/adr/).
 
 ## Honest limitations
 

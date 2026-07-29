@@ -1,0 +1,275 @@
+# The compiler
+
+**Status:** decided. Assembled from
+[Shape a persona: what the compiler emits and when it recompiles](https://github.com/cgbarlow/braintrust/issues/7),
+[Build braintrust's own persona compiler, or route content through `thoughts`](https://github.com/cgbarlow/braintrust/issues/16)
+and
+[Choose braintrust's embedding model and chunking strategy](https://github.com/cgbarlow/braintrust/issues/14).
+
+Vocabulary is in [`CONTEXT.md`](../../CONTEXT.md); the tables are in [`schema.md`](./schema.md); what the
+compiler's output looks like at the boundary is in [`mcp-surface.md`](./mcp-surface.md). The reasoning behind
+each choice is in the resolution comment linked at the head of each section — **this document is what the
+compiler does.**
+
+**braintrust owns a compiler, permanently.** OB1's own compiler is foreign-key bound to `public.thoughts` and
+cannot be pointed elsewhere; writing a creator's published output into `thoughts` inherits
+[ADR-0002](../adr/0002-no-ob1-bridge-in-v1.md)'s dating problem rather than dodging it. That cost is accepted.
+OB1's *page structure* is not borrowed either — a Persona is not an entity wiki page, and its shape is fixed
+below.
+
+---
+
+## 1. Each Item is read once, and what was read is kept
+
+[#16](https://github.com/cgbarlow/braintrust/issues/16)
+
+The Corpus is ~1.17M words. **Published Items are immutable** — a video from March is the same video in
+December — so re-reading on every Compile pays repeatedly for an answer that cannot change.
+
+**The compiler reads each Item once, writes a Note, and every subsequent Compile reads Notes rather than
+transcripts.** A Note holds the claims made (each with a verbatim quote, its chunk and its timestamp), the
+argument, and the assumptions. The table is
+[`braintrust_item_notes`](./schema.md#tier-2--derived-expensive), in tier 2 — derived and expensive,
+recomputable with no network traffic.
+
+**The compiler reads a whole Item when writing a Note.** Chunk boundaries serve retrieval only and do not
+constrain what the compiler needs in order to follow an argument.
+
+**`extractor` — model id plus prompt version — is in the unique key.** Improving the Note-taking prompt writes
+a new generation alongside the old one and a Compile declares which it reads, so a prompt upgrade is a
+**resumable re-read of ~395 Items rather than a migration**. That re-read is
+[an ordinary Backlog drain](./ingestion.md#the-backlog-is-rows-not-a-queue), and the previous Persona stays
+live for its duration.
+
+[ADR-0001](../adr/0001-the-compiled-persona-is-disposable.md) survives intact: the Persona is still wholly
+rebuilt from evidence on every Compile and still cannot drift. It now rebuilds from Notes *about* the Corpus
+rather than from the Corpus.
+
+---
+
+## 2. Six layers: a bounded core and an indexed growing layer
+
+[#7](https://github.com/cgbarlow/braintrust/issues/7),
+[#16](https://github.com/cgbarlow/braintrust/issues/16)
+
+| Layer | `basis` | How it is computed | Model? | Scaling |
+|---|---|---|---|---|
+| **Voice** | measured | frequency, spread and exemplars counted directly over raw Item text | **no** | converges |
+| **Coverage** | measured | counts over `braintrust_items` and their `retrieval` status | **no** | fixed size |
+| **Reasoning** | inferred | LLM synthesis across Notes | yes | converges |
+| **Beliefs** | inferred | LLM synthesis across Notes | yes | converges |
+| **Positions** | measured, cited, dated | clustered from Note `claims`; every Position keeps its citations | yes | **grows** |
+| **Relations** | measured / inferred | pairwise judgement over candidate claim pairs | yes | **grows** |
+
+**The first four are the Core** — roughly constant in size at any Corpus scale, and what a client loads to
+sound like someone. **The last two grow** and are
+[queried rather than loaded whole](./mcp-surface.md#3-braintrust_find_positions).
+
+**Two layers never touch a model, and that is what makes `basis` honest.** A `measured` layer is one no model
+ever wrote — the line is structural rather than declarative, and it gives the marker rule in §3 a mechanical
+test: *if a model produced the prose, the marker is required.* It also means Voice and Coverage are free at
+every Compile and stay correct even while the Note prompt is mid-upgrade — the two layers a client most relies
+on to sound like someone are the two that cost nothing.
+
+**Voice compiles in two forms held in one row.** `descriptive_md` is the auditable account of measured habits;
+`generative_md` is an instruction derived *from those measurements*. They are written by one Compile step from
+one set of measurements, so there is no path by which the instruction and its evidence can disagree. The
+failure this prevents already happened: the [first prototype](../prototypes/PROTOTYPE-compiled-persona-page.md)
+asserted *"no hedging"* from four Substack openings, and measurement later found hedging in **32 of 34**
+transcripts — the dominant feature of a spoken voice that is 96% of the Corpus.
+
+**Nothing unmeasured may enter `generative_md`.** A proposal to inject the model-not-the-person disclosure
+there was rejected for exactly this reason; the disclosure
+[travels in the subject string instead](./mcp-surface.md#three-rules-that-hold-across-the-whole-surface).
+
+**Beliefs cannot be extracted per Item.** Belief-marker mining was tested and does not work: of 30
+belief-shaped statements found by phrase matching, most explained a mechanism rather than stated a conviction.
+Beliefs are never asserted in one place, so the layer requires a cross-item synthesis pass — which is why a
+Note carries the argument and the assumptions, not just the claims.
+
+**Coverage `evidence` has a fixed shape**, because it is returned as structured counts rather than prose:
+`window`, `retrieved`, `skipped_paywall`, `failed`, `words_retrieved`, `by_source`. It is a query over tier 1
+written into the layer's `evidence` at Compile time, so it needs no table of its own.
+
+**`held_since` is recomputed every Compile.** A backfill that finds older evidence moves it earlier. Less
+stable across Compiles, more honest.
+
+**Anything precise and filterable stays query-time** — *"what did they say about X in Q2"* is not compiled.
+Compiling it would duplicate the database and add a staleness window for no gain.
+
+---
+
+## 3. The inferred marker is written by the compiler, never by the serialiser
+
+[#11](https://github.com/cgbarlow/braintrust/issues/11),
+[#16](https://github.com/cgbarlow/braintrust/issues/16)
+
+**Every layer with `basis = 'inferred'` opens `descriptive_md` with a marker line** — e.g.
+`**Inferred across 412 items — no single item asserts this.**`
+
+This is a compiler contract, not a rendering rule. The MCP boundary also returns `basis` as a field, but it
+does not synthesise the prose marker, because the most likely use of a layer is a client pasting the markdown
+into a system prompt — where a JSON field would be lost and a marker line survives.
+
+The [gate](#5-a-compile-must-earn-the-right-to-replace-its-predecessor) checks it.
+
+---
+
+## 4. Revisions: show the tension, never assert it
+
+[#7](https://github.com/cgbarlow/braintrust/issues/7),
+[#16](https://github.com/cgbarlow/braintrust/issues/16)
+
+The real signal is soft. Fourteen months of near-daily output yielded **one** clean supersession, and it was
+findable only because the creator titled a video about it. **Frequency shift demonstrably does not work** —
+the largest shifts in the Corpus are new product names appearing because the products are new.
+
+**Candidates are found by embedding claim statements and comparing within a similarity neighbourhood**, then
+judged pairwise by a model. Pairwise over every claim does not scale; pairwise within a neighbourhood does.
+The similarity threshold wants measuring against the real Corpus rather than choosing now.
+
+**Claim vectors are computed during a Compile and thrown away.** ~2,000 claims ≈ 80K tokens — under a fifth of
+a cent hosted, free locally. They have no reader after the Compile that made them, so
+[`braintrust_embeddings`](./schema.md#tier-2--derived-expensive) keeps its `(chunk_id, model)` key untouched
+and no table is added.
+
+**The judgement is allowed to be uncertain, and the uncertainty is the label.** `revised` / `unsettled` /
+`drifting` is a confidence spectrum, so the compiler's confidence is the thing that picks between them rather
+than a separate score.
+
+**Only `revised` changes what the Persona says.**
+
+- **`revised`** requires evidence a reader would accept as explicit — a claim withdrawn, narrowed or reversed
+  in the Person's own words. It moves a Position off `current`.
+- **`unsettled`** and **`drifting`** leave **both** Positions current, are returned with their relation and
+  rationale inline when a client asks, and **never appear in a Core layer**. They are visible when someone
+  goes looking; they are never spoken in the Person's voice.
+
+The reason for the asymmetry is the one error a provenance-first project cannot absorb: flagging everything
+that looks like tension reliably mistakes a rephrase for a reversal, which puts a contradiction on a real
+person's record that they would dispute.
+
+Relation direction and the read path are in
+[`schema.md`](./schema.md#tier-3--derived-cheap) — `from` is the earlier Position, `to` the later, and
+`relation` describes what the later does to the earlier.
+
+---
+
+## 5. A Compile must earn the right to replace its predecessor
+
+[#16](https://github.com/cgbarlow/braintrust/issues/16)
+
+A rebuild deletes the Persona it replaces, in one transaction, and there is deliberately no archive to fall
+back to. **The gate closes that hole without reintroducing history:** a Compile is built under
+`status = 'running'`, checked, and only then promoted to `current`. Fail, and it is recorded as `rejected`
+with its reason while the previous Compile stays live and untouched.
+
+**This is what `lint` becomes** in a regenerate model — a quality gate on compiler output rather than a drift
+sweep. Failing means *not published*.
+
+The v1 checks are **structural, never semantic** — a check that needs a model to run is a check that can fail
+the way the compiler fails:
+
+- all four Core layers present and non-empty
+- Voice carries both `descriptive_md` and `generative_md`
+- every layer with `basis = 'inferred'` opens with the marker
+- Coverage counts reconcile against `braintrust_items`
+- every Position resolves to at least one real citation
+- Position count is not a collapse against the previous Compile
+
+The promoting transaction is in [`schema.md`](./schema.md#rebuilding). Four properties it buys: a failed
+Compile changes nothing; a rejected Compile keeps its rows for inspection; `on delete cascade` does all the
+cleanup; and **regeneration stays affordable only while the Core stays bounded.** If the Core ever grows with
+the Corpus, full regeneration stops being cheap and the no-drift guarantee goes with it.
+
+**A gate rejection does not stop the schedule.** The daily job keeps trying, because a retry is cheap and new
+Items can genuinely fix a gate failure — a Position-count collapse caused by a thin day resolves itself the
+next day.
+
+---
+
+## 6. Chunking: the platform's boundaries, never a model's
+
+[#14](https://github.com/cgbarlow/braintrust/issues/14)
+
+**Chunks are overlapping windows of roughly 1,000–1,500 characters, split at platform boundaries, never
+spanning an Item.** Caption events for transcripts, paragraphs for prose. `start_ms` and `end_ms` come free
+from the caption events, which is what makes a claim citable to a moment inside a twenty-minute video rather
+than to the video.
+
+**One chunking path, parameterised — not two.** Two code paths for boundary detection, one for everything
+after: both fill the same window size and write the same rows, with `start_ms` null for prose.
+
+**No model is in this path, and that is the point.** `braintrust_chunks.text` is what a citation's `quote` is
+drawn from, so a punctuated Chunk would make every quote a model's rendering of what someone said rather than
+what they said. A punctuation-restoration pass was rejected outright; a pass returning only sentence
+*boundaries* survives that objection and was rejected too, on what it buys — Chunk boundaries serve retrieval
+only, and overlapping windows already prevent a passage being cut in half.
+
+**Accepted cost, stated plainly: passages read badly.** Most of the Corpus is auto-generated captions, so
+`braintrust_find_positions` returns an unpunctuated wall of lowercase. That is what was said, labelled as what
+was said. A client is free to tidy it for display; braintrust stores and cites the original.
+
+**Re-chunking drops tier 2 and rebuilds it**, for about three cents.
+
+---
+
+## 7. Embedding: one model, one space, everywhere
+
+[#14](https://github.com/cgbarlow/braintrust/issues/14),
+[#11](https://github.com/cgbarlow/braintrust/issues/11)
+
+**braintrust declares no embedding model.** It calls whatever OpenAI-compatible `/v1/embeddings` endpoint it
+is configured with — see [`deployment.md`](./deployment.md#3-configuration) for the configuration, the absence
+of a default, and the two startup checks.
+
+What matters to the compiler:
+
+- **Chunks are embedded at ingest; queries are embedded at serve time with the same model.** Swapping models
+  means re-embedding tier 2 before any query works again.
+- **`model` is in the primary key of `braintrust_embeddings`**, so a better model is a new set of rows rather
+  than a migration. Old and new coexist while you compare them, and Chunks and Items are never touched — which
+  is exactly the README's promise that raw content and embeddings stay separate.
+- **Never mix vector spaces.** Cosine similarity across model families is meaningless *even when the
+  dimensions match*, so a same-size model swap without a re-embed returns confidently-ranked nonsense.
+  braintrust also never compares its vectors to `thoughts.embedding` and never calls `match_thoughts`.
+
+### What it costs
+
+Priced against the real Corpus. **The expense is entirely the compiler reading; the embedding rounds to
+nothing.**
+
+| | Volume | Hosted cost |
+|---|---|---|
+| Embed the whole Corpus | ~1.23M words ≈ 1.6M tokens | **~$0.03** |
+| Read every Item to write its Note | ~1.6M in, ~0.3M out | **~$3** |
+| Embed claim statements for revision detection | ~2,000 claims ≈ 80K tokens | ~$0.002 |
+| Embed one query at question time | ~20 tokens | rounds to zero |
+| Steady state, per day | ~6,000 words | rounds to zero |
+
+**Standing up a Persona from nothing costs a few dollars; a full re-index costs three cents.** Local inference
+makes all of it free. Affordability never constrained regeneration, and no decision should be justified by
+embedding cost.
+
+---
+
+## Accepted costs
+
+| Cost | Where it comes from |
+|---|---|
+| **You can sit on a stale Persona without knowing.** The gate records why it rejected; nothing in v1 reads it. | §5 |
+| **Passages read like unpunctuated speech**, because that is what they are. | §6 |
+| **Beliefs are uncitable.** No single Item asserts one, so provenance comes from the label rather than from pretending otherwise. | §2 |
+| **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
+| **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
+
+## Deliberately not decided
+
+- The Note-taking prompt itself, and which model writes it.
+- The similarity threshold for revision candidates.
+- Exact chunk window size and overlap — a starting point to tune against real retrieval results.
+- Whether a reranker is ever added. Retrieval quality should be measured before anything is added to fix it.
+- Batching and concurrency against the embeddings endpoint.
+- Whether a persistently rejected Compile is ever surfaced to a human. Still no in v1.
+- **How much thinness to surface.** Both prototypes keep it visible; `item_count` and `confidence` travel with
+  every Position and the client decides what one mention is worth.
