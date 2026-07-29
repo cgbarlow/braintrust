@@ -159,7 +159,7 @@ create table braintrust_chunks (
 create table braintrust_embeddings (
   chunk_id    uuid not null references braintrust_chunks(id) on delete cascade,
   model       text not null,
-  embedding   vector(1536) not null,
+  embedding   vector(1024) not null,   -- must match the configured endpoint; verified at startup
   created_at  timestamptz not null default now(),
   primary key (chunk_id, model)
 );
@@ -189,12 +189,35 @@ migration — old and new coexist while you compare them, and chunks and items a
 also never compares its own vectors to `thoughts.embedding`: OB1 users run 768- and 1024-dimension models
 locally, and cosine similarity across model families is meaningless.
 
-**Honest limit:** pgvector needs fixed dimensions to build an index, so `vector(1536)` is declared for v1's
-model. Moving to a differently-sized model means altering *this table only*. That is exactly the property
+**braintrust declares no embedding model.** It calls whatever OpenAI-compatible `/v1/embeddings` endpoint it
+is configured with — Ollama, LM Studio, vLLM, OpenAI — so local versus hosted is a config line rather than a
+design decision. **There is no default endpoint:** braintrust refuses to start unconfigured, because a
+default would mean a first run silently shipping an entire corpus to a third party. The reference
+configuration in the docs is `qwen3-embedding:0.6b` at 1024 dimensions.
+
+**Honest limit:** pgvector needs fixed dimensions to build an index, so the column is typed once.
+`vector(1024)` matches the reference model, and **this is the one value in `schema.sql` a user must change**
+if they point braintrust at a differently-sized model — the same pattern OB1 documents for its own Ollama
+users. Moving to a differently-sized model means altering *this table only*. That is exactly the property
 the README asks for — nothing is lost, because nothing here is original.
 
-Chunk sizing is a compiler concern rather than a schema one: target ~1,000–1,500 characters on caption-event
-or sentence boundaries, never spanning items. Re-chunking drops tier 2 and rebuilds it.
+**Two startup checks, because both failures are otherwise silent.** braintrust embeds a probe string and
+compares its length to the declared dimension; and it checks the configured model has rows here at all. The
+second matters more than it looks: a *differently-sized* model fails loudly on insert, but a **same-sized,
+different model** fails not at all — cosine similarity across model families is meaningless even when the
+dimensions match, so every search would return confidently-ranked nonsense. Refusing to serve is the only
+honest response.
+
+Chunk sizing: target ~1,000–1,500 characters with modest overlap, never spanning items. **Boundaries are the
+platform's, never a model's** — caption events for transcripts, paragraphs for prose. A model pass to
+restore punctuation was rejected outright: `text` here is what a citation's `quote` is drawn from, so a
+punctuated chunk would make every quote a rendering of what someone said rather than what they said.
+Accepted cost: passages read like unpunctuated speech, because that is what they are. Re-chunking drops
+tier 2 and rebuilds it, for about three cents.
+
+**Claim vectors are not stored.** Revision detection embeds ~2,000 claim statements during a compile to find
+similarity neighbourhoods, then discards them — ~80K tokens, so persisting them would buy nothing and cost
+either a polymorphic key here or promoting `braintrust_item_notes.claims` into rows of its own.
 
 **`braintrust_item_notes` is why regeneration stays affordable.** Published items are immutable, so the
 compiler reads each item once, writes a note, and every subsequent compile reads notes instead of ~1.17M
