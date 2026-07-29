@@ -45,12 +45,23 @@ create table braintrust_people (
   id            uuid primary key default gen_random_uuid(),
   slug          text not null unique,
   display_name  text not null,
+  paused_at     timestamptz,          -- set by unfollow; the daily job skips these people
   created_at    timestamptz not null default now()
 );
 ```
 
 A person is not a source. Following someone means their Substack *and* their YouTube channel, and the
 person outlives either handle.
+
+**`display_name` is confirmed by a human, not derived.** Both feeds carry a name and they disagree — the
+Substack feed says *"Nate's Substack"*, the YouTube feed says *"AI News & Strategy Daily | Nate B Jones"* —
+so registration proposes one and asks. This value becomes `"braintrust model of X"`, the string that carries
+the disclosure everywhere it travels, which is not a thing to guess at.
+
+**`paused_at` means the user stopped following.** Nothing is deleted: tier 1 is durable precisely so that
+changing your mind does not cost a second crawl, and the persona stays queryable, frozen at its last
+compile. Re-following clears it. It is deliberately **not** the same fact as `braintrust_sources.blocked_at`
+below — one is the user's choice, the other is the source refusing braintrust.
 
 ```sql
 create table braintrust_sources (
@@ -60,8 +71,10 @@ create table braintrust_sources (
   handle               text not null,        -- publication host, or channel id
   discovery_url        text not null,        -- the RSS/Atom feed; discovery is generic across platforms
   cursor_published_at  timestamptz,          -- newest publish date seen; "new since last check"
-  backfill_floor       date not null,        -- how far back backfill reaches (12 months)
+  backfill_floor       date not null,        -- how far back backfill reaches (12 months by default)
   backfill_complete    boolean not null default false,
+  exclude_shorts       boolean not null default true,
+  poll_interval_hours  integer not null default 24,
   last_checked_at      timestamptz,
   blocked_at           timestamptz,          -- set when the source refuses braintrust
   created_at           timestamptz not null default now(),
@@ -71,6 +84,19 @@ create table braintrust_sources (
 
 **The cursor is columns on the source, not a table.** There is exactly one cursor per source and it has no
 history worth keeping — a table would be a table of one row per source forever.
+
+**braintrust's defaults live in the DDL, and a human may override them per source.** `backfill_floor`,
+`exclude_shorts` and `poll_interval_hours` are the three settings registration exposes; omitting them takes
+the default, so the ordinary path asks for nothing. Keeping the defaults as column defaults means "what
+braintrust does if you say nothing" is readable in one place rather than buried in the compiler.
+
+**`poll_interval_hours` does not create a second scheduler.** There is still one daily job; the interval
+only decides whether a source is *due* when it runs.
+
+**The paywall behaviour is deliberately not among them.** *Never ingest anything where `audience` is not
+`everyone`* is a hard line rather than a default, so it gets no column. Note this is enforced as an
+**allow-list**: live Substack values include `only_paid`, `founding` and `everyone`, and a deny-list would
+silently ingest the next tier Substack invents.
 
 `blocked_at` exists because the terms posture says *a block is an answer, not an obstacle*. The behaviour
 is still unspecified (it sits in the map's **Not yet specified**), but the column is where the fact lands.
