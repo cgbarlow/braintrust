@@ -199,10 +199,17 @@ create table braintrust_compiles (
 );
 
 create unique index on braintrust_compiles (person_id) where status = 'current';
+create unique index on braintrust_compiles (person_id) where status = 'running';
 ```
 
-**That partial unique index is the whole regeneration mechanism.** At most one current compile per person,
-enforced by the database rather than by the compiler remembering to.
+**Those partial unique indexes are the whole regeneration mechanism.** At most one current compile per
+person and at most one running compile per person, enforced by the database rather than by the compiler
+remembering to.
+
+The second index is what makes `braintrust_refresh_persona` safe to leave ungated. Two clients calling it
+seconds apart — or one calling it as the daily job starts — cannot produce two rebuilds; the second insert
+fails and the caller is told when the running one started. Double-spend is structurally impossible rather
+than politely avoided.
 
 ```sql
 create table braintrust_persona_layers (
@@ -306,6 +313,37 @@ Four properties worth naming:
 - **Regeneration is affordable only while the core stays bounded.** Voice, reasoning, beliefs and coverage
   converge as the corpus grows; positions grow. If the core ever grows with the corpus, full regeneration
   stops being cheap and the no-drift guarantee goes with it.
+
+## The backlog needs no table
+
+Four things want to be long-running jobs — the first 12-month backfill, catching up after braintrust has
+fallen behind a feed window, re-reading the corpus when the note prompt improves, and routine daily
+retrieval. They are one job, and its queue is already here as state:
+
+| Work | The row that asks for it |
+|---|---|
+| Fetch a body | `braintrust_items.retrieval = 'pending'` |
+| Write a note | an item with no `braintrust_item_notes` row for the current `extractor` |
+| Walk the archive | `braintrust_sources.backfill_complete = false` |
+
+**Because the backlog is rows rather than a queue, every long job is resumable by construction.** A run
+killed at minute 12 of 26 has written twelve minutes of real rows and the next run continues. No job table,
+no checkpointing.
+
+**`retrieval = 'failed'` is deliberately not in the backlog.** It is a terminal outcome that coverage
+reports, not a pending item — otherwise one permanently unfetchable video would block every future compile.
+
+**Falling behind a feed window is detected and repaired with no new columns.** If the oldest entry in a
+feed is newer than `cursor_published_at`, something published in between was never seen; the repair is to
+set `backfill_complete = false` and let the same archive walk that does the initial load close the gap.
+That flag is simultaneously what coverage reads, so between noticing a gap and closing it the persona
+states its corpus is incomplete. This matters because coverage counts rows: items braintrust never saw are
+not missing rows, they are no rows at all, so an undetected gap would make a **measured** layer confidently
+claim a complete corpus.
+
+**A compile waits for an empty backlog.** Most visibly on a note-prompt upgrade: a compile fired halfway
+through a ~395-item re-read would be a persona built from a quarter of the corpus. Waiting keeps the
+previous persona live for the duration.
 
 ## House-style requirements
 
