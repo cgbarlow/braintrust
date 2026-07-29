@@ -139,6 +139,17 @@ create table braintrust_embeddings (
 );
 
 create index on braintrust_embeddings using hnsw (embedding vector_cosine_ops);
+
+create table braintrust_item_notes (
+  id           uuid primary key default gen_random_uuid(),
+  item_id      uuid not null references braintrust_items(id) on delete cascade,
+  extractor    text not null,          -- model id + prompt version
+  claims       jsonb not null,         -- [{ statement, quote, chunk_id, start_ms }]
+  argument_md  text,
+  assumptions  jsonb not null default '[]'::jsonb,
+  created_at   timestamptz not null default now(),
+  unique (item_id, extractor)
+);
 ```
 
 `start_ms` is what makes a claim citable to a moment inside a twenty-minute video rather than to the video.
@@ -159,6 +170,19 @@ the README asks for — nothing is lost, because nothing here is original.
 Chunk sizing is a compiler concern rather than a schema one: target ~1,000–1,500 characters on caption-event
 or sentence boundaries, never spanning items. Re-chunking drops tier 2 and rebuilds it.
 
+**`braintrust_item_notes` is why regeneration stays affordable.** Published items are immutable, so the
+compiler reads each item once, writes a note, and every subsequent compile reads notes instead of ~1.17M
+words of transcript. The note is tier 2 for the same reason embeddings are: expensive to produce, but
+recomputable with no network traffic, so losing it costs compute rather than a re-fetch the terms posture
+exists to avoid.
+
+**`extractor` in the unique key is the note equivalent of `model` above.** Improving the note-taking prompt
+writes a new generation alongside the old one and a compile declares which it reads, so a prompt upgrade is
+a resumable re-read of ~395 items rather than a migration.
+
+Note that the compiler reads a **whole item** when writing a note. Chunk boundaries serve retrieval only and
+are not constrained by what the compiler needs in order to follow an argument.
+
 ## Tier 3 — derived, cheap
 
 ```sql
@@ -167,7 +191,8 @@ create table braintrust_compiles (
   person_id         uuid not null references braintrust_people(id) on delete cascade,
   compiler_version  text not null,
   status            text not null default 'running'
-                      check (status in ('running', 'current', 'failed')),
+                      check (status in ('running', 'current', 'failed', 'rejected')),
+  rejected_reason   text,
   corpus_stats      jsonb not null default '{}'::jsonb,
   started_at        timestamptz not null default now(),
   finished_at       timestamptz
@@ -261,15 +286,21 @@ counts — written into the coverage layer's `evidence` at compile time.
 begin;
   insert into braintrust_compiles (person_id, status) values ($1, 'running') returning id;
   -- write layers, positions, citations, relations against that compile_id
+  -- run the gate against $new; on failure, set status = 'rejected' with a reason and commit here
   delete from braintrust_compiles where person_id = $1 and status = 'current';
   update braintrust_compiles set status = 'current', finished_at = now() where id = $new;
 commit;
 ```
 
-Three properties worth naming:
+Four properties worth naming:
 
 - **A failed compile changes nothing.** The old current compile is only deleted once the new one is
   written, inside one transaction.
+- **A compile must pass the gate to be promoted.** Structural checks only — all four core layers present
+  and non-empty, voice carrying both forms, inferred layers carrying their marker, coverage reconciling
+  against `braintrust_items`, every position resolving to a real citation, and position count not
+  collapsing against the previous compile. A rejected compile keeps its rows for inspection and leaves the
+  previous persona live. This is what `lint` becomes in a regenerate model.
 - **`on delete cascade` does all the cleanup.** Deleting the old compile row removes its layers, positions,
   citations and relations. There is no reconciliation step and nothing to leak.
 - **Regeneration is affordable only while the core stays bounded.** Voice, reasoning, beliefs and coverage

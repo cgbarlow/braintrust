@@ -32,6 +32,12 @@ A passage of an Item's text, sized for retrieval. For a transcript, a Chunk know
 it came from.
 _Avoid_: passage, segment, fragment
 
+**Note**:
+What braintrust wrote down the one time it read an Item — the claims made, the argument, the assumptions.
+Every Compile reads Notes rather than Items, because an Item never changes and re-reading it cannot
+produce a different answer.
+_Avoid_: summary, extraction, digest
+
 **Skipped**:
 An Item braintrust deliberately did not retrieve — paywalled content, which braintrust never ingests.
 A Skipped Item is still recorded, so Coverage can name what was not read.
