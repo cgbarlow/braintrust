@@ -29,7 +29,8 @@ Every Item braintrust holds for one Person.
 
 **Chunk**:
 A passage of an Item's text, sized for retrieval. For a transcript, a Chunk knows where in the recording
-it came from.
+it came from. Its boundaries come from the platform — caption timings, paragraph breaks — never from a
+model, because a Chunk is what a citation quotes and a quote must be what was said.
 _Avoid_: passage, segment, fragment
 
 **Note**:
