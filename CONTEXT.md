@@ -44,6 +44,18 @@ walk. Not a queue: it is a query over rows that already exist, which is why inte
 time. A Compile waits for an empty Backlog.
 _Avoid_: queue, job, pipeline, task list
 
+**Plan**:
+What braintrust proposes before it ingests anything — the Sources it resolved from the links you gave it,
+the name it suggests for the Person, and what following them will cost. Every number in a Plan is labelled
+Measured or Inferred, the same as a Persona's layers. A human confirms a Plan; nothing is ingested without one.
+_Avoid_: preview, estimate, dry run
+
+**Paused**:
+A Person braintrust has stopped following. Their Persona stays answerable and stops moving; nothing is
+deleted, so resuming costs nothing. Distinct from a Source that has blocked braintrust — Paused is the
+user's choice.
+_Avoid_: disabled, archived, deleted
+
 **Skipped**:
 An Item braintrust deliberately did not retrieve — paywalled content, which braintrust never ingests.
 A Skipped Item is still recorded, so Coverage can name what was not read.
