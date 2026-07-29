@@ -29,7 +29,8 @@ Every Item braintrust holds for one Person.
 
 **Chunk**:
 A passage of an Item's text, sized for retrieval. For a transcript, a Chunk knows where in the recording
-it came from.
+it came from. Its boundaries come from the platform — caption timings, paragraph breaks — never from a
+model, because a Chunk is what a citation quotes and a quote must be what was said.
 _Avoid_: passage, segment, fragment
 
 **Note**:
@@ -52,9 +53,14 @@ _Avoid_: preview, estimate, dry run
 
 **Paused**:
 A Person braintrust has stopped following. Their Persona stays answerable and stops moving; nothing is
-deleted, so resuming costs nothing. Distinct from a Source that has blocked braintrust — Paused is the
-user's choice.
+deleted, so resuming costs nothing. Distinct from a Blocked Source — Paused is the user's choice.
 _Avoid_: disabled, archived, deleted
+
+**Blocked**:
+A Source that has stopped serving braintrust. Established by counting consecutive failures, not by reading
+one response. braintrust stops crawling it, keeps and reports everything it already has, and asks once a
+day — the same request, unchanged. Never the user's choice, and never a reason to alter how braintrust asks.
+_Avoid_: banned, rate-limited, failed, paused
 
 **Skipped**:
 An Item braintrust deliberately did not retrieve — paywalled content, which braintrust never ingests.

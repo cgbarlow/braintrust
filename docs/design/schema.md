@@ -98,8 +98,19 @@ only decides whether a source is *due* when it runs.
 **allow-list**: live Substack values include `only_paid`, `founding` and `everyone`, and a deny-list would
 silently ingest the next tier Substack invents.
 
-`blocked_at` exists because the terms posture says *a block is an answer, not an obstacle*. The behaviour
-is still unspecified (it sits in the map's **Not yet specified**), but the column is where the fact lands.
+`blocked_at` exists because the terms posture says *a block is an answer, not an obstacle*, and it is set
+when a source stops serving braintrust — **measured as consecutive failures across distinct items, never
+inferred from a response code.** A single failure is already `retrieval = 'failed'`; a captcha arrives as a
+200 with HTML in it, so classifying one response is a guess where counting many is a measurement.
+
+Setting it stops the crawl **for that source only** — the two sources share nothing but a person — and
+**suppresses that source's backlog** (see below), which is what keeps a source that can never finish its
+backfill out of a permanent repair loop. The next daily run sends one ordinary request, unchanged; success
+clears `blocked_at`. That is self-healing rather than evasion, which would mean changing *how* braintrust
+asks — and it crawls from one address with nothing to rotate.
+
+It is deliberately **not** the same fact as `braintrust_people.paused_at`: one is the source refusing
+braintrust, the other is the user choosing to stop.
 
 ```sql
 create table braintrust_items (
@@ -159,7 +170,7 @@ create table braintrust_chunks (
 create table braintrust_embeddings (
   chunk_id    uuid not null references braintrust_chunks(id) on delete cascade,
   model       text not null,
-  embedding   vector(1536) not null,
+  embedding   vector(1024) not null,   -- must match the configured endpoint; verified at startup
   created_at  timestamptz not null default now(),
   primary key (chunk_id, model)
 );
@@ -189,12 +200,35 @@ migration — old and new coexist while you compare them, and chunks and items a
 also never compares its own vectors to `thoughts.embedding`: OB1 users run 768- and 1024-dimension models
 locally, and cosine similarity across model families is meaningless.
 
-**Honest limit:** pgvector needs fixed dimensions to build an index, so `vector(1536)` is declared for v1's
-model. Moving to a differently-sized model means altering *this table only*. That is exactly the property
+**braintrust declares no embedding model.** It calls whatever OpenAI-compatible `/v1/embeddings` endpoint it
+is configured with — Ollama, LM Studio, vLLM, OpenAI — so local versus hosted is a config line rather than a
+design decision. **There is no default endpoint:** braintrust refuses to start unconfigured, because a
+default would mean a first run silently shipping an entire corpus to a third party. The reference
+configuration in the docs is `qwen3-embedding:0.6b` at 1024 dimensions.
+
+**Honest limit:** pgvector needs fixed dimensions to build an index, so the column is typed once.
+`vector(1024)` matches the reference model, and **this is the one value in `schema.sql` a user must change**
+if they point braintrust at a differently-sized model — the same pattern OB1 documents for its own Ollama
+users. Moving to a differently-sized model means altering *this table only*. That is exactly the property
 the README asks for — nothing is lost, because nothing here is original.
 
-Chunk sizing is a compiler concern rather than a schema one: target ~1,000–1,500 characters on caption-event
-or sentence boundaries, never spanning items. Re-chunking drops tier 2 and rebuilds it.
+**Two startup checks, because both failures are otherwise silent.** braintrust embeds a probe string and
+compares its length to the declared dimension; and it checks the configured model has rows here at all. The
+second matters more than it looks: a *differently-sized* model fails loudly on insert, but a **same-sized,
+different model** fails not at all — cosine similarity across model families is meaningless even when the
+dimensions match, so every search would return confidently-ranked nonsense. Refusing to serve is the only
+honest response.
+
+Chunk sizing: target ~1,000–1,500 characters with modest overlap, never spanning items. **Boundaries are the
+platform's, never a model's** — caption events for transcripts, paragraphs for prose. A model pass to
+restore punctuation was rejected outright: `text` here is what a citation's `quote` is drawn from, so a
+punctuated chunk would make every quote a rendering of what someone said rather than what they said.
+Accepted cost: passages read like unpunctuated speech, because that is what they are. Re-chunking drops
+tier 2 and rebuilds it, for about three cents.
+
+**Claim vectors are not stored.** Revision detection embeds ~2,000 claim statements during a compile to find
+similarity neighbourhoods, then discards them — ~80K tokens, so persisting them would buy nothing and cost
+either a polymorphic key here or promoting `braintrust_item_notes.claims` into rows of its own.
 
 **`braintrust_item_notes` is why regeneration stays affordable.** Published items are immutable, so the
 compiler reads each item once, writes a note, and every subsequent compile reads notes instead of ~1.17M
@@ -355,6 +389,15 @@ retrieval. They are one job, and its queue is already here as state:
 **Because the backlog is rows rather than a queue, every long job is resumable by construction.** A run
 killed at minute 12 of 26 has written twelve minutes of real rows and the next run continues. No job table,
 no checkpointing.
+
+**A blocked source is not in the backlog either, and that is the whole repair-loop fix.** `blocked_at`
+suppresses all three row-states for that source, for exactly the reason `retrieval = 'failed'` is excluded
+below — a terminal recorded outcome is not a pending item. `backfill_complete` stays `false`, because the
+corpus genuinely *is* incomplete and that remains true whatever the reason; it simply stops asking for work.
+**The flag keeps telling the truth and only stops generating requests**, which is how one column goes on
+serving as both the repair trigger and the honesty flag without a source that can never finish its backfill
+re-crawling forever. A compile still runs, on what braintrust actually has — freezing the persona instead
+would hand a platform a veto over whether braintrust works at all.
 
 **`retrieval = 'failed'` is deliberately not in the backlog.** It is a terminal outcome that coverage
 reports, not a pending item — otherwise one permanently unfetchable video would block every future compile.
