@@ -36,7 +36,7 @@ cd braintrust
 cp .env.example .env   # point at your Postgres and your embeddings endpoint
 ```
 
-Paste `schema.sql` into your Supabase SQL editor, then deploy two things from the same codebase: an HTTP MCP server, and a scheduled job that runs once a day.
+Paste `schema.sql` into your Supabase SQL editor, then deploy two things from the same codebase — a web service running `npm start`, and a cron job running `npm run job` once a day. They share a database and nothing else, so a half-hour backfill can never slow down a question, and the job being killed mid-run costs the current fetch and nothing more.
 
 Add your first council member through your AI client rather than the command line — `braintrust_follow_person`, with a link to their Substack and a link to their YouTube channel. braintrust proposes a plan; you confirm it. **Only a human can add someone to a braintrust**, so an AI can refresh a persona but can never introduce a new one.
 
@@ -68,13 +68,13 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, and **following someone**. Paste their links in your AI client and braintrust resolves them, proposes a name, and tells you what following them will cost — how many items, how much of the corpus is paywalled and will therefore never be read, how long the first run takes — before it fetches any of it.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for Substack**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts, walks their archive back twelve months, skips every paywalled post as a recorded gap, and stores the text of the free ones.
 
-What does not work yet is the part that reads: a followed person is recorded with an empty corpus and `compiled: false`, because the job that drains the backlog is the next ticket. So braintrust can currently tell you what it *would* read.
+What does not work yet: YouTube captions, so videos are discovered and left waiting; and nothing is distilled, so a person's persona is still `compiled: false` however much of their writing is on disk.
 
-Run `npm test` for the suite; the schema tests need a Postgres and skip without one.
+Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 
-- [ ] Source ingestion pipeline (Substack, YouTube) — registration done, retrieval next
+- [ ] Source ingestion pipeline — Substack done; YouTube captions next
 - [ ] Persona compiler and daily refresh loop
 - [ ] MCP server exposing personas as tools
 - [ ] Council mode: one question, every persona answers

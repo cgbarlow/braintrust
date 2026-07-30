@@ -12,7 +12,9 @@
     "build": "tsc",
     "typecheck": "tsc --project tsconfig.test.json",
     "start": "node dist/server/index.js",
+    "job": "node dist/job/index.js",
     "dev": "tsx watch src/server/index.ts",
+    "job:dev": "tsx src/job/index.ts",
     "test": "node --import tsx --test --test-concurrency=1 \"test/**/*.test.ts\""
   },
   "dependencies": {
