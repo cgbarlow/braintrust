@@ -18,6 +18,11 @@ export type FetchResponse = {
   ok: boolean;
   status: number;
   text(): Promise<string>;
+  /**
+   * Optional so a fake is still three lines. Only one thing reads it: `Retry-After`
+   * on a 429, because slowing down when a source asks is compliance, not a workaround.
+   */
+  headers?: { get(name: string): string | null } | undefined;
 };
 
 export type Fetcher = (url: string) => Promise<FetchResponse>;

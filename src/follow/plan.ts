@@ -18,6 +18,7 @@ import { resolveLinks } from '../sources/resolve.js';
 import { surveySubstack } from '../sources/substack.js';
 import {
   DEFAULT_SETTINGS,
+  RETRIEVAL_SPACING_SECONDS,
   type Basis,
   type Platform,
   type ResolvedSource,
@@ -88,14 +89,10 @@ export type PlanDeps = {
 };
 
 /**
- * The 4s spacing between YouTube caption fetches is load-bearing — it is the
- * spacing under which extraction tested clean, and the difference between reading a
- * feed and hammering a service. The estimate assumes the same politeness for
- * Substack bodies. The drain loop owns the real value; this is only how the Plan
- * turns a fetch count into minutes.
- * See docs/research/source-terms-and-consent.md §7.
+ * The drain owns the pace; the Plan only quotes it to turn a fetch count into minutes.
+ * Re-exported so a reader of a Plan can find the number that produced it.
  */
-export const RETRIEVAL_SPACING_SECONDS = 4;
+export { RETRIEVAL_SPACING_SECONDS } from '../sources/types.js';
 
 export const PAYWALL_NOTE =
   'Paywalled content is never ingested, and what was skipped is recorded. Not configurable.';

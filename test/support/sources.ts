@@ -33,11 +33,25 @@ export const SUBSTACK_FREE = SUBSTACK_IN_WINDOW - SUBSTACK_PAYWALLED;
 
 const AUDIENCES = ['everyone', 'only_paid', 'only_paid', 'founding'];
 
-type ArchivePost = { id: number; post_date: string; audience: string; body_html: null };
+type ArchivePost = {
+  id: number;
+  slug: string;
+  canonical_url: string;
+  title: string;
+  post_date: string;
+  audience: string;
+  /** Present as a key and always null: the archive is the catalogue, never the text. */
+  body_html: null;
+};
+
+const slugOf = (index: number, older = false) => `${older ? 'old' : 'post'}-${index}`;
 
 export const SUBSTACK_ARCHIVE: ArchivePost[] = [
   ...Array.from({ length: SUBSTACK_IN_WINDOW }, (_, index) => ({
     id: 1000 + index,
+    slug: slugOf(index),
+    canonical_url: `https://${SUBSTACK_HOST}/p/${slugOf(index)}`,
+    title: `Post ${index}`,
     // Newest first, six days apart. The oldest lands 356 days before NOW, inside a
     // twelve-month window with room to spare.
     post_date: isoDaysBefore(NOW, 2 + index * 6),
@@ -46,6 +60,9 @@ export const SUBSTACK_ARCHIVE: ArchivePost[] = [
   })),
   ...Array.from({ length: 10 }, (_, index) => ({
     id: 900 + index,
+    slug: slugOf(index, true),
+    canonical_url: `https://${SUBSTACK_HOST}/p/${slugOf(index, true)}`,
+    title: `Older post ${index}`,
     post_date: isoDaysBefore(NOW, 374 + index * 6),
     audience: 'everyone',
     body_html: null,
@@ -64,11 +81,44 @@ export const SUBSTACK_FEED = `<?xml version="1.0" encoding="UTF-8"?>
       <title><![CDATA[Post ${index}]]></title>
       <dc:creator><![CDATA[Nate B. Jones]]></dc:creator>
       <pubDate>${new Date(post.post_date).toUTCString()}</pubDate>
-      <guid isPermaLink="false">https://${SUBSTACK_HOST}/p/post-${index}</guid>
+      <link>${post.canonical_url}</link>
+      <guid isPermaLink="false">${post.canonical_url}</guid>
     </item>`;
     }).join('\n    ')}
   </channel>
 </rss>`;
+
+/**
+ * `/api/v1/posts/<slug>`, the body endpoint — the one place a Substack post's text
+ * actually arrives. The subscribe widget is nested exactly as the live one is, so the
+ * extraction has to count `</div>`s rather than stop at the first.
+ */
+export function substackPost(slug: string): { status: number; body: string } {
+  const record = SUBSTACK_ARCHIVE.find((post) => post.slug === slug);
+  if (!record) return { status: 404, body: JSON.stringify({ error: 'not found' }) };
+
+  return {
+    status: 200,
+    body: JSON.stringify({
+      id: record.id,
+      slug: record.slug,
+      title: record.title,
+      audience: record.audience,
+      post_date: record.post_date,
+      wordcount: 12,
+      body_html:
+        `<p>${record.title}: the part that matters.</p>` +
+        '<div class="subscription-widget-wrap-editor"><div class="subscription-widget show-subscribe">' +
+        '<p class="cta-caption">Subscribe now</p><div class="fake-input-wrapper">' +
+        '<div class="fake-input">Type your email…</div></div></div></div>' +
+        '<p>And a second paragraph &amp; an entity.</p>',
+    }),
+  };
+}
+
+/** What `substackPost` above should extract to, once the widget is gone. */
+export const SUBSTACK_BODY_TEXT = (title: string) =>
+  `${title}: the part that matters.\n\nAnd a second paragraph & an entity.`;
 
 // ---------------------------------------------------------------------------
 // YouTube
@@ -90,6 +140,7 @@ export const YOUTUBE_FEED = `<?xml version="1.0" encoding="UTF-8"?>
     <yt:videoId>vid${String(index).padStart(8, '0')}</yt:videoId>
     <yt:channelId>${CHANNEL_ID}</yt:channelId>
     <title>Video ${index}</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=vid${String(index).padStart(8, '0')}"/>
     <published>${published.toISOString()}</published>
     <updated>${published.toISOString()}</updated>
   </entry>`;
@@ -115,7 +166,9 @@ var ytInitialPlayerResponse = {"videoDetails":{"videoId":"abcdefghijk","channelI
 export type Route = {
   match: (url: string) => boolean;
   status?: number;
-  body: string | ((url: string) => string);
+  body?: string | ((url: string) => string);
+  /** For routes whose status depends on the URL — a 404 for an unknown slug, a 429. */
+  respond?: (url: string) => { status: number; body: string; headers?: Record<string, string> };
 };
 
 export type FakeFetcher = Fetcher & { requests: string[] };
@@ -128,8 +181,14 @@ export function fakeFetcher(routes: Route[]): FakeFetcher {
     requests.push(url);
     const route = routes.find((candidate) => candidate.match(url));
     if (!route) return response(404, `no fake route for ${url}`);
+
+    if (route.respond) {
+      const given = route.respond(url);
+      return response(given.status, given.body, given.headers);
+    }
+
     const body = typeof route.body === 'function' ? route.body(url) : route.body;
-    return response(route.status ?? 200, body);
+    return response(route.status ?? 200, body ?? '');
   };
 
   return Object.assign(fetcher, { requests });
@@ -142,6 +201,10 @@ export function natesRoutes(): Route[] {
     {
       match: (url) => url.startsWith(`https://${SUBSTACK_HOST}/api/v1/archive`),
       body: (url) => JSON.stringify(archivePage(url)),
+    },
+    {
+      match: (url) => url.startsWith(`https://${SUBSTACK_HOST}/api/v1/posts/`),
+      respond: (url) => substackPost(decodeURIComponent(url.split('/api/v1/posts/')[1]!)),
     },
     { match: (url) => url.includes('/feeds/videos.xml'), body: YOUTUBE_FEED },
     { match: (url) => url.includes('/watch?v='), body: YOUTUBE_WATCH_PAGE },
@@ -156,8 +219,13 @@ export function archivePage(url: string): ArchivePost[] {
   return SUBSTACK_ARCHIVE.slice(offset, offset + limit);
 }
 
-function response(status: number, body: string): FetchResponse {
-  return { ok: status >= 200 && status < 300, status, text: async () => body };
+function response(status: number, body: string, headers: Record<string, string> = {}): FetchResponse {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => body,
+    headers: { get: (name) => headers[name.toLowerCase()] ?? null },
+  };
 }
 
 function isoDaysBefore(from: Date, days: number): string {

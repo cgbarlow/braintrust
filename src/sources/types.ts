@@ -54,6 +54,36 @@ export const DEFAULT_SETTINGS: SourceSettings = {
 export type Basis = 'measured' | 'estimated';
 
 /**
+ * The vocabularies `braintrust_items` enforces. Both are checked by the DDL, so a
+ * value that is not in these unions is a constraint violation rather than a bad row.
+ */
+export type Audience = 'everyone' | 'paid' | 'unknown';
+export type Retrieval = 'pending' | 'retrieved' | 'skipped_paywall' | 'failed';
+
+/**
+ * **The paywall line, as an allow-list.** Anything that is not exactly `everyone` is
+ * paid. Live Substack values include `only_paid` and `founding`, and a deny-list built
+ * from the ones known today would silently ingest whatever tier Substack invents next.
+ *
+ * The DDL only accepts `everyone`, `paid` and `unknown`, so this mapping is not a
+ * convenience — an un-mapped `only_paid` is rejected by the database.
+ */
+export function audienceOf(raw: string | null | undefined): Audience {
+  if (raw === undefined || raw === null || raw.trim() === '') return 'unknown';
+  return raw === 'everyone' ? 'everyone' : 'paid';
+}
+
+/**
+ * The 4s spacing between fetches. Measured on YouTube captions — 4 of 4 succeeded at
+ * this spacing where per-video metadata failed every time — and it is the difference
+ * between reading a feed and hammering a service. Substack keeps it too: the same
+ * politeness costs a minute across a year of free posts.
+ * See docs/research/source-terms-and-consent.md §7.
+ */
+export const RETRIEVAL_SPACING_SECONDS = 4;
+export const RETRIEVAL_SPACING_MS = RETRIEVAL_SPACING_SECONDS * 1000;
+
+/**
  * What a cheap look at a Source says it will cost. Produced by reading feeds and
  * catalogues only: no body, no caption, no Item row.
  */
