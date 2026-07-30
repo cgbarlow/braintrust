@@ -87,18 +87,23 @@ describe('the plan', () => {
     }
     // The duration is a number too, and its key names it an estimate.
     assert.ok(plan.estimated_duration_min > 0);
-    assert.match(plan.estimated_duration_how, /at 4s spacing/);
+    assert.match(plan.estimated_duration_how, /at 4s per item/);
   });
 
-  it('prices the undated YouTube items, which each cost a third fetch', async () => {
+  it('prices the wait per item, which is what the job actually spends', async () => {
     const { plan } = await buildPlan(LINKS, [], deps());
 
-    // The feed dates 15 entries; everything older needs its watch page for a date.
+    // The 4s spacing sits between Items, not between requests — a video's date, caption
+    // list and track go out back-to-back. Pricing the requests instead would tell the
+    // person approving this that a 12-month backfill takes twice as long as it does.
+    const items = YOUTUBE_ESTIMATE + SUBSTACK_FREE;
+    assert.equal(plan.estimated_duration_min, Math.ceil((items * RETRIEVAL_SPACING_SECONDS) / 60));
+
+    // The date fetches are still named: they are traffic the operator is agreeing to.
     const dateFetches = YOUTUBE_ESTIMATE - YOUTUBE_FEED_ENTRIES;
-    const fetches = YOUTUBE_ESTIMATE + dateFetches + SUBSTACK_FREE;
-    assert.equal(plan.estimated_duration_min, Math.ceil((fetches * RETRIEVAL_SPACING_SECONDS) / 60));
-    assert.match(plan.estimated_duration_how, new RegExp(`${dateFetches} publish-date fetches`));
-    assert.match(plan.estimated_duration_how, new RegExp(`${SUBSTACK_FREE} post fetches`));
+    assert.match(plan.estimated_duration_how, new RegExp(`${dateFetches} publish-date fetches alongside`));
+    assert.match(plan.estimated_duration_how, new RegExp(`${SUBSTACK_FREE} posts`));
+    assert.match(plan.estimated_duration_how, new RegExp(`${YOUTUBE_ESTIMATE} videos`));
   });
 
   it('keeps the link as pasted, so a wrong resolution is visible here', async () => {

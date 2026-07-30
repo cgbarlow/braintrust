@@ -188,26 +188,38 @@ function toPlanSource(
   return planSource;
 }
 
+/**
+ * How long the confirmed Plan will actually take.
+ *
+ * **The 4 seconds are spent per Item, not per request.** A YouTube Item costs two or
+ * three back-to-back calls — its date, its caption list, its track — and the cycle
+ * spaces the Items rather than the calls, because that is how the spacing was measured
+ * (see `retrieveBodies` in `ingest/cycle.ts`). Counting requests here would price a
+ * 12-month YouTube backfill at 71 minutes when the job takes 36, and a Plan that
+ * overstates the wait is still a Plan that lied to the person approving it.
+ *
+ * The date fetches are named anyway, because they are real traffic the operator is
+ * agreeing to even where they cost no extra wait.
+ */
 function estimateDuration(
   surveyed: { source: ResolvedSource; survey: SourceSurvey }[],
 ): { minutes: number; how: string } {
   const parts: string[] = [];
-  let fetches = 0;
+  let items = 0;
 
   for (const { source, survey: found } of surveyed) {
     if (found.bodyFetches > 0) {
-      fetches += found.bodyFetches;
-      parts.push(plural(found.bodyFetches, source.platform === 'youtube' ? 'caption fetch' : 'post fetch'));
+      items += found.bodyFetches;
+      parts.push(plural(found.bodyFetches, source.platform === 'youtube' ? 'video' : 'post'));
     }
     if (found.dateFetches > 0) {
-      fetches += found.dateFetches;
-      parts.push(plural(found.dateFetches, 'publish-date fetch'));
+      parts.push(`${plural(found.dateFetches, 'publish-date fetch')} alongside`);
     }
   }
 
-  const minutes = Math.ceil((fetches * RETRIEVAL_SPACING_SECONDS) / 60);
+  const minutes = Math.ceil((items * RETRIEVAL_SPACING_SECONDS) / 60);
   const how = parts.length
-    ? `${parts.join(' + ')} at ${RETRIEVAL_SPACING_SECONDS}s spacing`
+    ? `${parts.join(' + ')} at ${RETRIEVAL_SPACING_SECONDS}s per item`
     : 'nothing to retrieve in this window';
   return { minutes, how };
 }
@@ -268,7 +280,10 @@ export function applyOverrides(
 }
 
 function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 'es'}`;
+  if (count === 1) return `1 ${noun}`;
+  // "fetch" wants "es"; "post" and "video" want "s". A plan a human reads should not
+  // say "15 postes".
+  return `${count} ${noun}${/(?:ch|sh|s|x|z)$/.test(noun) ? 'es' : 's'}`;
 }
 
 function describeTarget(override: SourceOverride): string {

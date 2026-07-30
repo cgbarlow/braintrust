@@ -63,8 +63,10 @@ day — the same request, unchanged. Never the user's choice, and never a reason
 _Avoid_: banned, rate-limited, failed, paused
 
 **Skipped**:
-An Item braintrust deliberately did not retrieve — paywalled content, which braintrust never ingests.
-A Skipped Item is still recorded, so Coverage can name what was not read.
+An Item braintrust deliberately did not retrieve. Two reasons, kept apart because they are different
+facts: paywalled content, which braintrust never ingests, and a Short, which braintrust's own settings
+exclude. A Skipped Item is still recorded, so Coverage can name what was not read — and because the
+second reason is braintrust's own, only that one can be undone by changing the setting.
 _Avoid_: excluded, filtered, ignored
 
 ### The persona

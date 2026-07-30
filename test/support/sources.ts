@@ -160,26 +160,258 @@ var ytInitialPlayerResponse = {"videoDetails":{"videoId":"abcdefghijk","channelI
 </body></html>`;
 
 // ---------------------------------------------------------------------------
+// YouTube's innertube endpoints
+//
+// The shapes below were measured against the live channel on 2026-07-30:
+// `lockupViewModel` (not `videoRenderer`, which YouTube has retired here), the
+// duration as a thumbnail badge, the age as a "2 days ago" metadata part, and a
+// player response that answers UNPLAYABLE to WEB while still carrying the date.
+// ---------------------------------------------------------------------------
+
+export const videoId = (index: number) => `vid${String(index).padStart(8, '0')}`;
+
+/**
+ * 80 videos: 70 inside the window at 16h spacing (~46 days, so the fixture channel
+ * is denser than a year like the real one) and 10 from two years ago that the floor
+ * has to leave alone. 30 to a page, so the walk has to follow continuations.
+ */
+export const YOUTUBE_LISTING_IN_WINDOW = 70;
+export const YOUTUBE_LISTING_OLDER = 10;
+export const YOUTUBE_LISTING_PAGE = 30;
+
+/** Index 3 is a Short the listing dates *and* measures — caught before any fetch. */
+export const YOUTUBE_SHORT_IN_LISTING = 3;
+
+/**
+ * Index 5 carries no duration badge, which happens. Its 53 seconds only surface with
+ * the player response, so it is the Item that proves the second Shorts check exists.
+ */
+export const YOUTUBE_SHORT_WITHOUT_BADGE = 5;
+
+/** Index 7 has no caption track at all — a fact about the video, not a retry. */
+export const YOUTUBE_NO_CAPTIONS = 7;
+
+export function durationOf(index: number): number {
+  if (index === YOUTUBE_SHORT_IN_LISTING) return 45;
+  if (index === YOUTUBE_SHORT_WITHOUT_BADGE) return 53;
+  return 1200 + index;
+}
+
+export function publishedOf(index: number): Date {
+  return new Date(
+    index < YOUTUBE_LISTING_IN_WINDOW
+      ? NOW.getTime() - 12 * 3600_000 - index * 16 * 3600_000
+      : NOW.getTime() - 730 * 86_400_000,
+  );
+}
+
+function relativeAge(index: number): string {
+  if (index >= YOUTUBE_LISTING_IN_WINDOW) return '2 years ago';
+  const hours = 12 + index * 16;
+  return hours < 48 ? `${hours} hours ago` : `${Math.floor(hours / 24)} days ago`;
+}
+
+function lockup(index: number): unknown {
+  const seconds = durationOf(index);
+  const badge =
+    index === YOUTUBE_SHORT_WITHOUT_BADGE
+      ? []
+      : [{ thumbnailBadgeViewModel: { text: timecodeOf(seconds), badgeStyle: 'THUMBNAIL_OVERLAY_BADGE_STYLE_DEFAULT' } }];
+
+  return {
+    richItemRenderer: {
+      content: {
+        lockupViewModel: {
+          contentId: videoId(index),
+          contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+          contentImage: {
+            thumbnailViewModel: { overlays: [{ thumbnailBottomOverlayViewModel: { badges: badge } }] },
+          },
+          metadata: {
+            lockupMetadataViewModel: {
+              title: { content: `Video ${index}` },
+              metadata: {
+                contentMetadataViewModel: {
+                  metadataRows: [
+                    {
+                      metadataParts: [
+                        { text: { content: `${10 + index}K views` } },
+                        { text: { content: relativeAge(index) } },
+                      ],
+                    },
+                  ],
+                  delimiter: ' • ',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function timecodeOf(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+/** One page of the Videos tab, in whichever of the two shapes the endpoint uses. */
+export function listingPage(page: number): string {
+  const total = YOUTUBE_LISTING_IN_WINDOW + YOUTUBE_LISTING_OLDER;
+  const start = page * YOUTUBE_LISTING_PAGE;
+  const items: unknown[] = [];
+
+  for (let index = start; index < Math.min(start + YOUTUBE_LISTING_PAGE, total); index += 1) {
+    items.push(lockup(index));
+  }
+  if (start + YOUTUBE_LISTING_PAGE < total) {
+    items.push({
+      continuationItemRenderer: {
+        continuationEndpoint: { continuationCommand: { token: `page-${page + 1}` } },
+      },
+    });
+  }
+
+  // The first page nests the items under the tab; a continuation appends them.
+  return page === 0
+    ? JSON.stringify({
+        contents: {
+          twoColumnBrowseResultsRenderer: {
+            tabs: [
+              { tabRenderer: { title: 'Home', content: {} } },
+              { tabRenderer: { title: 'Videos', content: { richGridRenderer: { contents: items } } } },
+            ],
+          },
+        },
+      })
+    : JSON.stringify({
+        onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: items } }],
+      });
+}
+
+export const CAPTION_SENTENCES = [
+  'You keep running out of tokens and you have not done anything unreasonable.',
+  'On one working day my tracker recorded three point seven seven billion tokens.',
+  'So here is the prompt I paste in, and here is why it works.',
+];
+
+export function captionText(index: number): string {
+  return [`This is video ${index}.`, ...CAPTION_SENTENCES].join(' ');
+}
+
+/**
+ * A `json3` track, including the rolling-window event that carries only a newline —
+ * the one an extractor has to drop or the transcript fills with blank lines.
+ */
+export function captionsJson3(index: number): string {
+  const events: unknown[] = [
+    // The first event is the window declaration: no `segs` at all.
+    { tStartMs: 0, dDurationMs: durationOf(index) * 1000, id: 1, wpWinPosId: 1 },
+  ];
+
+  [`This is video ${index}.`, ...CAPTION_SENTENCES].forEach((sentence, line) => {
+    events.push({
+      tStartMs: line * 4000,
+      dDurationMs: 4000,
+      wWinId: 1,
+      // Word-level, with the space *inside* the segment, as YouTube sends it.
+      segs: sentence.split(' ').map((word, position) => ({
+        utf8: position === 0 ? word : ` ${word}`,
+        tOffsetMs: position * 200,
+      })),
+    });
+    events.push({ tStartMs: line * 4000 + 2000, dDurationMs: 2000, wWinId: 1, aAppend: 1, segs: [{ utf8: '\n' }] });
+  });
+
+  return JSON.stringify({ wireMagic: 'pb3', pens: [{}], events });
+}
+
+export function captionBaseUrl(index: number): string {
+  return `https://www.youtube.com/api/timedtext?v=${videoId(index)}&caps=asr&kind=asr&lang=en&signature=deadbeef`;
+}
+
+/**
+ * A player response. `IOS` carries the caption track and no date; `WEB` carries the
+ * date and refuses playback. Both carry `lengthSeconds`, which is the Shorts rule's
+ * second chance.
+ */
+export function playerResponse(id: string, client: string): string {
+  const index = Number(id.replace('vid', ''));
+  const seconds = durationOf(index);
+
+  if (client === 'WEB') {
+    return JSON.stringify({
+      playabilityStatus: { status: 'UNPLAYABLE', reason: 'Video unavailable' },
+      videoDetails: { videoId: id, lengthSeconds: String(seconds), title: `Video ${index}` },
+      microformat: {
+        playerMicroformatRenderer: {
+          publishDate: publishedOf(index).toISOString(),
+          uploadDate: publishedOf(index).toISOString(),
+          title: { simpleText: `Video ${index}` },
+        },
+      },
+    });
+  }
+
+  return JSON.stringify({
+    playabilityStatus: { status: 'OK' },
+    videoDetails: { videoId: id, lengthSeconds: String(seconds), title: `Video ${index}` },
+    ...(index === YOUTUBE_NO_CAPTIONS
+      ? {}
+      : {
+          captions: {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: captionBaseUrl(index),
+                  name: { runs: [{ text: 'English (auto-generated)' }] },
+                  languageCode: 'en',
+                  kind: 'asr',
+                },
+              ],
+            },
+          },
+        }),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The fetcher
 // ---------------------------------------------------------------------------
 
+/**
+ * A route. `sent` is the POSTed JSON where there is one — YouTube's player endpoint
+ * takes its video id and its client name in the body, so a fake that only sees URLs
+ * cannot tell the two player calls apart.
+ */
 export type Route = {
-  match: (url: string) => boolean;
+  match: (url: string, sent?: Sent) => boolean;
   status?: number;
-  body?: string | ((url: string) => string);
+  body?: string | ((url: string, sent?: Sent) => string);
   /** For routes whose status depends on the URL — a 404 for an unknown slug, a 429. */
   respond?: (url: string) => { status: number; body: string; headers?: Record<string, string> };
 };
 
-export type FakeFetcher = Fetcher & { requests: string[] };
+/** The POSTed body, untyped for the same reason the reader of it is. */
+export type Sent = any;
+
+export type FakeFetcher = Fetcher & {
+  requests: string[];
+  /** Every request, with the POSTed body where there was one. */
+  sent: { url: string; json?: Sent }[];
+};
 
 /** First matching route wins; anything unrouted is a 404, which is a real answer. */
 export function fakeFetcher(routes: Route[]): FakeFetcher {
   const requests: string[] = [];
+  const sent: { url: string; json?: Sent }[] = [];
 
-  const fetcher = async (url: string): Promise<FetchResponse> => {
+  const fetcher = async (url: string, init?: { json: unknown }): Promise<FetchResponse> => {
     requests.push(url);
-    const route = routes.find((candidate) => candidate.match(url));
+    sent.push(init ? { url, json: init.json } : { url });
+
+    const route = routes.find((candidate) => candidate.match(url, init?.json));
     if (!route) return response(404, `no fake route for ${url}`);
 
     if (route.respond) {
@@ -187,11 +419,11 @@ export function fakeFetcher(routes: Route[]): FakeFetcher {
       return response(given.status, given.body, given.headers);
     }
 
-    const body = typeof route.body === 'function' ? route.body(url) : route.body;
+    const body = typeof route.body === 'function' ? route.body(url, init?.json) : route.body;
     return response(route.status ?? 200, body ?? '');
   };
 
-  return Object.assign(fetcher, { requests });
+  return Object.assign(fetcher, { requests, sent });
 }
 
 /** The routes for the worked example: one Substack, one YouTube channel. */
@@ -207,9 +439,36 @@ export function natesRoutes(): Route[] {
       respond: (url) => substackPost(decodeURIComponent(url.split('/api/v1/posts/')[1]!)),
     },
     { match: (url) => url.includes('/feeds/videos.xml'), body: YOUTUBE_FEED },
+    // Both innertube routes demand a client context, because the live endpoint does:
+    // it answers HTTP 400 without one, and a fake that shrugged at a missing context
+    // let exactly that bug through to the first real run.
+    {
+      match: (url) => url.endsWith('/youtubei/v1/browse'),
+      body: (_url, sent) => {
+        requireClient(sent, 'browse');
+        return listingPage(sent.continuation ? Number(sent.continuation.split('-')[1]) : 0);
+      },
+    },
+    {
+      match: (url) => url.endsWith('/youtubei/v1/player'),
+      body: (_url, sent) => {
+        requireClient(sent, 'player');
+        return playerResponse(sent.videoId, sent.context.client.clientName);
+      },
+    },
+    {
+      match: (url) => url.includes('/api/timedtext'),
+      body: (url) => captionsJson3(Number(new URL(url).searchParams.get('v')!.replace('vid', ''))),
+    },
     { match: (url) => url.includes('/watch?v='), body: YOUTUBE_WATCH_PAGE },
     { match: (url) => url.startsWith('https://www.youtube.com/'), body: YOUTUBE_CHANNEL_PAGE },
   ];
+}
+
+function requireClient(sent: Sent, endpoint: string): void {
+  if (!sent?.context?.client?.clientName) {
+    throw new Error(`innertube ${endpoint} was called without a client context; YouTube answers 400`);
+  }
 }
 
 export function archivePage(url: string): ArchivePost[] {

@@ -35,15 +35,16 @@ export async function fetchPolitely(
   fetcher: Fetcher,
   url: string,
   what: string,
-  options: { pause?: Pause } = {},
+  options: { pause?: Pause; post?: unknown } = {},
 ): Promise<string> {
   const pause = options.pause ?? sleep;
-  const first = await fetcher(url);
+  const init = options.post === undefined ? undefined : { json: options.post };
+  const first = await fetcher(url, init);
 
   if (first.status !== 429) return bodyOf(first, url, what);
 
   await pause(backoffFor(first));
-  const second = await fetcher(url);
+  const second = await fetcher(url, init);
   if (second.status === 429) {
     throw new BraintrustError(
       `${what} (${url}) asked braintrust to slow down twice. Leaving it for the next run.`,

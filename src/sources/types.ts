@@ -58,7 +58,7 @@ export type Basis = 'measured' | 'estimated';
  * value that is not in these unions is a constraint violation rather than a bad row.
  */
 export type Audience = 'everyone' | 'paid' | 'unknown';
-export type Retrieval = 'pending' | 'retrieved' | 'skipped_paywall' | 'failed';
+export type Retrieval = 'pending' | 'retrieved' | 'skipped_paywall' | 'skipped_short' | 'failed';
 
 /**
  * **The paywall line, as an allow-list.** Anything that is not exactly `everyone` is
@@ -82,6 +82,17 @@ export function audienceOf(raw: string | null | undefined): Audience {
  */
 export const RETRIEVAL_SPACING_SECONDS = 4;
 export const RETRIEVAL_SPACING_MS = RETRIEVAL_SPACING_SECONDS * 1000;
+
+/**
+ * Five minutes. Below it a video is a Short or an advert for a longer one — measured
+ * yields were 71, 203 and 313 words of promotional copy, against ~4,100 for a
+ * long-form video. They add noise to a Persona and nothing to it.
+ *
+ * `braintrust_sources.exclude_shorts` decides whether the rule applies; this is where
+ * the line is. Excluded Items are written as `skipped_short` rather than left out, so
+ * turning the setting off brings them in instead of requiring a second crawl.
+ */
+export const SHORT_MAX_SECONDS = 300;
 
 /**
  * What a cheap look at a Source says it will cost. Produced by reading feeds and

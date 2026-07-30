@@ -37,7 +37,7 @@ platforms:
 | **Identity** | integer `id` from the archive API | `yt:videoId` |
 | **Publish date** | `post_date` | `published` (feed only — see below) |
 | **Backfill** | `/api/v1/archive`, paged | the flat channel listing, 30 ids per page, no reliable total |
-| **Body** | the canonical post URL | the `json3` caption track, `skip_download`, **4s between fetches** |
+| **Body** | `/api/v1/posts/<slug>` | the `json3` caption track named by `/youtubei/v1/player` |
 | **Audience** | `audience` on the archive record, known **before** fetching | always public |
 | **Yield in 12 months** | ~15 free posts, ~53,000 words | ~395 videos, ~1,170,000 words |
 
@@ -45,12 +45,32 @@ Three facts the build has to respect:
 
 - **The YouTube bot gate is path-specific.** Per-video `extract_info()` fails every time; caption download at
   4s spacing succeeded 4 of 4. The Atom feed supplies exactly the metadata captions cannot come with, so the
-  two cheap endpoints compose. **The 4s spacing is load-bearing** and the unattended crawl keeps it.
-- **Dates on older YouTube items cost a third fetch** — the watch page, ~1.3MB each — because the Atom feed
-  only dates the most recent 15. Without dates there are no held-then-revised Positions at all, so an undated
-  Item is a degraded Item rather than a normal one.
+  two cheap endpoints compose. **The 4s spacing is load-bearing** and the unattended crawl keeps it. It is
+  spent **per Item, not per request** — one video costs two or three back-to-back calls, which is what yt-dlp
+  was doing inside each of the four measured downloads.
+- **Dates on older YouTube items cost a second call** — because the Atom feed only dates the most recent 15.
+  Without dates there are no held-then-revised Positions at all, so an undated Item is a degraded Item rather
+  than a normal one. Measured during the build (#29): the watch page is 1,241,747 bytes, but the player
+  endpoint answers with `microformat.publishDate` in ~15KB, so this costs ~5.8MB across a 12-month backfill
+  rather than ~490MB.
 - **Shorts are excluded by default** (`braintrust_sources.exclude_shorts`). Sub-five-minute videos yield a few
-  hundred words of promotional copy.
+  hundred words of promotional copy. The duration arrives with the channel listing and again with the player
+  response, so an excluded Short is recognised **before** its transcript is requested, and is written as
+  `retrieval = 'skipped_short'` — the one skip that is braintrust's own policy rather than a source's
+  decision, and therefore the one that turning the setting off undoes without a second crawl.
+
+**No yt-dlp, and no Python in either deployment.** The research reached captions through yt-dlp and this
+document named `skip_download` as the route. Measured during #29: `POST /youtubei/v1/player` returns the
+caption track URL directly and the track fetches clean over plain HTTP, at word counts identical to the ones
+yt-dlp produced for the same two videos. The timedtext URL printed in the watch page's own HTML is *not*
+usable — it answers HTTP 200 with a zero-byte body.
+
+**The player endpoint requires the caller to name a YouTube client, and the ones that serve caption tracks are
+Google's own app surfaces** — `WEB` is refused, `IOS` is served. braintrust names `IOS` on that call and
+changes nothing else: its User-Agent stays its own with a link to the repo, no cookies, no sign-in, no
+rotation, one address. That is within
+[the v1 posture](../research/source-terms-and-consent.md)'s "documented, not disguised", and it is more
+transparent than the yt-dlp route, which defaults to impersonating a browser.
 
 **The paywall line is enforced here, as an allow-list.** `audience` is known before fetching, so an Item whose
 audience is not exactly `everyone` is written as `retrieval = 'skipped_paywall'` and never retrieved. Live
