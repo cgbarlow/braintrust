@@ -12,8 +12,10 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
-import type { Db } from '../db.js';
+import type { TransactionalDb } from '../db.js';
+import { createConfirmTokenStore, type ConfirmTokenStore } from '../follow/tokens.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from '../mcp.js';
+import { createFetcher, type Fetcher } from '../net/fetch.js';
 import {
   AUTH_ERROR_CODE,
   AUTH_FAILURE_MESSAGE,
@@ -27,11 +29,21 @@ export const MCP_PATH = '/mcp';
 export const HEALTH_PATH = '/healthz';
 
 export type AppDeps = {
-  db: Db;
+  db: TransactionalDb;
   mcpKey: string;
+  /**
+   * The one piece of state the web service keeps between requests, and it has to be
+   * here rather than in the per-request server: a handshake is two requests, and the
+   * token issued by the first has to still exist for the second.
+   */
+  tokens?: ConfirmTokenStore;
+  fetcher?: Fetcher;
 };
 
-export function createApp({ db, mcpKey }: AppDeps): Express {
+export function createApp({ db, mcpKey, tokens, fetcher }: AppDeps): Express {
+  const confirmTokens = tokens ?? createConfirmTokenStore();
+  const sourceFetcher = fetcher ?? createFetcher();
+
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '4mb' }));
@@ -53,7 +65,7 @@ export function createApp({ db, mcpKey }: AppDeps): Express {
     // to honour. Stripping it stops the transport treating this as a known session.
     delete req.headers['mcp-session-id'];
 
-    const server = buildServer({ db });
+    const server = buildServer({ db, tokens: confirmTokens, fetcher: sourceFetcher });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
     res.on('close', () => {
