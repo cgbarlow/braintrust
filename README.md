@@ -68,7 +68,9 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days — the design is settled and the build has not started. Nothing below works yet.
+Early days. The design is settled and the build has just started: the tables, the authenticated MCP server and `braintrust_list_personas` are up, which means you can connect an AI client and ask what personas exist — and correctly get told there are none, because following someone comes next. Nothing else below works yet.
+
+Run `npm test` for the suite; the schema tests need a Postgres and skip without one.
 
 - [ ] Source ingestion pipeline (Substack, YouTube)
 - [ ] Persona compiler and daily refresh loop
