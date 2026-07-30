@@ -13,7 +13,7 @@
     "typecheck": "tsc --project tsconfig.test.json",
     "start": "node dist/server/index.js",
     "dev": "tsx watch src/server/index.ts",
-    "test": "node --import tsx --test \"test/**/*.test.ts\""
+    "test": "node --import tsx --test --test-concurrency=1 \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

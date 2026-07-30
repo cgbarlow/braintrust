@@ -11,9 +11,9 @@ import { after, before, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-import type { Db, QueryResult } from '../src/db.js';
 import { DISCLOSURE } from '../src/disclosure.js';
 import { createApp } from '../src/http/app.js';
+import { fakeDb } from './support/fake-db.js';
 
 const KEY = 'test-shared-secret';
 
@@ -24,11 +24,7 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 /** No database needed: the read path depends on `Db`, not on `pg`. */
-const emptyDb: Db = {
-  async query<Row>(): Promise<QueryResult<Row>> {
-    return { rows: [] };
-  },
-};
+const emptyDb = fakeDb();
 
 let http: Server;
 let base: string;
@@ -42,6 +38,9 @@ before(async () => {
 });
 
 after(async () => {
+  // A test that fails partway leaves its client connected, and a graceful close then
+  // never returns — which turns a reported failure into a hung run.
+  http.closeAllConnections();
   await new Promise<void>((resolve) => http.close(() => resolve()));
 });
 
@@ -123,15 +122,19 @@ describe('the MCP surface', () => {
     await client.close();
   });
 
-  it('exposes exactly one read-only tool at this point in the build', async () => {
+  it('exposes the tools built so far, and marks which of them write', async () => {
     const client = await connect();
     const { tools } = await client.listTools();
 
     assert.deepEqual(
-      tools.map((tool) => tool.name),
-      ['braintrust_list_personas'],
+      tools.map((tool) => tool.name).sort(),
+      ['braintrust_follow_person', 'braintrust_list_personas'],
     );
-    assert.equal(tools[0]!.annotations?.readOnlyHint, true);
+
+    const byName = new Map(tools.map((tool) => [tool.name, tool]));
+    assert.equal(byName.get('braintrust_list_personas')!.annotations?.readOnlyHint, true);
+    // A write tool, so it lands in the client's approval surface rather than running quietly.
+    assert.equal(byName.get('braintrust_follow_person')!.annotations?.readOnlyHint, false);
     // OB1 reserves `search` and `fetch`; every braintrust tool is prefixed.
     assert.ok(tools.every((tool) => tool.name.startsWith('braintrust_')));
     await client.close();

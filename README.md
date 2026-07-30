@@ -68,11 +68,13 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days. The design is settled and the build has just started: the tables, the authenticated MCP server and `braintrust_list_personas` are up, which means you can connect an AI client and ask what personas exist — and correctly get told there are none, because following someone comes next. Nothing else below works yet.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, and **following someone**. Paste their links in your AI client and braintrust resolves them, proposes a name, and tells you what following them will cost — how many items, how much of the corpus is paywalled and will therefore never be read, how long the first run takes — before it fetches any of it.
+
+What does not work yet is the part that reads: a followed person is recorded with an empty corpus and `compiled: false`, because the job that drains the backlog is the next ticket. So braintrust can currently tell you what it *would* read.
 
 Run `npm test` for the suite; the schema tests need a Postgres and skip without one.
 
-- [ ] Source ingestion pipeline (Substack, YouTube)
+- [ ] Source ingestion pipeline (Substack, YouTube) — registration done, retrieval next
 - [ ] Persona compiler and daily refresh loop
 - [ ] MCP server exposing personas as tools
 - [ ] Council mode: one question, every persona answers
