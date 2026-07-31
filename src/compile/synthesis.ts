@@ -45,7 +45,20 @@ export const POSITION_VERSION = 'positions-1';
 export const REVISION_VERSION = 'revisions-1';
 
 /** Synthesis is a long read for a model, like the extractor's. Not a 20-second fetch. */
-export const SYNTHESIS_TIMEOUT_MS = 300_000;
+/**
+ * Fifteen minutes, and the number is measured rather than chosen.
+ *
+ * Five minutes was inherited from the extractor, where it is generous: one Item is a few
+ * thousand words and the answer is a short object. Synthesis is the opposite shape — the
+ * digest is up to {@link DIGEST_BUDGET_CHARS} of Notes in one prompt, and a Corpus of any
+ * size sends several of them. The first real Compile against a self-hosted 120B model
+ * timed out clustering 183 claims, which is a *small* Corpus.
+ *
+ * Long is the right direction here. This runs in an unattended job that is allowed to take
+ * half an hour, the work it protects is the expensive read that already happened, and a
+ * timeout does not lose the Notes — it costs a rebuild the next run makes anyway.
+ */
+export const SYNTHESIS_TIMEOUT_MS = 900_000;
 
 export type InferredKind = 'reasoning' | 'beliefs';
 
