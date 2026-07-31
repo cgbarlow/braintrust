@@ -101,6 +101,13 @@ export async function measurableItems(db: Db, personId: string): Promise<Measure
  * layers that cost nothing to compute — and the whole reason chunking survives an
  * endpoint being off is that the vectors are allowed to wait. Position retrieval is what
  * needs them, and that is a serve-time concern.
+ *
+ * **A blocked Source's pending Items are not owed either, and that is the whole of
+ * "a Compile still runs".** Those Items are real rows and Coverage counts them as a
+ * shortfall the Persona names — but braintrust has stopped asking for them, so waiting
+ * on them would freeze the Persona for as long as a platform cared to refuse. That would
+ * hand the platform a veto over whether braintrust works at all, which is a larger
+ * failure than a Corpus with a hole in it that says it has one.
  */
 export type BacklogOwed = {
   to_retrieve: number;
@@ -113,7 +120,8 @@ export async function backlogOwed(db: Db, personId: string, extractor: string): 
     `select
        (select count(*) from braintrust_items i
           join braintrust_sources s on s.id = i.source_id
-         where s.person_id = $1 and i.retrieval = 'pending') as to_retrieve,
+         where s.person_id = $1 and i.retrieval = 'pending'
+           and s.blocked_at is null) as to_retrieve,
        (select count(*) from braintrust_items i
           join braintrust_sources s on s.id = i.source_id
          where s.person_id = $1 and i.retrieval = 'retrieved' and i.body_text is not null

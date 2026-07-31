@@ -48,16 +48,24 @@ Who exists, whether they have ever been compiled, and how stale each Core is. **
     "compiled_at": "2026-07-28T09:14:22Z",     // braintrust_compiles.finished_at
     "compiler_version": "0.3.1",
     "corpus": { "items_retrieved": 412, "items_skipped_paywall": 304,
-                "window": ["2025-08-01", "2026-07-29"] }
+                "window": ["2025-08-01", "2026-07-29"] },
+    "blocked": [{ "platform": "youtube", "handle": "UC0C…",
+                  "since": "2026-07-14T03:02:11.004Z" }]   // absent when nothing is blocked
 }] }
 ```
 
 **Staleness is `compiled_at` and the client judges it**; braintrust does not define "stale". `compiled: false`
 is how *never compiled* is expressed.
 
-**The `corpus` block carries a Blocked Source**, so a client sees a corpus boundary in ordinary use rather
-than only when auditing — Personas get consulted for answers far more often than they get inspected. A
-[Paused](./ingestion.md#unfollowing-pauses-it-does-not-delete) Person is listed with the pause visible.
+**The listing carries a Blocked Source**, so a client sees a corpus boundary in ordinary use rather than only
+when auditing — Personas get consulted for answers far more often than they get inspected. It is read live
+rather than from the last Compile, because a block is a fact about a Source right now.
+
+**`blocked` and `paused` are siblings, and never each other.** A pause is the user's own decision to stop
+following; a block is a Source refusing braintrust. Reporting the second as the first would blame the user
+for a platform's decision. `blocked` sits beside `paused` rather than inside `corpus` for the same reason it
+has its own field at all: `corpus` exists only once a Persona has been compiled, and a Source can refuse
+braintrust during the very first backfill.
 
 ### 2. `braintrust_load_persona`
 
@@ -84,8 +92,13 @@ four `braintrust_persona_layers` rows; there is no assembly step.
                    "evidence": { "window": ["2025-08-01","2026-07-29"],
                                  "retrieved": 412, "skipped_paywall": 304, "failed": 3,
                                  "words_retrieved": 1170000,
-                                 "by_source": { "youtube:UC0C…": {…},
-                                                "substack:nate.substack.com": {…} } } }
+                                 "by_source": {
+                                   // `blocked_since` present only while a source is refusing;
+                                   // `backfill_complete: false` is the separate fact that
+                                   // braintrust knows it is behind.
+                                   "youtube:UC0C…": { "backfill_complete": false,
+                                                      "blocked_since": "2026-07-14", … },
+                                   "substack:nate.substack.com": {…} } } }
   } }
 ```
 

@@ -47,12 +47,16 @@ const SOURCE_COLUMNS = `
 /**
  * Sources the job should touch on this run.
  *
- * Three filters, and each is a different fact. A **paused** Person is the user's own
- * choice to stop, so nothing is ingested for them at all. A **blocked** Source has
- * refused braintrust, and its Backlog is suppressed so it cannot sit in a permanent
- * repair loop. And `poll_interval_hours` decides whether a Source is *due* — it does
- * not create a second scheduler; there is one daily job and this is the question it
- * asks each Source.
+ * Two filters, and they are different facts. A **paused** Person is the user's own
+ * choice to stop, so nothing is ingested for them at all. And `poll_interval_hours`
+ * decides whether a Source is *due* — it does not create a second scheduler; there is
+ * one daily job and this is the question it asks each Source.
+ *
+ * **A blocked Source is due like any other, and that is the self-healing.** It is not
+ * filtered out here, because the next day's single unchanged request is the whole
+ * recovery mechanism and it has to come from somewhere. What a block suppresses is that
+ * Source's *Backlog*, not its turn — see `probeSource` in the cycle, which spends
+ * exactly one request on it and stops.
  */
 export async function dueSources(db: Db, now: Date): Promise<SourceRow[]> {
   const { rows } = await db.query<SourceRow>(
@@ -60,7 +64,6 @@ export async function dueSources(db: Db, now: Date): Promise<SourceRow[]> {
        from braintrust_sources s
        join braintrust_people p on p.id = s.person_id
       where p.paused_at is null
-        and s.blocked_at is null
         and (
           s.last_checked_at is null
           or s.last_checked_at <= $1::timestamptz - make_interval(hours => s.poll_interval_hours)
@@ -94,6 +97,31 @@ export async function sourcesForPerson(db: Db, personId: string): Promise<Source
     [personId],
   );
   return rows;
+}
+
+/**
+ * The Source has stopped serving braintrust. Measured by the caller, never judged from
+ * a response code.
+ *
+ * `backfill_complete` is deliberately not touched. The Corpus genuinely *is* incomplete,
+ * and the flag Coverage reads keeps telling the truth — it merely stops generating
+ * requests, because a blocked Source's Backlog is suppressed.
+ */
+export async function blockSource(db: Db, sourceId: string, at: Date): Promise<void> {
+  await db.query('update braintrust_sources set blocked_at = $2 where id = $1', [
+    sourceId,
+    at.toISOString(),
+  ]);
+}
+
+/**
+ * The Source answered. Normal work resumes on the next run.
+ *
+ * There is no backoff to reset and no identity to rotate: braintrust asked the same
+ * question it was refused, from the same address, and got an answer.
+ */
+export async function clearBlock(db: Db, sourceId: string): Promise<void> {
+  await db.query('update braintrust_sources set blocked_at = null where id = $1', [sourceId]);
 }
 
 /** Every Source of one Person, blocked ones included. Used to report, not to fetch. */

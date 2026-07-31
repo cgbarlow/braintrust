@@ -17,6 +17,9 @@ export type CorpusSummary = {
   window: [string, string];
 };
 
+/** One Source that has stopped serving braintrust. Never the user's decision. */
+export type BlockedSource = { platform: string; handle: string; since: string };
+
 export type PersonaListing = {
   person: string;
   subject: string;
@@ -26,6 +29,17 @@ export type PersonaListing = {
   corpus?: CorpusSummary;
   /** Present only when the user has stopped following. A pause is the user's own choice. */
   paused?: { since: string };
+  /**
+   * Present only while a Source is refusing braintrust.
+   *
+   * **Deliberately a sibling of `paused` rather than a field inside `corpus`.** They are
+   * the two ways a Persona can stop moving and they are not the same fact — one is the
+   * user's decision and the other is a platform's — so a client that reads one cannot
+   * miss the other. `corpus` would have hidden it too: that block only exists once a
+   * Persona has been compiled, and a Source can refuse braintrust during the very first
+   * backfill, which is exactly when nobody has been told anything yet.
+   */
+  blocked?: BlockedSource[];
 };
 
 /**
@@ -105,12 +119,48 @@ export async function personBySlug(db: Db, slug: string): Promise<PersonRecord |
   };
 }
 
-export async function listPersonas(db: Db): Promise<{ personas: PersonaListing[] }> {
-  const { rows } = await db.query<Row>(LIST_SQL);
-  return { personas: rows.map(toListing) };
+/**
+ * Blocked Sources, read live rather than from `corpus_stats`.
+ *
+ * A block is a fact about a Source right now, not a property of the last Compile — and
+ * the two come apart precisely when it matters: a Source that starts refusing braintrust
+ * while a rebuild is waiting on something else would otherwise be reported by a snapshot
+ * taken before it happened.
+ */
+async function blockedSources(db: Db): Promise<Map<string, BlockedSource[]>> {
+  const { rows } = await db.query<{
+    person: string;
+    platform: string;
+    handle: string;
+    blocked_at: Date;
+  }>(
+    `select p.slug as person, s.platform, s.handle, s.blocked_at
+       from braintrust_sources s
+       join braintrust_people p on p.id = s.person_id
+      where s.blocked_at is not null
+      order by p.slug, s.platform, s.handle`,
+  );
+
+  const byPerson = new Map<string, BlockedSource[]>();
+  for (const row of rows) {
+    const blocked = byPerson.get(row.person) ?? [];
+    blocked.push({
+      platform: row.platform,
+      handle: row.handle,
+      since: row.blocked_at.toISOString(),
+    });
+    byPerson.set(row.person, blocked);
+  }
+  return byPerson;
 }
 
-function toListing(row: Row): PersonaListing {
+export async function listPersonas(db: Db): Promise<{ personas: PersonaListing[] }> {
+  const { rows } = await db.query<Row>(LIST_SQL);
+  const blocked = await blockedSources(db);
+  return { personas: rows.map((row) => toListing(row, blocked.get(row.person))) };
+}
+
+function toListing(row: Row, blocked: BlockedSource[] | undefined): PersonaListing {
   // A compile row only joins when its status is 'current', so its presence *is*
   // the answer to "has this persona ever been compiled".
   const compiled = row.compiled_at !== null;
@@ -131,6 +181,7 @@ function toListing(row: Row): PersonaListing {
   // Visible, because a persona that has stopped moving should say why — and a
   // pause must never read as a source block, which is not the user's decision.
   if (row.paused_at) listing.paused = { since: row.paused_at.toISOString() };
+  if (blocked && blocked.length > 0) listing.blocked = blocked;
 
   return listing;
 }

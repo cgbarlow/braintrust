@@ -95,6 +95,28 @@ export const RETRIEVAL_SPACING_MS = RETRIEVAL_SPACING_SECONDS * 1000;
 export const SHORT_MAX_SECONDS = 300;
 
 /**
+ * How many consecutive retrieval failures, across *distinct* Items of one Source, mean
+ * the Source has stopped serving braintrust.
+ *
+ * **A block is measured, never judged from a response code.** A 403 can be a CDN
+ * hiccup, a 429 is politeness (and is handled before this counter ever sees it), and a
+ * captcha interstitial arrives as a 200 with HTML in it. braintrust classifies none of
+ * that: it counts the only thing that matters, which is that request after request
+ * against different Items came back with nothing usable.
+ *
+ * Distinct Items is the whole protection. One Item that fails five times proves the
+ * Item is broken; five different Items failing in a row is the Source. And the count is
+ * per run and in memory — a Source whose Backlog is smaller than this never reaches it,
+ * which is correct, because a `failed` Item is terminal and a small Backlog exhausts
+ * itself rather than looping.
+ *
+ * Five is a constant, deliberately left to tuning against real behaviour. It is the
+ * number the spec declines to fix, and nothing else in braintrust depends on its value.
+ * See docs/design/ingestion.md §5.
+ */
+export const BLOCK_AFTER_FAILURES = 5;
+
+/**
  * What a cheap look at a Source says it will cost. Produced by reading feeds and
  * catalogues only: no body, no caption, no Item row.
  */

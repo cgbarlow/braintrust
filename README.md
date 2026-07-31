@@ -106,6 +106,30 @@ again picks up exactly where it left off, with nothing to re-fetch. **It is not 
 says so where it matters rather than in a footnote. Resuming does go through the full two-call handshake,
 because it does mean fetching someone's work again — and a refresh will not do it for you.
 
+**And when a source stops serving braintrust, braintrust stops asking.** Not because it read a status code —
+a 403 can be a CDN hiccup and a captcha arrives as a 200 with HTML in it — but because it counted five
+requests in a row, against five *different* pieces of work, that came back with nothing. One broken video is
+a broken video; five in a row is the platform. **That stops the one source and nothing else**: the two
+sources share nothing but a person, and stopping the run would be a failure braintrust invented rather than
+one anybody imposed. Everything already collected is kept, the rest of that source's backlog is left as rows,
+and **the persona still rebuilds on what braintrust actually has** — freezing it would hand a platform a veto
+over whether braintrust works at all. The next day braintrust sends **one ordinary request, unchanged** — the
+same one it was refused, from the same address, with nothing spoofed and nothing rotated. An answer clears
+the block. **A permanently blocked source therefore costs one request a day, forever**, which is stated here
+rather than engineered around.
+
+Both places a persona describes itself say so, and neither calls it something it is not: coverage names the
+source, when it stopped, and how much of it went unread, and the listing carries it beside the pause. **A
+block is never a pause.** One is a platform refusing braintrust; the other is you deciding to stop. A persona
+that reported the first as the second would be blaming its own user for someone else's decision.
+
+braintrust also notices when it has fallen behind. If the oldest thing in a feed is newer than the last thing
+braintrust saw, something published in between was never seen at all — and that is one comparison, repaired
+by the archive walk it already has. The initial load and the catch-up are the same action. Until it closes,
+the persona says its corpus is incomplete, because items braintrust never saw are not missing rows; they are
+no rows at all, and a measured layer confidently reporting a complete corpus with a three-week hole in it is
+the one thing coverage must never do.
+
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 
 - [x] Source ingestion pipeline — Substack and YouTube
