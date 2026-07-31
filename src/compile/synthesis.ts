@@ -286,6 +286,9 @@ export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Sy
           // someone thinks. A rebuild is a replacement, so any variety here would
           // read as the person having changed.
           temperature: 0,
+          // The same declaration the extractor makes, for the same reason. All four
+          // prompts on this surface ask for one JSON object; the request now says so too.
+          response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: digest },

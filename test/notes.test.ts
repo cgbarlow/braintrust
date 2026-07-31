@@ -225,4 +225,18 @@ describe('the extractor', () => {
     });
     await assert.rejects(extractor.read({ text: BODY }), /the next run reads it/);
   });
+
+  /**
+   * The prompt asks for one JSON object; the request says so too. Found live against a
+   * gpt-oss server that answered HTTP 500 while parsing its own model's `<|constrain|>json`
+   * marker, and answered cleanly the moment the request declared the format — so this is
+   * not a preference, it is what makes the surface work on a real endpoint.
+   */
+  it('declares the answer is JSON rather than only asking for it in prose', async () => {
+    const endpoint = fakeExtractor({ note: { claims: [], argument: 'a', assumptions: [] } });
+    await createExtractor(testExtractorConfig, endpoint.fetcher).read({ text: BODY });
+
+    assert.equal(endpoint.sent[0]!.responseFormat, 'json_object');
+    assert.match(endpoint.sent[0]!.system, /Return a single JSON object, and nothing else/);
+  });
 });
