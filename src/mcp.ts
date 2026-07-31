@@ -11,10 +11,13 @@ import { z } from 'zod';
 import type { TransactionalDb } from './db.js';
 import { DISCLOSURE } from './disclosure.js';
 import { BraintrustError } from './errors.js';
+import { findPositions, MAX_LIMIT, type FindArgs } from './find.js';
 import { followPerson, type FollowArgs } from './follow/index.js';
 import type { ConfirmTokenStore } from './follow/tokens.js';
 import type { Fetcher } from './net/fetch.js';
 import { listPersonas, loadPersona } from './personas.js';
+import type { Embedder } from './retrieval/embed.js';
+import type { QueryGate } from './retrieval/index.js';
 import { VERSION } from './version.js';
 
 export const SERVER_NAME = 'braintrust';
@@ -25,6 +28,14 @@ export type ServerDeps = {
   /** Shared across requests, because the two halves of a handshake are two requests. */
   tokens: ConfirmTokenStore;
   fetcher: Fetcher;
+  /**
+   * What embeds a question, in the same space the Corpus was indexed in. Absent means the
+   * retrieval tool is not registered at all — a deployment with no embeddings endpoint can
+   * still follow people and serve Cores, and offering a search that cannot search would be
+   * worse than not offering one.
+   */
+  embedder?: Embedder | undefined;
+  retrieval?: QueryGate | undefined;
 };
 
 /**
@@ -62,7 +73,12 @@ const sourceOverride = z
   })
   .strict();
 
-export function buildServer({ db, tokens, fetcher }: ServerDeps): McpServer {
+/** ISO 8601 dates, and nothing looser: a filter braintrust guesses at is worse than no filter. */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'A date as YYYY-MM-DD, e.g. "2026-01-01".');
+
+export function buildServer({ db, tokens, fetcher, embedder, retrieval }: ServerDeps): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: DISCLOSURE },
@@ -124,6 +140,72 @@ export function buildServer({ db, tokens, fetcher }: ServerDeps): McpServer {
       }
     },
   );
+
+  if (embedder && retrieval) {
+    const search = { db, embedder, retrieval };
+
+    server.registerTool(
+      'braintrust_find_positions',
+      {
+        title: 'Find what someone has said about something',
+        description:
+          'Ask what a person holds on a topic, and get it back with dates and citations. This is ' +
+          'the tool for *what have they said about X*; braintrust_load_persona is the tool for ' +
+          'answering **as** them.\n\n' +
+          'Your question is embedded and matched against the passages braintrust indexed, and the ' +
+          'positions those items support come back — each with the item count behind it, a ' +
+          'confidence grade, the date braintrust can first cite it from, and quotes taken ' +
+          "verbatim from what the person published. **A one-mention position is returned like any " +
+          'other, labelled `low`, because what one mention is worth is your judgement and not ' +
+          "braintrust's.**\n\n" +
+          'When the compiler formed no position on a topic, `passages` comes back instead: the ' +
+          'raw indexed material, which is *what they said* rather than *what braintrust ' +
+          'concluded*. Most of it is auto-generated video captions — unpunctuated, sometimes ' +
+          'mishearing names — and it is returned as stored rather than tidied.\n\n' +
+          'Answers are trimmed for readability, not capped: `more_citations` and `more_available` ' +
+          'say what was held back and `full: true` returns all of it. An empty answer carries ' +
+          '`nothing_matched`, which is how close the nearest passage came and the floor it had to ' +
+          'clear — so *they never said this* is distinguishable from *this braintrust is tuned ' +
+          'wrong*. Rephrasing in the words the person would use is worth one retry.\n\n' +
+          '**This tool says nothing about what braintrust has not read.** An empty answer may mean ' +
+          'they never said it, or it may mean it is in a paywalled post braintrust never fetched. ' +
+          'braintrust_load_persona has the coverage layer, which names those blind spots.',
+        inputSchema: {
+          person: z.string().min(1).describe('The slug from braintrust_list_personas.'),
+          query: z
+            .string()
+            .min(1)
+            .describe('A question or a topic, in your words. braintrust matches meaning, not keywords.'),
+          since: isoDate.optional().describe('Only search items published on or after this date.'),
+          until: isoDate.optional().describe('Only search items published on or before this date.'),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_LIMIT)
+            .optional()
+            .describe('How many positions to return. Default 10.'),
+          full: z
+            .boolean()
+            .optional()
+            .describe('Return every citation and every passage rather than a readable few.'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      async (args: FindArgs) => {
+        try {
+          return text(await findPositions(args, search));
+        } catch (error) {
+          if (error instanceof BraintrustError) return failure(error.message);
+          console.error('braintrust: braintrust_find_positions failed', error);
+          return failure(
+            'braintrust_find_positions failed for a reason braintrust did not expect. The server ' +
+              'log has the detail.',
+          );
+        }
+      },
+    );
+  }
 
   server.registerTool(
     'braintrust_follow_person',

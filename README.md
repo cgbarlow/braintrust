@@ -69,7 +69,7 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, `braintrust_load_persona`, **following someone**, and **the daily job, for both sources, through to a searchable index, a note on every item, and a compiled persona**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, `braintrust_load_persona`, `braintrust_find_positions`, **following someone**, and **the daily job, for both sources, through to a searchable index, a note on every item, and a compiled persona**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
 
 A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again. Chunking and embedding resume the same way, and an embeddings endpoint that is switched off delays the vectors rather than the collecting.
 
@@ -83,13 +83,15 @@ The other two — **how someone reasons** and **what they believe** — are synt
 
 **A rebuild has to earn the right to replace the persona that is currently answering.** A rebuild deletes its predecessor and there is no archive, so before anything is published braintrust checks its own output: four layers present and carrying something, voice carrying both forms, every inferred layer labelled, coverage still matching the item rows it claims to count. Every check is a count or a presence — never a model, because a check that needs a model can fail the way the compiler fails. A rebuild that does not pass is kept for inspection and not served; yesterday's persona keeps answering and tomorrow's run tries again. Rebuilds also wait until there is nothing left in the backlog, so a persona is never measured over half a corpus.
 
-What does not work yet: positions. A persona can tell you how someone sounds, how they argue, what they take as true and what braintrust has read of them — but not yet what they have said about a particular thing, with dates and citations. Nothing reads the search index yet either.
+**And you can now ask a persona a real question.** `braintrust_find_positions` embeds your question with the same model the corpus was indexed with, finds the passages that match it, and returns what that person holds on the topic — each position dated, graded by how many separate pieces of work it rests on, and quoted back to what they actually published. **A view braintrust found once is returned like any other, labelled `low`**, because what a single mention is worth is your judgement rather than braintrust's. Where the compiler formed no position, you get the indexed passages instead, labelled as raw material: *what they said*, not *what braintrust concluded*. Answers are trimmed for readability and say what they held back; asking for all of it needs no permission.
+
+What does not work yet: revisions. Both states of a changed mind are already served — a superseded position comes back flagged rather than dropped — but nothing writes those rows yet, so today every position reads as current.
 
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 
 - [x] Source ingestion pipeline — Substack and YouTube
-- [ ] Persona compiler and daily refresh loop
-- [ ] MCP server exposing personas as tools
+- [ ] Persona compiler and daily refresh loop — the compiler works; the refresh loop is not wired yet
+- [ ] MCP server exposing personas as tools — three of the six are live
 - [ ] Council mode: one question, every persona answers
 - [ ] Drift tracking: see how someone's thinking has changed over time
 

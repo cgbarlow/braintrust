@@ -16,6 +16,7 @@ import type { TransactionalDb } from '../db.js';
 import { createConfirmTokenStore, type ConfirmTokenStore } from '../follow/tokens.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from '../mcp.js';
 import { createFetcher, type Fetcher } from '../net/fetch.js';
+import type { Embedder } from '../retrieval/embed.js';
 import type { QueryGate } from '../retrieval/index.js';
 import {
   AUTH_ERROR_CODE,
@@ -40,13 +41,16 @@ export type AppDeps = {
   tokens?: ConfirmTokenStore;
   fetcher?: Fetcher;
   /**
-   * Startup check 2, asked per request. Absent means no retrieval tool is registered
-   * yet — which is true until #34, and is why this is optional rather than assumed.
+   * Startup check 2, asked per request — and, with an embedder, what registers the
+   * retrieval tool. Both optional together: a deployment with no embeddings endpoint
+   * still follows people and serves Cores, and a search that cannot search is worse
+   * than a tool that is not there.
    */
   retrieval?: QueryGate;
+  embedder?: Embedder;
 };
 
-export function createApp({ db, mcpKey, tokens, fetcher, retrieval }: AppDeps): Express {
+export function createApp({ db, mcpKey, tokens, fetcher, retrieval, embedder }: AppDeps): Express {
   const confirmTokens = tokens ?? createConfirmTokenStore();
   const sourceFetcher = fetcher ?? createFetcher();
 
@@ -81,7 +85,12 @@ export function createApp({ db, mcpKey, tokens, fetcher, retrieval }: AppDeps): 
     // to honour. Stripping it stops the transport treating this as a known session.
     delete req.headers['mcp-session-id'];
 
-    const server = buildServer({ db, tokens: confirmTokens, fetcher: sourceFetcher });
+    const server = buildServer({
+      db,
+      tokens: confirmTokens,
+      fetcher: sourceFetcher,
+      ...(embedder && retrieval ? { embedder, retrieval } : {}),
+    });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
     res.on('close', () => {

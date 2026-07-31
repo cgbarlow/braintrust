@@ -52,8 +52,9 @@ async function main(): Promise<void> {
       createFetcher({ timeoutMs: SYNTHESIS_TIMEOUT_MS }),
     );
     console.log(
-      `${SERVER_NAME}: reading items as ${extractor.generation} and compiling as ` +
-        `${synthesiser.generation} via ${extractor.url}.`,
+      `${SERVER_NAME}: reading items as ${extractor.generation}, compiling as ` +
+        `${synthesiser.generation} and grouping positions as ${synthesiser.clusterer} ` +
+        `via ${extractor.url}.`,
     );
 
     const report = await runCycle({

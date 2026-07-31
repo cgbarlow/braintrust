@@ -116,10 +116,29 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         [itemId, chunk.ordinal, chunk.text, chunk.charStart, chunk.charEnd, chunk.startMs, chunk.endMs],
       );
     }
+    // Two claims, quoted from the body above — the growing layer is built from these, and
+    // a citation carries the quote braintrust verified rather than one written later.
     await db.query(
       `insert into braintrust_item_notes (item_id, extractor, claims, argument_md, assumptions)
-       values ($1, $2, '[]'::jsonb, 'an argument', '[]'::jsonb)`,
-      [itemId, GENERATION],
+       values ($1, $2, $3::jsonb, 'an argument', '[]'::jsonb)`,
+      [
+        itemId,
+        GENERATION,
+        JSON.stringify([
+          {
+            statement: 'Speed is not the constraint.',
+            quote: 'speed is the constraint',
+            chunk_id: null,
+            start_ms: null,
+          },
+          {
+            statement: 'Judgement about what to build is what is scarce.',
+            quote: 'knowing which of the twenty things in front of you is worth doing',
+            chunk_id: null,
+            start_ms: null,
+          },
+        ]),
+      ],
     );
     return itemId;
   }
@@ -182,17 +201,25 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     await compile({ synthesiser });
 
-    // Two layers, one pass each: a rebuild costs a handful of calls over notes rather
-    // than a re-read of the corpus, which is the whole economics of a daily compile.
+    // Three questions, one pass each: a rebuild costs a handful of calls over notes
+    // rather than a re-read of the corpus, which is the whole economics of a daily
+    // compile.
     assert.deepEqual(
       synthesiser.calls.map((call) => `${call.kind}:${call.mode}`),
-      ['reasoning:pass', 'beliefs:pass'],
+      ['reasoning:pass', 'beliefs:pass', 'positions:pass'],
     );
-    // Every item's note is in the digest, and none of the item bodies are.
-    for (const digest of synthesiser.calls.map((call) => call.digest)) {
-      assert.equal(idsFromDigest(digest).length, ITEMS);
-      assert.doesNotMatch(digest, /speed is the constraint/);
+
+    // Every item's note is in the core digests, and none of the item bodies are.
+    for (const call of synthesiser.calls.filter((one) => one.kind !== 'positions')) {
+      assert.equal(idsFromDigest(call.digest).length, ITEMS);
+      assert.doesNotMatch(call.digest, /speed is the constraint/);
     }
+
+    // The clustering digest carries claim statements and never the quotes: showing a
+    // model the quote is how a model ends up editing one.
+    const clustering = synthesiser.calls.find((call) => call.kind === 'positions')!.digest;
+    assert.match(clustering, /^\[c1\] .* — Speed is not the constraint\./m);
+    assert.doesNotMatch(clustering, /knowing which of the twenty things/);
   });
 
   it('measures the voice over the real item text', async () => {
@@ -471,6 +498,77 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     assert.equal(verdict.passed, false);
     assert.match(verdict.reason!, /coverage says retrieved is 99, the rows say 4/);
+  });
+
+  it('writes positions with their citations, and hangs them off the compile being judged', async () => {
+    await compile();
+    const compileId = await currentCompileId();
+
+    const positions = await db.query<{ slug: string; item_count: number; held_since: string }>(
+      `select slug, item_count, held_since::text as held_since
+         from braintrust_positions where compile_id = $1 order by slug`,
+      [compileId!],
+    );
+
+    assert.ok(positions.rows.length > 0);
+    for (const position of positions.rows) {
+      const citations = await count(
+        `select count(*) from braintrust_position_citations pc
+           join braintrust_positions p on p.id = pc.position_id
+          where p.compile_id = $1 and p.slug = $2`,
+        [compileId!, position.slug],
+      );
+      assert.ok(citations > 0, `${position.slug} should cite something`);
+    }
+
+    // Every citation points at an item braintrust holds, and carries the person's own
+    // words rather than the model's.
+    const foreign = await count(
+      `select count(*) from braintrust_position_citations pc
+         join braintrust_positions p on p.id = pc.position_id
+        where p.compile_id = $1
+          and not exists (select 1 from braintrust_items i where i.id = pc.item_id)`,
+      [compileId!],
+    );
+    assert.equal(foreign, 0);
+  });
+
+  it('drops a position it cannot cite rather than publishing an uncited one', async () => {
+    const report = await compile({
+      synthesiser: fakeSynthesiser({
+        positionsFor: (claims) => [
+          { slug: 'real', statement: 'Rests on a claim braintrust issued.', claims: [claims[0]!] },
+          { slug: 'invented', statement: 'Rests on nothing.', claims: ['c9999'] },
+        ],
+      }),
+    });
+
+    assert.deepEqual(report.compiled, ['nate']);
+    const { rows } = await db.query<{ slug: string }>(
+      `select p.slug from braintrust_positions p
+         join braintrust_compiles c on c.id = p.compile_id
+        where c.person_id = $1 and c.status = 'current'`,
+      [personId],
+    );
+    assert.deepEqual(
+      rows.map((row) => row.slug),
+      ['real'],
+    );
+  });
+
+  it('refuses to publish a compile whose positions collapsed against the previous one', async () => {
+    await compile();
+    const before = await currentCompileId();
+    const had = await count('select count(*) from braintrust_positions where compile_id = $1', [before!]);
+    assert.ok(had >= 2, 'the previous compile needs positions for a collapse to be visible');
+
+    await addItem('post-new', body(9), '2025-09-01');
+    const report = await compile({ synthesiser: fakeSynthesiser({ positionsFor: () => [] }) });
+
+    assert.deepEqual(report.compiled, []);
+    assert.match(report.rejected[0]!.reason, /positions fell from/);
+    // A Persona that is thinner rather than wrong is the failure nothing else notices.
+    assert.equal(await currentCompileId(), before);
   });
 
   it('reads the positions and their citations from the rows, ready for the compile that writes them', async () => {
