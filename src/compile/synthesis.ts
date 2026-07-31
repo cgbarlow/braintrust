@@ -29,6 +29,13 @@ import type { Fetcher } from '../net/fetch.js';
  */
 export const SYNTHESIS_VERSION = 'core-1';
 
+/**
+ * Versioned apart from the Core's prompts, because it answers a different question and
+ * changes for different reasons. Both travel in `compiler_version`, so a Persona says
+ * which prompt wrote its Core prose *and* which one grouped its Positions.
+ */
+export const POSITION_VERSION = 'positions-1';
+
 /** Synthesis is a long read for a model, like the extractor's. Not a 20-second fetch. */
 export const SYNTHESIS_TIMEOUT_MS = 300_000;
 
@@ -42,12 +49,30 @@ export type SynthesisedEntry = {
   items: string[];
 };
 
+/**
+ * One Position, as the model returns it: a grouping of claims and a sentence saying what
+ * they share. **The claims are the evidence and they are braintrust's own** — the model is
+ * given ids it may only copy, and every quote a Position ends up citing was located in the
+ * stored body when the Item was read. What a model contributes here is which claims belong
+ * together and how to say it in one line.
+ */
+export type ClusteredPosition = {
+  slug: string;
+  statement: string;
+  /** Claim refs, copied from the digest. Anything else is dropped before a row is written. */
+  claims: string[];
+};
+
 export type Synthesiser = {
   /** `model@prompt-version`. Half of `compiler_version`; the other half is the measurement. */
   generation: string;
+  /** `model@positions-version`. The growing layer says which prompt grouped it. */
+  clusterer: string;
   model: string;
   url: string;
   synthesise(kind: InferredKind, digest: string, mode: SynthesisMode): Promise<SynthesisedEntry[]>;
+  /** The growing layer. Same endpoint, a third question: which claims are one position? */
+  cluster(digest: string, mode: SynthesisMode): Promise<ClusteredPosition[]>;
 };
 
 /** A pass reads Notes; a merge reads the passes. Same call, one extra instruction. */
@@ -126,46 +151,109 @@ const MERGE = [
   'item ids that are not already against an entry you are merging.',
 ].join('\n');
 
+/**
+ * How many Positions one call may return. Unlike the Core's cap this is a per-call bound
+ * rather than a bound on the layer: Positions **grow** with the Corpus, and a fold over a
+ * large one runs this prompt several times. What it protects against is a model asked for
+ * "the positions" answering with one per claim.
+ */
+export const MAX_POSITIONS = 24;
+
+/**
+ * The third prompt, and the only one whose output is checked against something the Person
+ * actually said. Grouping is all it is asked for: the quotes were located in the body when
+ * the Item was read, and nothing here can add, edit or reattribute one.
+ */
+export const POSITION_PROMPT = [
+  "You are reading claims braintrust extracted from many published items by one author.",
+  'Each line is one claim: the id braintrust gave it, the item it came from, the date it was',
+  'published, and what it says.',
+  '',
+  'Group claims that assert the same thing into positions this person holds.',
+  '',
+  'Return a single JSON object, and nothing else:',
+  '',
+  '{ "positions": [ { "slug": "...", "statement": "...", "claims": ["c12", ...] } ] }',
+  '',
+  `At most ${MAX_POSITIONS} positions, the best-supported first.`,
+  '',
+  'slug — kebab-case, a few words. Name the position, not the topic it is about.',
+  'statement — one sentence saying what this person holds. Plain and specific.',
+  'claims — the ids of the claims that assert it, copied exactly from the [id] markers.',
+  '  Only ids you were actually given: an id that is not among them will be dropped, and a',
+  '  position left with none will be dropped with it.',
+  '',
+  'Do not group by topic. Two claims about the same subject that assert different things are',
+  '  two positions, and collapsing them would put a view on the record that nobody stated.',
+  'A position may rest on a single claim. Say it once rather than padding it with claims that',
+  '  are merely nearby — the count of items behind a position is what a reader judges it on.',
+  'Do not judge whether they are right, and do not soften a claim into something safer.',
+].join('\n');
+
+const POSITION_MERGE = [
+  '',
+  'These positions were produced by reading the claims in several passes, so the same one may',
+  'appear more than once in different words. Merge those, keeping the clearest slug and',
+  'statement and the union of their claim ids. Do not invent positions that are not in the',
+  'input, and do not add claim ids that are not already against a position you are merging.',
+].join('\n');
+
 export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Synthesiser {
   const url = chatUrl(config.baseUrl);
 
+  /**
+   * One call to the endpoint, whichever question is being asked. `job` appears in the
+   * failure messages, because "which of the three model calls in a Compile went wrong" is
+   * the first thing anyone reading a cron log at 3am needs.
+   */
+  async function ask(system: string, digest: string, job: string): Promise<string> {
+    let response;
+    try {
+      response = await fetcher(url, {
+        json: {
+          model: config.model,
+          // Two Compiles over an unchanged Corpus should not disagree about how
+          // someone thinks. A rebuild is a replacement, so any variety here would
+          // read as the person having changed.
+          temperature: 0,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: digest },
+          ],
+        },
+        ...(config.apiKey ? { headers: { authorization: `Bearer ${config.apiKey}` } } : {}),
+      });
+    } catch (error) {
+      throw new BraintrustError(
+        `braintrust could not reach the synthesiser at ${url} while compiling ${job}: ` +
+          `${(error as Error).message}. The notes are already written; the next run rebuilds.`,
+      );
+    }
+
+    if (!response.ok) {
+      throw new BraintrustError(
+        `The synthesiser at ${url} answered HTTP ${response.status} for model ` +
+          `"${config.model}" while compiling ${job}.`,
+      );
+    }
+
+    return readContent(await response.text(), url, job);
+  }
+
   return {
     generation: `${config.model}@${SYNTHESIS_VERSION}`,
+    clusterer: `${config.model}@${POSITION_VERSION}`,
     model: config.model,
     url,
 
     async synthesise(kind, digest, mode): Promise<SynthesisedEntry[]> {
-      let response;
-      try {
-        response = await fetcher(url, {
-          json: {
-            model: config.model,
-            // Two Compiles over an unchanged Corpus should not disagree about how
-            // someone thinks. A rebuild is a replacement, so any variety here would
-            // read as the person having changed.
-            temperature: 0,
-            messages: [
-              { role: 'system', content: PROMPTS[kind] + (mode === 'merge' ? MERGE : '') },
-              { role: 'user', content: digest },
-            ],
-          },
-          ...(config.apiKey ? { headers: { authorization: `Bearer ${config.apiKey}` } } : {}),
-        });
-      } catch (error) {
-        throw new BraintrustError(
-          `braintrust could not reach the synthesiser at ${url} while compiling ${kind}: ` +
-            `${(error as Error).message}. The notes are already written; the next run rebuilds.`,
-        );
-      }
+      const system = PROMPTS[kind] + (mode === 'merge' ? MERGE : '');
+      return readEntryContent(await ask(system, digest, kind), url);
+    },
 
-      if (!response.ok) {
-        throw new BraintrustError(
-          `The synthesiser at ${url} answered HTTP ${response.status} for model ` +
-            `"${config.model}" while compiling ${kind}.`,
-        );
-      }
-
-      return readEntries(await response.text(), url, kind);
+    async cluster(digest, mode): Promise<ClusteredPosition[]> {
+      const system = POSITION_PROMPT + (mode === 'merge' ? POSITION_MERGE : '');
+      return readClusterContent(await ask(system, digest, 'positions'), url);
     },
   };
 }
@@ -177,7 +265,7 @@ export function chatUrl(baseUrl: string): string {
 
 type ChatResponse = { choices?: { message?: { content?: unknown } }[] };
 
-function readEntries(body: string, url: string, kind: InferredKind): SynthesisedEntry[] {
+function readContent(body: string, url: string, job: string): string {
   let parsed: ChatResponse;
   try {
     parsed = JSON.parse(body) as ChatResponse;
@@ -190,25 +278,20 @@ function readEntries(body: string, url: string, kind: InferredKind): Synthesised
 
   const content = parsed.choices?.[0]?.message?.content;
   if (typeof content !== 'string' || content.trim() === '') {
-    throw new BraintrustError(`The synthesiser at ${url} returned no content for ${kind}.`);
+    throw new BraintrustError(`The synthesiser at ${url} returned no content for ${job}.`);
   }
 
-  return readEntryContent(content, url);
+  return content;
 }
 
-/**
- * Tolerant about the wrapper and strict about the contents, like the Note parser. An
- * entry missing a label or a body is dropped rather than stored half-formed: it would
- * otherwise reach a Persona as a heading with nothing under it.
- */
-export function readEntryContent(content: string, url: string): SynthesisedEntry[] {
+/** Tolerant about the wrapper — a fenced block, a sentence either side — and nothing else. */
+function readObject(content: string, url: string): Record<string, unknown> {
   const json = content.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '');
   const start = json.indexOf('{');
   const end = json.lastIndexOf('}');
 
-  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(start >= 0 && end > start ? json.slice(start, end + 1) : json) as Record<
+    return JSON.parse(start >= 0 && end > start ? json.slice(start, end + 1) : json) as Record<
       string,
       unknown
     >;
@@ -218,6 +301,15 @@ export function readEntryContent(content: string, url: string): SynthesisedEntry
         `${content.slice(0, 200)}…`,
     );
   }
+}
+
+/**
+ * Tolerant about the wrapper and strict about the contents, like the Note parser. An
+ * entry missing a label or a body is dropped rather than stored half-formed: it would
+ * otherwise reach a Persona as a heading with nothing under it.
+ */
+export function readEntryContent(content: string, url: string): SynthesisedEntry[] {
+  const parsed = readObject(content, url);
 
   // An empty `entries` is a legitimate answer — the prompt asks for a short list that is
   // really there rather than a long one that is partly hoped for. A *missing* `entries`
@@ -247,4 +339,44 @@ export function readEntryContent(content: string, url: string): SynthesisedEntry
       ];
     })
     .slice(0, MAX_ENTRIES);
+}
+
+/**
+ * The same shape of strictness for the growing layer. A Position with no slug or no
+ * statement is dropped here; one whose claim refs braintrust never issued is dropped
+ * later, where the refs it *did* issue are known.
+ */
+export function readClusterContent(content: string, url: string): ClusteredPosition[] {
+  const parsed = readObject(content, url);
+
+  // Empty is legitimate — a Corpus can genuinely hold no claim worth calling a position —
+  // and missing is not, for the same reason as `entries` above: an endpoint answering a
+  // different question would otherwise reach the gate as a Persona with no positions,
+  // which reads as a thin week rather than as a misconfiguration.
+  if (!Array.isArray(parsed.positions)) {
+    throw new BraintrustError(
+      `The synthesiser at ${url} returned JSON with no positions array: ` +
+        `${content.slice(0, 200)}…`,
+    );
+  }
+
+  return parsed.positions
+    .flatMap((position: unknown) => {
+      const { slug, statement, claims } = (position ?? {}) as Partial<ClusteredPosition>;
+      if (typeof slug !== 'string' || typeof statement !== 'string') return [];
+      if (slug.trim() === '' || statement.trim() === '') return [];
+      return [
+        {
+          slug: slug.trim(),
+          statement: statement.trim(),
+          claims: Array.isArray(claims)
+            ? claims.filter((one: unknown): one is string => typeof one === 'string')
+            : [],
+        },
+      ];
+    });
+  // Deliberately not capped here, unlike the Core's entries. Positions grow with the
+  // Corpus, and a cap applied to every call would also cap the *merge* — which would
+  // quietly limit a 400-item Persona to one pass's worth of positions. The per-pass bound
+  // lives with the fold, in ./positions.ts, where the merge can be bounded differently.
 }

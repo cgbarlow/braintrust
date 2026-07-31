@@ -14,6 +14,7 @@
 import type { Db, TransactionalDb } from '../db.js';
 import type { CoverageEvidence, SourceCoverage } from './coverage.js';
 import type { GateFacts, GateLayer, ItemCounts } from './gate.js';
+import type { BuiltPosition } from './positions.js';
 import type { MeasuredItem } from './voice.js';
 
 export type CompilablePerson = {
@@ -329,6 +330,53 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     positions: positions.rows.map((row) => ({ slug: row.slug, citations: Number(row.citations) })),
     previous_positions: Number(previous.rows[0]!.count),
   };
+}
+
+/**
+ * The growing layer's rows, written under `running` like every other part of a Compile —
+ * so they hang off the Compile the gate is about to judge, and `on delete cascade` throws
+ * them away with it if it is never promoted.
+ *
+ * One transaction for the whole set, because a Position without its citations is exactly
+ * what the gate rejects: a half-written set would be indistinguishable from a Compile that
+ * genuinely produced uncitable Positions, and the two deserve different answers.
+ */
+export async function writePositions(
+  db: TransactionalDb,
+  compileId: string,
+  positions: BuiltPosition[],
+): Promise<number> {
+  if (positions.length === 0) return 0;
+
+  await db.transaction(async (tx) => {
+    for (const position of positions) {
+      const { rows } = await tx.query<{ id: string }>(
+        `insert into braintrust_positions
+           (compile_id, slug, statement, held_since, basis, confidence, item_count)
+         values ($1, $2, $3, $4, 'measured', $5, $6)
+         returning id`,
+        [
+          compileId,
+          position.slug,
+          position.statement,
+          position.held_since,
+          position.confidence,
+          position.item_count,
+        ],
+      );
+
+      const positionId = rows[0]!.id;
+      for (const citation of position.citations) {
+        await tx.query(
+          `insert into braintrust_position_citations (position_id, item_id, start_ms, quote)
+           values ($1, $2, $3, $4)`,
+          [positionId, citation.item_id, citation.start_ms, citation.quote],
+        );
+      }
+    }
+  });
+
+  return positions.length;
 }
 
 export type WritableLayer = {

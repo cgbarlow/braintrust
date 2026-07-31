@@ -60,11 +60,34 @@ export function fakeEmbeddings(options: FakeOptions = {}): FakeEmbeddings {
   return { fetcher, sent, inputs: () => sent.reduce((total, call) => total + call.input.length, 0) };
 }
 
-/** A unit-ish vector that depends on the text and nothing else. */
+/**
+ * A vector that depends on the text and nothing else — and, unlike a hash of the whole
+ * string, one where **texts about the same thing land near each other**. Words are hashed
+ * into dimensions and counted, so cosine similarity is vocabulary overlap.
+ *
+ * That property is the point. A retrieval test against a fake whose similarities are
+ * arbitrary can only assert that rows came back; this one can assert that the *right* rows
+ * came back, and that a question the corpus does not answer comes back empty.
+ */
 export function vectorFor(text: string, dimension = TEST_DIMENSION): number[] {
-  let seed = 7;
-  for (const character of text) seed = (seed * 31 + character.charCodeAt(0)) % 100_003;
-  return Array.from({ length: dimension }, (_unused, index) => ((seed + index) % 97) / 97);
+  const vector = new Array<number>(dimension).fill(0);
+
+  for (const word of text.toLowerCase().split(/[^a-z0-9]+/)) {
+    // Short words are function words, and counting them makes every English sentence
+    // look like every other one — measured: two unrelated passages scored 0.54 with them
+    // in, higher than two passages on the same subject. A real model does not have this
+    // problem; a bag of words does, and a fake that lies about relevance is worse than an
+    // honest one that is crude.
+    if (word.length < 4) continue;
+    let hash = 7;
+    for (const character of word) hash = (hash * 31 + character.charCodeAt(0)) % 100_003;
+    vector[hash % dimension]! += 1;
+  }
+
+  // pgvector has no cosine distance to a zero vector, and a text with no words at all is
+  // a real thing to hand an endpoint.
+  if (!vector.some((value) => value !== 0)) vector[0] = 1;
+  return vector;
 }
 
 export const testEmbeddingsConfig: EmbeddingsConfig = {

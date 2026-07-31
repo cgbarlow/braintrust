@@ -158,6 +158,45 @@ material with no human gate.
 result is silent about whether 304 unread paid posts might have held the answer. **The tool description must
 point clients at `braintrust_load_persona` for that.**
 
+#### What the build settled
+
+**`passages` is the fallback and never a companion.** It fills only when the matching Items support no
+Position at all. Returning both together would put a conclusion and the raw material for one in the same
+answer with nothing but a key name to tell a client which is which — and the measured/inferred line is the one
+thing this surface cannot afford to blur.
+
+**"Bounded, not capped" applies to citations too.** A `high` Position over forty Items carries forty quotes,
+and an answer that returned all of them by default would be unreadable for the same reason an unbounded
+passage list would. So a Position returns a readable few and reports `more_citations`, the answer reports
+`more_available`, and `full: true` lifts both — with no human gate, exactly as the consent posture requires.
+
+**`since` and `until` filter what is searched, never what a Position may show.** A Position surfaced by a Q2
+Item still reports the Items it rests on across the whole Corpus, because `item_count` is the denominator a
+reader judges it on and a silently narrowed one would understate it. The window is echoed back in the answer,
+since a filtered result that does not say it was filtered reads as a whole one.
+
+**`direction` is read as "this Position *direction* the other".** `supersedes` and `superseded_by` for the two
+sides of a `revised`; `later` and `earlier` for `unsettled` and `drifting`, which leave both Positions current
+and therefore have no winner to name. `current` is nothing more than *not the earlier side of a `revised`* —
+computed from the relation rows at read time, so [#35](https://github.com/cgbarlow/braintrust/issues/35) lands
+as rows to write rather than as a change to what this tool means.
+
+**An empty answer says how close it came.** Nearest-neighbour search always returns neighbours, so retrieval
+needs a floor or *"what do they think about the moon landing"* comes back with their best Position on evals,
+ranked confidently — and the passages fallback could never fire, because something is always nearest. **That
+floor is the one threshold in braintrust that cannot be measured**, because braintrust configures no
+embeddings model and the value that separates *related* from *merely nearest* belongs to whichever one an
+operator points it at. So an empty answer carries `nothing_matched: { nearest_similarity, floor }`, and a
+window with nothing in it reports `nearest_similarity: null` — three states rather than one. **Found live:** a
+Persona built from twenty real posts answered every question with `[]`, and an empty list on its own cannot
+tell *they never said this* from *this braintrust is tuned wrong*.
+
+**Never compiled means answer nothing, including here.** The passages fallback applies to compiled Personas
+only: "here are some sentences" is not a Persona, and offering it as one would quietly redefine what braintrust
+serves. An unembedded Corpus is a refusal with a reason rather than an empty answer, and the tool is not
+registered at all in a deployment with no embeddings endpoint — a search that cannot search is worse than one
+that is not there.
+
 ### 4. `braintrust_follow_person`
 
 **Only a human may cause a new Person to be ingested. An AI may never complete the act.**

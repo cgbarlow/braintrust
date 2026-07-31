@@ -13,6 +13,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 import { DISCLOSURE } from '../src/disclosure.js';
 import { createApp } from '../src/http/app.js';
+import { createEmbedder } from '../src/retrieval/index.js';
+import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeDb } from './support/fake-db.js';
 
 const KEY = 'test-shared-secret';
@@ -126,6 +128,8 @@ describe('the MCP surface', () => {
     const client = await connect();
     const { tools } = await client.listTools();
 
+    // No embeddings endpoint configured on this server, so there is no retrieval tool.
+    // A search that cannot search is worse than one that is not offered.
     assert.deepEqual(
       tools.map((tool) => tool.name).sort(),
       ['braintrust_follow_person', 'braintrust_list_personas', 'braintrust_load_persona'],
@@ -175,6 +179,67 @@ describe('the MCP surface', () => {
     const content = result.content as { type: string; text: string }[];
     assert.equal(content[0]!.type, 'text');
     assert.deepEqual(JSON.parse(content[0]!.text), { personas: [] });
+    await client.close();
+  });
+});
+
+describe('the retrieval tool, on a server that has an embeddings endpoint', () => {
+  let searchable: Server;
+  let searchBase: string;
+
+  before(async () => {
+    const app = createApp({
+      db: emptyDb,
+      mcpKey: KEY,
+      embedder: createEmbedder(testEmbeddingsConfig, fakeEmbeddings().fetcher),
+      retrieval: { model: testEmbeddingsConfig.model, check: async () => ({ ready: true }) },
+    });
+    searchable = await new Promise<Server>((resolve) => {
+      const listening = app.listen(0, () => resolve(listening));
+    });
+    searchBase = `http://127.0.0.1:${(searchable.address() as AddressInfo).port}`;
+  });
+
+  after(async () => {
+    searchable.closeAllConnections();
+    await new Promise<void>((resolve) => searchable.close(() => resolve()));
+  });
+
+  async function connectSearchable() {
+    const url = new URL(`${searchBase}/mcp`);
+    url.searchParams.set('key', KEY);
+    const client = new Client({ name: 'braintrust-test-client', version: '0.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(url));
+    return client;
+  }
+
+  it('is registered, read-only, and says what it will not tell you', async () => {
+    const client = await connectSearchable();
+    const { tools } = await client.listTools();
+
+    const find = tools.find((tool) => tool.name === 'braintrust_find_positions')!;
+    assert.equal(find.annotations?.readOnlyHint, true);
+
+    // Thinness is the client's judgement, and the tool has to say so rather than filter.
+    assert.match(find.description!, /one-mention position is returned like any other/);
+    // Raw material is labelled as raw material.
+    assert.match(find.description!, /what they said.*rather than.*what braintrust\s*\n?concluded/s);
+    // The accepted cost of having no coverage block is paid here, by pointing at the tool
+    // that does have one.
+    assert.match(find.description!, /braintrust_load_persona has the coverage layer/);
+    await client.close();
+  });
+
+  it('refuses readably for a person with no persona rather than searching anyway', async () => {
+    const client = await connectSearchable();
+    const result = await client.callTool({
+      name: 'braintrust_find_positions',
+      arguments: { person: 'nobody', query: 'evals' },
+    });
+
+    assert.equal(result.isError, true);
+    const content = result.content as { type: string; text: string }[];
+    assert.match(content[0]!.text, /no persona for "nobody"/);
     await client.close();
   });
 });

@@ -22,6 +22,7 @@ import { VERSION } from '../version.js';
 import { coverageLayer } from './coverage.js';
 import { checkCompile } from './gate.js';
 import { inferLayer, INFERRED_LAYERS } from './infer.js';
+import { compilePositions } from './positions.js';
 import {
   abandonStale,
   backlogOwed,
@@ -35,9 +36,10 @@ import {
   rejectCompile,
   runningCompile,
   writeLayer,
+  writePositions,
   type CompilablePerson,
 } from './store.js';
-import { SYNTHESIS_VERSION, type Synthesiser } from './synthesis.js';
+import { POSITION_VERSION, SYNTHESIS_VERSION, type Synthesiser } from './synthesis.js';
 import { voiceLayer } from './voice.js';
 
 /**
@@ -47,7 +49,8 @@ import { voiceLayer } from './voice.js';
  * both read tools, alongside the synthesis prompt version that wrote the other half.
  */
 export const MEASUREMENT_VERSION = 'measured-1';
-export const COMPILER_VERSION = `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}`;
+export const COMPILER_VERSION =
+  `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}.${POSITION_VERSION}`;
 
 /**
  * How long a `running` Compile may sit before a later run treats its process as gone.
@@ -102,7 +105,8 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
       report.compiled.push(person.slug);
       log(
         `braintrust: rebuilt ${person.slug} from ${outcome.items_measured} item` +
-          `${outcome.items_measured === 1 ? '' : 's'} as ${COMPILER_VERSION}.`,
+          `${outcome.items_measured === 1 ? '' : 's'} as ${COMPILER_VERSION}, with ` +
+          `${outcome.positions} position${outcome.positions === 1 ? '' : 's'}.`,
       );
     } else if (outcome.kind === 'waiting') {
       report.waiting.push({ person: person.slug, reason: outcome.reason });
@@ -126,7 +130,7 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
 }
 
 type Outcome =
-  | { kind: 'compiled'; compile_id: string; items_measured: number }
+  | { kind: 'compiled'; compile_id: string; items_measured: number; positions: number }
   | { kind: 'waiting'; reason: string }
   | { kind: 'rejected'; reason: string }
   | { kind: 'failed'; reason: string };
@@ -215,6 +219,21 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       });
     }
 
+    // The growing layer, last, because it is the one that scales with the Corpus and the
+    // one a Compile can most afford to lose: a synthesis endpoint that gives out here has
+    // left four complete Core layers in the rows, and the gate will still refuse to
+    // publish the Compile — but the failure is legible rather than a Persona missing a
+    // limb for reasons nobody can reconstruct.
+    const grouped = await compilePositions(notes, deps.synthesiser);
+    await writePositions(deps.db, compileId, grouped.positions);
+
+    if (grouped.dropped_uncitable > 0) {
+      log(
+        `braintrust: dropped ${grouped.dropped_uncitable} position(s) of ${person.slug} that ` +
+          'resolved to no claim braintrust issued. A position it cannot cite is one it does not have.',
+      );
+    }
+
     // The gate, on the rows as a client would be served them rather than on the
     // compiler's own view of what it just built.
     const verdict = checkCompile(await gateFacts(deps.db, person.id, compileId));
@@ -232,7 +251,12 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       ...(coverage.evidence.window ? { window: coverage.evidence.window } : {}),
     });
 
-    return { kind: 'compiled', compile_id: compileId, items_measured: items.length };
+    return {
+      kind: 'compiled',
+      compile_id: compileId,
+      items_measured: items.length,
+      positions: grouped.positions.length,
+    };
   } catch (error) {
     // The rows stay for inspection and the previous Persona is untouched — it was never
     // deleted, because the delete and the promotion are the same transaction.
@@ -247,6 +271,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
 export * from './coverage.js';
 export * from './gate.js';
 export * from './infer.js';
+export * from './positions.js';
 export * from './store.js';
 export * from './synthesis.js';
 export * from './voice.js';

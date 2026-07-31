@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   const readiness = await retrieval.check();
   if (!readiness.ready) console.warn(`${SERVER_NAME}: retrieval is unavailable. ${readiness.reason}`);
 
-  const app = createApp({ db, mcpKey: config.mcpKey, retrieval });
+  const app = createApp({ db, mcpKey: config.mcpKey, retrieval, embedder });
 
   const server = app.listen(config.port, () => {
     console.log(

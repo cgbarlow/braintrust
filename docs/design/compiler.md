@@ -150,6 +150,41 @@ claim a blind spot it does not have: `skipped_short` is braintrust's own policy 
 by platform, since one Person may follow two publications on the same platform and merging them silently
 would produce a count nobody could check.
 
+### What the build settled about the growing layer
+
+**A Position is `measured` because the model is only allowed to group.** The clustering prompt is handed claim
+*refs* braintrust issued and may only copy them back; every quote against a citation was located in the stored
+body when the Item was read, and nothing on this path can add, edit or reattribute one. What a model
+contributes is which claims belong together and one sentence saying what they share — so the statement is a
+model's and everything under it is the Person's own characters. That is also why
+[`braintrust_find_positions`](./mcp-surface.md#3-braintrust_find_positions) never returns a statement without
+its citations: the label survives only while the evidence travels with it.
+
+**A Position braintrust cannot cite is dropped**, the same rule as a claim it cannot quote and an inferred
+entry it cannot attribute. A grouping that resolves to no ref braintrust issued is not written, and the
+[gate](#5-a-compile-must-earn-the-right-to-replace-its-predecessor) then checks the same property against the
+rows — deliberately twice, because the rule matters more than the code path that enforces it.
+
+**The Core is bounded per layer; the growing layer is bounded per call.** Both fold a large Corpus into passes
+and merge, but capping every clustering call at the same number would also cap the *merge*, which would
+quietly limit a 400-Item Persona to one pass's worth of Positions. So a pass may return at most 24 and the
+merge may return at most what it was handed — the one bound that stops a merge answering with a fresh list of
+its own — and the layer itself is free to grow.
+
+**Confidence is absolute, not proportional.** Voice measures habits *within* a Corpus, where a third of Items
+means something. A Position is a thing someone has said, and saying it across five separate pieces of work is
+the same signal whether they have published thirty or three hundred: 5+ Items is `high`, 2–4 `moderate`, 1
+`low`. Starting points to tune, not findings — and the grade never filters anything. It travels beside
+`item_count` so that **a client** can decide what one mention is worth.
+
+**`held_since` and `item_count` are derived from the citations at every Compile**, never carried forward, which
+is what makes a backfill that reaches further back move `held_since` earlier by itself. Two claims quoting the
+same words in the same Item collapse to one citation, because a Position that cited a sentence twice would
+inflate the only number a reader has to judge it on.
+
+**Slug collisions get `-2`.** The spec left the suffix open; a reader seeing `evals-precede-the-harness-2` can
+tell it is a second Position on the same ground rather than a different one.
+
 ---
 
 ## 3. The inferred marker is written by the compiler, never by the serialiser
@@ -187,9 +222,11 @@ Compile with that as the reason. Collapsing the two was tried and rejected in th
 in the extractor's shape reached the gate as *"beliefs carried nothing to serve"*, which sends whoever reads it
 looking at the Corpus instead of at the endpoint.
 
-**Synthesis is versioned separately from measurement.** `compiler_version` is `0.1.0+measured-1.core-1` — the
-hypothesis that produced the counts, and the prompt that produced the prose. Bumping `core-1` is cheap in a way
-bumping `notes-1` is not: it re-synthesises from Notes that already exist rather than re-reading the Corpus.
+**Synthesis is versioned separately from measurement.** `compiler_version` is
+`0.1.0+measured-1.core-1.positions-1` — the hypothesis that produced the counts, the prompt that produced the
+prose, and the prompt that grouped the Positions. Three versions rather than one because they change for
+different reasons, and all of them are cheap in a way bumping `notes-1` is not: they re-read Notes that
+already exist rather than re-reading the Corpus.
 
 ---
 
@@ -404,6 +441,8 @@ embedding cost.
 | **Voice can only find moves someone thought to look for.** A Corpus whose most distinctive habit is not in the pattern list is measured as ordinary, and nothing in the layer can notice the omission. | §2 |
 | **An inferred entry's item count is a floor, not a tally.** A folded Corpus attributes each entry to the pass that found it, so a move genuinely present throughout can be traced to a fraction of the Items. The prose says *traced to* rather than *measured in*; it cannot say how much it missed. | §3 |
 | **A Compile that fails the gate spends the synthesis anyway.** The model calls happen before the check, because most of what the gate checks does not exist until they have. A persistently rejected compiler pays full price every day for a Persona nobody receives. | §5 |
+| **A Position's statement is a model's sentence.** The claims under it are verified and the grouping is checked against refs braintrust issued, but the one line a client is most likely to quote was written by a model summarising them. It is why the statement is never served without its citations. | §2 |
+| **Two passes may name the same Position differently and the merge may miss it.** Deduplication across a folded Corpus is a model's judgement, and a near-duplicate that survives shows up as two thin Positions rather than one supported one — which understates `item_count` on both. | §2 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
 
@@ -433,3 +472,11 @@ embedding cost.
 - Whether a persistently rejected Compile is ever surfaced to a human. Still no in v1.
 - **How much thinness to surface.** Both prototypes keep it visible; `item_count` and `confidence` travel with
   every Position and the client decides what one mention is worth.
+- **The clustering prompt, the per-call bound, and the confidence thresholds.** Version `positions-1` asks for
+  at most 24 Positions per call and grades at 5 and 2 Items — **starting points, not findings**, with the same
+  status as `notes-1`, `measured-1` and `core-1`. Tuning any of them is a free rebuild.
+- **The retrieval floor a question has to clear**, built at 0.35 cosine similarity. It is the one threshold
+  here that **cannot** be measured against the real Corpus, because it is a property of the embeddings model
+  an operator configures and braintrust declares none. What v1 does instead is make it visible: an empty
+  answer reports the nearest similarity it saw and the floor it had to clear, so the number can be tuned from
+  evidence rather than guessed at twice.
