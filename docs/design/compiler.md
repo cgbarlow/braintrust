@@ -164,7 +164,32 @@ This is a compiler contract, not a rendering rule. The MCP boundary also returns
 does not synthesise the prose marker, because the most likely use of a layer is a client pasting the markdown
 into a system prompt — where a JSON field would be lost and a marker line survives.
 
-The [gate](#5-a-compile-must-earn-the-right-to-replace-its-predecessor) checks it.
+The [gate](#5-a-compile-must-earn-the-right-to-replace-its-predecessor) checks it, anchored at the start: a
+marker further down the layer is not a label a client pasting the opening paragraph would carry.
+
+### What the build settled about the inferred half
+
+**An inferred entry braintrust cannot attribute to Items it holds is dropped** — the same rule as a claim it
+cannot quote, applied to the layer that has no quotes. Each entry in Reasoning and Beliefs names the Items it
+was traced to; ids that were not in the Notes handed to the synthesiser are removed, and an entry left holding
+none is not published. The prose is a model's, and what it rests on is not allowed to be.
+
+**Traced, not counted.** A Corpus too large for one pass is folded — synthesised in passes and merged — and an
+entry found in one pass carries only that pass's Items. So `23 of 412` in an inferred layer is a **floor**: the
+Items the entry was traced to, not a tally of the Items that show it. Voice says *measured in*; this
+deliberately says *traced to*, because the two numbers are not the same kind of thing and one prose style for
+both would quietly claim the stronger one.
+
+**`entries: []` and a missing `entries` are different failures.** An empty list is a legitimate answer — the
+prompt asks for a short list that is really there over a long one partly hoped for — and it produces a layer
+the gate refuses. A *missing* `entries` key means the endpoint answered a different question, and it fails the
+Compile with that as the reason. Collapsing the two was tried and rejected in the live run: a model answering
+in the extractor's shape reached the gate as *"beliefs carried nothing to serve"*, which sends whoever reads it
+looking at the Corpus instead of at the endpoint.
+
+**Synthesis is versioned separately from measurement.** `compiler_version` is `0.1.0+measured-1.core-1` — the
+hypothesis that produced the counts, and the prompt that produced the prose. Bumping `core-1` is cheap in a way
+bumping `notes-1` is not: it re-synthesises from Notes that already exist rather than re-reading the Corpus.
 
 ---
 
@@ -253,6 +278,16 @@ row nobody will ever finish, and left alone it would refuse every future rebuild
 Tuesday becoming a permanently stale Persona. A `running` Compile older than six hours is therefore recorded
 as `failed` by the next run and taken over. **The daily clock is the recovery mechanism**, so a crash costs a
 day rather than a Persona.
+
+**"Non-empty" for an inferred layer means it lists something, not that it has prose.** The likeliest way this
+gate fires in practice is a synthesis that came back with nothing usable — and the layer that produces is not
+blank. It is a marker, a sentence saying so, and no entries. A check on prose would pass it. So an inferred
+layer is empty when its `evidence.entries` is empty, whatever prose surrounds the fact.
+
+**The gate reads the rows back rather than checking what the compiler is holding.** A gate fed the compiler's
+own in-memory view would confirm that the compiler agrees with itself; what is worth knowing is whether the
+rows a client is about to be served agree with the rows they claim to describe. Coverage in particular is
+recounted against `braintrust_items` at gate time, not trusted from the layer that was just written.
 
 **A rebuild waits for an empty Backlog, and vectors are not in it.** What the Core reads is Item text and
 Notes, so the Backlog a Compile waits on is Items to retrieve, Items to chunk and Items to read. Nothing in
@@ -367,6 +402,8 @@ embedding cost.
 | **Passages read like unpunctuated speech**, because that is what they are. | §6 |
 | **Beliefs are uncitable.** No single Item asserts one, so provenance comes from the label rather than from pretending otherwise. | §2 |
 | **Voice can only find moves someone thought to look for.** A Corpus whose most distinctive habit is not in the pattern list is measured as ordinary, and nothing in the layer can notice the omission. | §2 |
+| **An inferred entry's item count is a floor, not a tally.** A folded Corpus attributes each entry to the pass that found it, so a move genuinely present throughout can be traced to a fraction of the Items. The prose says *traced to* rather than *measured in*; it cannot say how much it missed. | §3 |
+| **A Compile that fails the gate spends the synthesis anyway.** The model calls happen before the check, because most of what the gate checks does not exist until they have. A persistently rejected compiler pays full price every day for a Persona nobody receives. | §5 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
 
@@ -382,6 +419,12 @@ embedding cost.
   `measured-1` counts six moves at a third and two thirds of Items, and it is a **starting point, not a
   finding** — the same status as `notes-1`, and versioned in `compiler_version` for the same reason. Tuning it
   is a free rebuild, because the layer costs nothing to compute.
+- **The synthesis prompts, and how many entries a layer may carry.** Version `core-1` asks for at most eight
+  entries per layer and is a **starting point, not a finding**, like `notes-1` and `measured-1`. The cap is
+  what keeps the Core bounded — regeneration stays affordable only while it is — but eight is a judgement
+  rather than a measurement.
+- **How large one synthesis pass may be.** Built at 120,000 characters of digest, which held about 380 Items
+  of the size the live probe produced and would hold fewer of a richer Note. Tuning it is a free rebuild.
 - Exact chunk window size and overlap. Built at 1,500 characters with one unit of overlap, and still a
   starting point to tune against real retrieval results rather than a finding.
 - Whether a reranker is ever added. Retrieval quality should be measured before anything is added to fix it.

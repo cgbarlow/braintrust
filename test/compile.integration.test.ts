@@ -20,10 +20,18 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { compileCorpus, COMPILER_VERSION, STALE_COMPILE_MS } from '../src/compile/index.js';
+import {
+  checkCompile,
+  compileCorpus,
+  COMPILER_VERSION,
+  gateFacts,
+  INFERRED_MARKER,
+  STALE_COMPILE_MS,
+} from '../src/compile/index.js';
 import { createDb, type Db, type PostgresDb, type TransactionalDb } from '../src/db.js';
 import { listPersonas, loadPersona } from '../src/personas.js';
 import { chunkItem } from '../src/retrieval/index.js';
+import { fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
 
 const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
 const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
@@ -41,7 +49,7 @@ function body(index: number): string {
   return lines.join('\n\n');
 }
 
-describe('compiling the measured core, against real Postgres', { skip }, () => {
+describe('compiling the core, against real Postgres', { skip }, () => {
   let db: PostgresDb;
   let personId: string;
   let sourceId: string;
@@ -117,7 +125,14 @@ describe('compiling the measured core, against real Postgres', { skip }, () => {
   }
 
   function compile(overrides: Partial<Parameters<typeof compileCorpus>[0]> = {}) {
-    return compileCorpus({ db, extractor: GENERATION, changed: ['nate'], log: () => {}, ...overrides });
+    return compileCorpus({
+      db,
+      extractor: GENERATION,
+      synthesiser: fakeSynthesiser(),
+      changed: ['nate'],
+      log: () => {},
+      ...overrides,
+    });
   }
 
   async function count(sql: string, params: unknown[] = []): Promise<number> {
@@ -133,7 +148,7 @@ describe('compiling the measured core, against real Postgres', { skip }, () => {
     return rows[0]?.id;
   }
 
-  it('builds the two measured layers and promotes them', async () => {
+  it('builds all four core layers and promotes them', async () => {
     const report = await compile();
 
     assert.deepEqual(report.compiled, ['nate']);
@@ -141,11 +156,43 @@ describe('compiling the measured core, against real Postgres', { skip }, () => {
 
     const persona = await loadPersona(db, 'nate');
     assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
-    assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'voice']);
+    assert.deepEqual(Object.keys(persona.layers).sort(), ['beliefs', 'coverage', 'reasoning', 'voice']);
     assert.equal(persona.layers.voice!.basis, 'measured');
     assert.equal(persona.layers.coverage!.basis, 'measured');
+    assert.equal(persona.layers.reasoning!.basis, 'inferred');
+    assert.equal(persona.layers.beliefs!.basis, 'inferred');
     // The compile declares the generation it read, on the row.
     assert.equal(persona.extractor, GENERATION);
+  });
+
+  it('serves the inferred layers with the marker in the prose, not only the basis field', async () => {
+    await compile();
+    const persona = await loadPersona(db, 'nate');
+
+    for (const layer of ['reasoning', 'beliefs']) {
+      // The field is lost the moment a client pastes the markdown into a system prompt.
+      // The first line is not.
+      assert.match(persona.layers[layer]!.descriptive, INFERRED_MARKER);
+      assert.ok(!('generative' in persona.layers[layer]!), `${layer} should have no generative form`);
+    }
+  });
+
+  it('synthesises across notes rather than reading the items again', async () => {
+    const synthesiser = fakeSynthesiser();
+
+    await compile({ synthesiser });
+
+    // Two layers, one pass each: a rebuild costs a handful of calls over notes rather
+    // than a re-read of the corpus, which is the whole economics of a daily compile.
+    assert.deepEqual(
+      synthesiser.calls.map((call) => `${call.kind}:${call.mode}`),
+      ['reasoning:pass', 'beliefs:pass'],
+    );
+    // Every item's note is in the digest, and none of the item bodies are.
+    for (const digest of synthesiser.calls.map((call) => call.digest)) {
+      assert.equal(idsFromDigest(digest).length, ITEMS);
+      assert.doesNotMatch(digest, /speed is the constraint/);
+    }
   });
 
   it('measures the voice over the real item text', async () => {
@@ -204,7 +251,7 @@ describe('compiling the measured core, against real Postgres', { skip }, () => {
   it('lets on delete cascade do all the cleanup, with no reconciliation step', async () => {
     await compile();
     const compileId = await currentCompileId();
-    assert.equal(await count('select count(*) from braintrust_persona_layers where compile_id = $1', [compileId!]), 2);
+    assert.equal(await count('select count(*) from braintrust_persona_layers where compile_id = $1', [compileId!]), 4);
 
     await db.query('delete from braintrust_compiles where id = $1', [compileId!]);
 
@@ -333,6 +380,7 @@ describe('compiling the measured core, against real Postgres', { skip }, () => {
     const report = await compileCorpus({
       db: failingOn(db, 'braintrust_persona_layers'),
       extractor: GENERATION,
+      synthesiser: fakeSynthesiser(),
       changed: ['nate'],
       log: () => {},
     });
@@ -350,6 +398,102 @@ describe('compiling the measured core, against real Postgres', { skip }, () => {
       ]),
       1,
     );
+  });
+
+  it('refuses to publish a compile that failed the gate, and keeps yesterday persona serving', async () => {
+    await compile();
+    const before = await currentCompileId();
+
+    await addItem('post-new', body(9), '2025-09-01');
+    const report = await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
+
+    assert.deepEqual(report.compiled, []);
+    assert.equal(report.rejected[0]!.person, 'nate');
+    assert.match(report.rejected[0]!.reason, /beliefs, reasoning carried nothing to serve/);
+
+    // Not published, and not deleted either. The persona that was already there is
+    // untouched and still the one a client is served.
+    assert.equal(await currentCompileId(), before);
+    const persona = await loadPersona(db, 'nate');
+    assert.equal((persona.layers.voice!.evidence as { items_measured: number }).items_measured, ITEMS);
+  });
+
+  it('keeps a rejected compile rows and its reason, because that is what a diagnosis reads', async () => {
+    await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
+
+    const { rows } = await db.query<{ id: string; status: string; rejected_reason: string }>(
+      `select id, status, rejected_reason from braintrust_compiles
+        where person_id = $1 and status = 'rejected'`,
+      [personId],
+    );
+
+    assert.equal(rows.length, 1);
+    assert.match(rows[0]!.rejected_reason, /carried nothing to serve/);
+    // All four layers are still there to look at — the point of rejecting rather than
+    // failing is that the compiler's output survives.
+    assert.equal(
+      await count('select count(*) from braintrust_persona_layers where compile_id = $1', [rows[0]!.id]),
+      4,
+    );
+  });
+
+  it('lets the next run try again after a rejection, because a retry is cheap', async () => {
+    const rejected = await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
+    assert.equal(rejected.rejected.length, 1);
+
+    // A gate rejection does not stop the schedule: the run that leaves nothing `running`
+    // is what makes tomorrow's attempt possible without anyone intervening.
+    const report = await compile();
+
+    assert.deepEqual(report.compiled, ['nate']);
+    assert.equal(
+      await count(`select count(*) from braintrust_compiles where person_id = $1 and status = 'rejected'`, [
+        personId,
+      ]),
+      1,
+    );
+  });
+
+  it('rejects a compile whose coverage stopped agreeing with the item rows', async () => {
+    // The gate recounts rather than trusting what the compiler put in the layer, so a
+    // layer that disagrees with the rows it claims to describe never reaches a client.
+    await compile();
+    const compileId = await currentCompileId();
+    await db.query(
+      `update braintrust_persona_layers
+          set evidence = jsonb_set(evidence, '{retrieved}', '99')
+        where compile_id = $1 and layer = 'coverage'`,
+      [compileId!],
+    );
+
+    const facts = await gateFacts(db, personId, compileId!);
+    const verdict = checkCompile(facts);
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /coverage says retrieved is 99, the rows say 4/);
+  });
+
+  it('reads the positions and their citations from the rows, ready for the compile that writes them', async () => {
+    await compile();
+    const compileId = await currentCompileId();
+    const position = await db.query<{ id: string }>(
+      `insert into braintrust_positions (compile_id, slug, statement, confidence, item_count)
+       values ($1, 'speed-is-not-the-constraint', 'Speed is not the constraint.', 'high', 3)
+       returning id`,
+      [compileId!],
+    );
+
+    const uncited = checkCompile(await gateFacts(db, personId, compileId!));
+    assert.equal(uncited.passed, false);
+    assert.match(uncited.reason!, /resolve to no citation: speed-is-not-the-constraint/);
+
+    await db.query(
+      `insert into braintrust_position_citations (position_id, item_id, quote)
+       values ($1, (select id from braintrust_items where external_id = 'post-0'), 'speed is the constraint')`,
+      [position.rows[0]!.id],
+    );
+
+    assert.equal(checkCompile(await gateFacts(db, personId, compileId!)).passed, true);
   });
 
   it('writes the corpus stats braintrust_list_personas reports', async () => {

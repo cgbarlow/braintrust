@@ -232,7 +232,13 @@ would break the property that the generative form is derived from the descriptiv
 `basis: measured | inferred`, and inferred layers additionally open `descriptive_md` with a marker. A client
 reading JSON gets it cleanly; a client pasting the markdown into a system prompt — the most likely use —
 carries it anyway. **This is a compiler contract: the compiler writes the marker, the serialiser does not
-synthesise it.**
+synthesise it.** A test asserts the string appears nowhere on the read path, because a serialiser that could
+manufacture the marker would serve an unlabelled layer as though it had been labelled all along.
+
+**An inferred layer's `evidence` carries its entries and what they were traced to** — `items_synthesised`,
+`synthesiser`, `passes`, and per entry the Item ids it was attributed to. Every Item named is one braintrust
+holds; entries naming anything else were dropped at Compile time and counted in `dropped_unattributable`. The
+counts are a floor rather than a tally, which is why the prose says *traced to* and never *measured in*.
 
 **3. Never compiled → answer nothing.** Querying a Persona that has never been compiled returns a clear *"not
 built yet"* error rather than compiling on demand or degrading to passages. Compile-on-demand was rejected: a

@@ -29,6 +29,7 @@ import { createEmbedder } from '../src/retrieval/index.js';
 import { RETRIEVAL_SPACING_MS } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeExtractor, TEST_GENERATION, testExtractorConfig } from './support/notes.js';
+import { fakeSynthesiser } from './support/synthesiser.js';
 import {
   NOW,
   SUBSTACK_BODY_TEXT,
@@ -134,7 +135,10 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
       log: () => {},
       ...(options.embed ? { embedder: createEmbedder(testEmbeddingsConfig, fakeEmbeddings().fetcher) } : {}),
       ...(options.extract
-        ? { extractor: createExtractor(testExtractorConfig, quotingExtractor().fetcher) }
+        ? {
+            extractor: createExtractor(testExtractorConfig, quotingExtractor().fetcher),
+            synthesiser: fakeSynthesiser(),
+          }
         : {}),
       ...(options.stopping ? { stopping: options.stopping } : {}),
     });
@@ -633,6 +637,8 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.deepEqual(report.rebuild_pending, ['nate-b-jones']);
     // A compile declares which generation of notes it read, so with no extractor
     // configured there is no honest value to put on the row and nothing is rebuilt.
+    // Without a synthesiser it could only build half a core, which the gate would
+    // refuse anyway.
     assert.equal(report.compile, undefined);
     assert.equal(report.corpus.retrieved, SUBSTACK_FREE + YT_RETRIEVED);
     assert.equal(report.corpus.skipped_paywall, SUBSTACK_PAYWALLED);
@@ -732,7 +738,7 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     // morning has a persona this evening, without doing anything else.
     const persona = await loadPersona(db, 'nate-b-jones');
     assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
-    assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'voice']);
+    assert.deepEqual(Object.keys(persona.layers).sort(), ['beliefs', 'coverage', 'reasoning', 'voice']);
 
     // Measured over everything the run retrieved, and nothing it did not.
     const voice = persona.layers.voice!.evidence as { items_measured: number };

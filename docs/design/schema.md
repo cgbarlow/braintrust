@@ -384,7 +384,9 @@ Four properties worth naming:
   and non-empty, voice carrying both forms, inferred layers carrying their marker, coverage reconciling
   against `braintrust_items`, every position resolving to a real citation, and position count not
   collapsing against the previous compile. A rejected compile keeps its rows for inspection and leaves the
-  previous persona live. This is what `lint` becomes in a regenerate model.
+  previous persona live. This is what `lint` becomes in a regenerate model. *Non-empty* for an inferred
+  layer means its `evidence.entries` is non-empty, not that it has prose: a synthesis that found nothing
+  writes a marker and a sentence saying so, and a check on prose would pass it.
 - **`on delete cascade` does all the cleanup.** Deleting the old compile row removes its layers, positions,
   citations and relations. There is no reconciliation step and nothing to leak.
 - **Regeneration is affordable only while the core stays bounded.** Voice, reasoning, beliefs and coverage

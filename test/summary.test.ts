@@ -89,15 +89,16 @@ describe('the run summary', () => {
     const summary = summarise(
       report({
         compile: {
-          compiler_version: '0.1.0+measured-1',
+          compiler_version: '0.1.0+measured-1.core-1',
           compiled: ['nate-b-jones'],
           waiting: [],
           failed: [],
+          rejected: [],
         },
       }),
     );
 
-    assert.match(summary, /compile: rebuilt nate-b-jones as 0\.1\.0\+measured-1/);
+    assert.match(summary, /compile: rebuilt nate-b-jones as 0\.1\.0\+measured-1\.core-1/);
   });
 
   it('says why a persona was not rebuilt, because nothing retries it later in the run', () => {
@@ -105,10 +106,11 @@ describe('the run summary', () => {
       report({
         index: { items_chunked: 3, chunks_written: 40, chunks_embedded: 0, stopped_early: false },
         compile: {
-          compiler_version: '0.1.0+measured-1',
+          compiler_version: '0.1.0+measured-1.core-1',
           compiled: [],
           waiting: [{ person: 'nate-b-jones', reason: '3 item(s) still owed' }],
           failed: [],
+          rejected: [],
         },
       }),
     );
@@ -122,10 +124,11 @@ describe('the run summary', () => {
     const summary = summarise(
       report({
         compile: {
-          compiler_version: '0.1.0+measured-1',
+          compiler_version: '0.1.0+measured-1.core-1',
           compiled: [],
           waiting: [{ person: 'nate-b-jones', reason: 'nothing has been retrieved yet' }],
           failed: [],
+          rejected: [],
         },
       }),
     );
@@ -137,10 +140,11 @@ describe('the run summary', () => {
     const summary = summarise(
       report({
         compile: {
-          compiler_version: '0.1.0+measured-1',
+          compiler_version: '0.1.0+measured-1.core-1',
           compiled: [],
           waiting: [],
           failed: [{ person: 'nate-b-jones', reason: 'the database went away' }],
+          rejected: [],
         },
       }),
     );
@@ -148,6 +152,25 @@ describe('the run summary', () => {
     // The previous persona is still serving, which is exactly why a failure here would
     // otherwise be invisible.
     assert.match(summary, /1 failed: nate-b-jones/);
+  });
+
+  it('reports a compile the gate refused to publish, which is not the same as one that failed', () => {
+    const summary = summarise(
+      report({
+        compile: {
+          compiler_version: '0.1.0+measured-1.core-1',
+          compiled: [],
+          waiting: [],
+          failed: [],
+          rejected: [{ person: 'nate-b-jones', reason: 'beliefs carried no prose' }],
+        },
+      }),
+    );
+
+    // Nothing in v1 reads `rejected_reason`, so this line is the only place a
+    // persistently rejected compiler is visible at all — an accepted cost, and the
+    // reason it is worth a line rather than a counter.
+    assert.match(summary, /1 rejected by the gate, not published: nate-b-jones/);
   });
 
   it('reports an index that could not finish, rather than a clean run', () => {

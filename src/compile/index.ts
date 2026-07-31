@@ -1,47 +1,53 @@
 /**
- * The compiler: build a Persona under `running`, then promote it in one transaction.
+ * The compiler: build a Persona under `running`, check it, then promote it in one
+ * transaction.
  *
- * This ticket delivers the half of the Core that **no model ever writes** — Voice,
- * counted over raw Item text, and Coverage, counted over Item rows. Both are free at
- * every Compile, and both stay correct while the Note prompt is mid-upgrade, which is
- * why the two layers a client most relies on to sound like someone are the two that cost
- * nothing.
+ * Four layers, two of which no model ever writes — Voice, counted over raw Item text, and
+ * Coverage, counted over Item rows — and two of which a model does, and which say so in
+ * their own first line. The measured pair are free at every Compile and stay correct while
+ * the Note prompt is mid-upgrade; the inferred pair read Notes rather than the Corpus,
+ * which is what makes a daily rebuild cost cents.
  *
- * **What is deliberately not here.** The publish gate is #33's, and until it lands a
- * Compile carrying two of the four Core layers is promotable. Saying that is better than
- * half-building a check whose whole value is being complete — a gate that passes a
- * two-layer Core today would have to be rewritten to fail it tomorrow, and in the
- * meantime it would read like a guarantee.
+ * Between building and promoting sits [the gate](./gate.ts). A rebuild deletes its
+ * predecessor and there is no archive, so the only protection against a bad Compile is
+ * refusing to publish it — and refusing costs nothing, because yesterday's Persona is
+ * still there and tomorrow's run tries again.
  *
- * See docs/design/compiler.md §2 and §5.
+ * See docs/design/compiler.md §2, §3 and §5.
  */
 
 import type { TransactionalDb } from '../db.js';
+import { notesFor } from '../notes/store.js';
 import { VERSION } from '../version.js';
 import { coverageLayer } from './coverage.js';
+import { checkCompile } from './gate.js';
+import { inferLayer, INFERRED_LAYERS } from './infer.js';
 import {
   abandonStale,
   backlogOwed,
   beginCompile,
   compilablePeople,
   failCompile,
+  gateFacts,
   measurableItems,
   measureCoverage,
   promote,
+  rejectCompile,
   runningCompile,
   writeLayer,
   type CompilablePerson,
 } from './store.js';
+import { SYNTHESIS_VERSION, type Synthesiser } from './synthesis.js';
 import { voiceLayer } from './voice.js';
 
 /**
  * Bumped when the measured layers change shape or the voice patterns change — the
  * hypothesis is part of the compiler, so a Persona should say which version of it
  * produced the numbers. `compiler_version` is on the Compile row and travels out through
- * both read tools.
+ * both read tools, alongside the synthesis prompt version that wrote the other half.
  */
 export const MEASUREMENT_VERSION = 'measured-1';
-export const COMPILER_VERSION = `${VERSION}+${MEASUREMENT_VERSION}`;
+export const COMPILER_VERSION = `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}`;
 
 /**
  * How long a `running` Compile may sit before a later run treats its process as gone.
@@ -54,6 +60,8 @@ export type CompileDeps = {
   db: TransactionalDb;
   /** Which Note generation this Compile declares it read. On the row, never inferred later. */
   extractor: string;
+  /** What writes Reasoning and Beliefs. It reads Notes; nothing here re-reads the Corpus. */
+  synthesiser: Synthesiser;
   /** Slugs whose Corpus changed on this run. New content triggers a rebuild; the clock does not. */
   changed?: string[] | undefined;
   now?: (() => Date) | undefined;
@@ -68,6 +76,8 @@ export type CompileReport = {
   waiting: { person: string; reason: string }[];
   /** Started and could not finish. The previous Persona is untouched and still serving. */
   failed: { person: string; reason: string }[];
+  /** Finished and did not earn the right to replace its predecessor. Rows kept; nothing published. */
+  rejected: { person: string; reason: string }[];
 };
 
 export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
@@ -78,6 +88,7 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
     compiled: [],
     waiting: [],
     failed: [],
+    rejected: [],
   };
 
   for (const person of await compilablePeople(deps.db)) {
@@ -95,6 +106,16 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
       );
     } else if (outcome.kind === 'waiting') {
       report.waiting.push({ person: person.slug, reason: outcome.reason });
+    } else if (outcome.kind === 'rejected') {
+      report.rejected.push({ person: person.slug, reason: outcome.reason });
+      // A rejection does not stop the schedule, and this line is the only place it
+      // surfaces. **Nothing in v1 reads `rejected_reason`** — an accepted cost recorded
+      // in compiler.md §5, and the shape of the failure it buys is a compiler that is
+      // persistently rejected while a Persona quietly ages.
+      log(
+        `braintrust: ${person.slug} was rebuilt and not published — ${outcome.reason}. ` +
+          'The previous persona is still answering; the next run tries again.',
+      );
     } else {
       report.failed.push({ person: person.slug, reason: outcome.reason });
       log(`braintrust: ${person.slug} could not be rebuilt — ${outcome.reason}`);
@@ -107,6 +128,7 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
 type Outcome =
   | { kind: 'compiled'; compile_id: string; items_measured: number }
   | { kind: 'waiting'; reason: string }
+  | { kind: 'rejected'; reason: string }
   | { kind: 'failed'; reason: string };
 
 export async function compilePerson(deps: CompileDeps, person: CompilablePerson): Promise<Outcome> {
@@ -149,6 +171,18 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     return { kind: 'waiting', reason: 'nothing has been retrieved for this person yet' };
   }
 
+  // The inferred half has nothing to read without Notes. An empty Backlog and no Notes
+  // is a real state — every Item failed to be read, or the generation was just bumped —
+  // and waiting is the honest outcome: the previous Persona keeps answering, and the
+  // next run has Notes to work with.
+  const notes = await notesFor(deps.db, person.id, deps.extractor);
+  if (notes.length === 0) {
+    return {
+      kind: 'waiting',
+      reason: `no notes exist for this person under ${deps.extractor}, so nothing can be inferred yet`,
+    };
+  }
+
   const compileId = await beginCompile(deps.db, person.id, COMPILER_VERSION, deps.extractor);
 
   try {
@@ -168,6 +202,26 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       descriptive_md: coverage.descriptive_md,
       evidence: coverage.evidence,
     });
+
+    // The measured layers first, so a synthesis endpoint that goes away mid-Compile
+    // leaves rows that show exactly how far it got. They are the cheap ones anyway.
+    for (const kind of INFERRED_LAYERS) {
+      const inferred = await inferLayer(kind, notes, deps.synthesiser);
+      await writeLayer(deps.db, compileId, {
+        layer: kind,
+        basis: 'inferred',
+        descriptive_md: inferred.descriptive_md,
+        evidence: inferred.evidence,
+      });
+    }
+
+    // The gate, on the rows as a client would be served them rather than on the
+    // compiler's own view of what it just built.
+    const verdict = checkCompile(await gateFacts(deps.db, person.id, compileId));
+    if (!verdict.passed) {
+      await rejectCompile(deps.db, compileId, verdict.reason!);
+      return { kind: 'rejected', reason: verdict.reason! };
+    }
 
     await promote(deps.db, person.id, compileId, {
       items_retrieved: coverage.evidence.retrieved,
@@ -191,5 +245,8 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
 }
 
 export * from './coverage.js';
+export * from './gate.js';
+export * from './infer.js';
 export * from './store.js';
+export * from './synthesis.js';
 export * from './voice.js';
