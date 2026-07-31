@@ -25,10 +25,11 @@ import type { TransactionalDb } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
 import { runCycle, type CycleReport } from './ingest/cycle.js';
+import { allSourcesForPerson } from './ingest/items.js';
 import type { Pause } from './ingest/pace.js';
 import type { Fetcher } from './net/fetch.js';
 import type { Extractor } from './notes/index.js';
-import { personBySlug } from './personas.js';
+import { personBySlug, type BlockedSource } from './personas.js';
 import type { Embedder } from './retrieval/embed.js';
 
 /**
@@ -83,6 +84,15 @@ export type Refreshed = {
   rebuilt: boolean;
   compiled_at: string | null;
   compiler_version: string | null;
+  /**
+   * Sources that have stopped serving braintrust, and were therefore not polled.
+   *
+   * Said here because a refresh that quietly skipped half of someone's output would let
+   * a caller read "nothing new" as "they have published nothing", when what happened is
+   * that a platform stopped answering. It is not the same fact as a paused Person — that
+   * one is refused outright, above.
+   */
+  blocked?: BlockedSource[];
   /** Why there was no rebuild. Absent when there was one. */
   not_rebuilt?: string;
   took_seconds: number;
@@ -159,6 +169,13 @@ export async function refreshPersona(
 
   const owed = await backlogOwed(deps.db, person.id, deps.extractor.generation);
   const after = await personBySlug(deps.db, person.slug);
+  const blocked = (await allSourcesForPerson(deps.db, person.id))
+    .filter((source) => source.blocked_at !== null)
+    .map((source) => ({
+      platform: source.platform,
+      handle: source.handle,
+      since: source.blocked_at!.toISOString(),
+    }));
 
   return {
     refreshed: describe(person.slug, person.display_name, report, {
@@ -166,6 +183,7 @@ export async function refreshPersona(
       compiled_at: after?.compiled_at ?? null,
       compiler_version: after?.compiler_version ?? null,
       took_seconds: Math.round((now().getTime() - started.getTime()) / 1000),
+      blocked,
     }),
     next: nextStep(report, owed.to_retrieve + owed.to_chunk + owed.to_read),
   };
@@ -180,6 +198,7 @@ function describe(
     compiled_at: string | null;
     compiler_version: string | null;
     took_seconds: number;
+    blocked: BlockedSource[];
   },
 ): Refreshed {
   const rebuilt = report.compile?.compiled.includes(slug) ?? false;
@@ -214,6 +233,7 @@ function describe(
     compiler_version: extra.compiler_version,
     took_seconds: extra.took_seconds,
     stopped_early: report.stopped_early,
+    ...(extra.blocked.length > 0 ? { blocked: extra.blocked } : {}),
   };
 
   if (!rebuilt) {

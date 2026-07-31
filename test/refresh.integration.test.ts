@@ -254,6 +254,12 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
         outcome.polled.map((source) => source.platform),
         ['substack'],
       );
+
+      // And said out loud, because "nothing new" and "half of it stopped answering" are
+      // not the same news for the client that asked.
+      assert.equal(outcome.blocked?.length, 1);
+      assert.equal(outcome.blocked![0]!.platform, 'youtube');
+      assert.match(outcome.blocked![0]!.since, /^\d{4}-\d{2}-\d{2}T/);
     });
 
     it('stops fetching when its budget runs out and says what is still owed', async () => {
@@ -373,7 +379,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       });
 
       assert.deepEqual(report.sources, []);
-      assert.equal(report.paused_or_blocked, 2);
+      assert.equal(report.paused, 2);
       assert.equal(await count('select count(*) from braintrust_items'), 0);
     });
 

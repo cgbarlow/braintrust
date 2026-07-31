@@ -111,7 +111,11 @@ export function buildServer({
       description:
         'Who exists in this braintrust, whether they have ever been compiled, and how stale ' +
         'each persona is. Staleness is compiled_at and you judge it; braintrust does not ' +
-        'define "stale". Takes no parameters.',
+        'define "stale". Takes no parameters.\n\n' +
+        'Two reasons a persona stops moving, and they are separate fields because they are ' +
+        'not the same fact. `paused` is the user unfollowing that person. `blocked` is a ' +
+        'source that stopped serving braintrust — not the user\'s decision, nothing deleted, ' +
+        'and braintrust asks it again once a day. Never report one as the other.',
       annotations: { readOnlyHint: true },
     },
     async () => text(await listPersonas(db)),
@@ -130,7 +134,9 @@ export function buildServer({
         'two forms: `generative` is the instruction to follow, and `descriptive` plus `evidence` ' +
         'are the counts it was derived from, so you can check the instruction rather than trust ' +
         'it. `coverage` is measured too, and it is where a persona names its own blind spots: ' +
-        'what was paywalled and never fetched, what failed, and what has not been read yet.\n\n' +
+        'what was paywalled and never fetched, what failed, what has not been read yet, and ' +
+        'any source that has stopped serving braintrust — which is the source refusing ' +
+        'braintrust, never the user choosing to stop following.\n\n' +
         '`reasoning` and `beliefs` are inferred — synthesised across everything braintrust read, ' +
         'because no single thing a person publishes states how they argue or what they take as ' +
         'true. They carry that label in their own prose as well as in `basis`, so it survives ' +

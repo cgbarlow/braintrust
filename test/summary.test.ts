@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { summarise, type CycleReport } from '../src/ingest/cycle.js';
+import { summarise, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 
 function report(overrides: Partial<CycleReport> = {}): CycleReport {
   return {
@@ -15,7 +15,8 @@ function report(overrides: Partial<CycleReport> = {}): CycleReport {
     finished: '2026-07-31T00:00:01.000Z',
     sources: [],
     not_due: 2,
-    paused_or_blocked: 0,
+    paused: 0,
+    blocked: 0,
     rebuild_pending: [],
     stopped_early: false,
     corpus: { pending: 0, retrieved: 70, skipped_paywall: 16, skipped_short: 9, failed: 3 },
@@ -212,5 +213,56 @@ describe('the run summary', () => {
 
     assert.match(summary, /69 retrieved, 9 skipped \(short\), 62 dated/);
     assert.match(summary, /index: 70 items chunked, 1199 chunks, 1199 embedded/);
+  });
+
+  /**
+   * Nobody is watching a 3am job, so these three lines are the only account of a source
+   * that stopped answering — and each is a different piece of news to whoever reads the
+   * logs a fortnight later.
+   */
+  describe('a source that stopped answering', () => {
+    const source = (extra: Partial<SourceReport>): SourceReport => ({
+      person: 'nate-b-jones',
+      platform: 'substack',
+      handle: 'natesnewsletter.substack.com',
+      discovered: 0,
+      catalogued: 0,
+      retrieved: 0,
+      skipped_paywall: 0,
+      skipped_short: 0,
+      failed: 0,
+      backfill_complete: false,
+      gap_detected: false,
+      dated: 0,
+      ...extra,
+    });
+
+    it('says so on the run that measured it', () => {
+      const summary = summarise(
+        report({ sources: [source({ failed: 5, blocked_since: '2026-07-31T00:00:00.000Z' })] }),
+      );
+      assert.match(summary, /stopped answering; blocked, backlog left alone/);
+    });
+
+    it('says it asked again, and how long it has been refusing', () => {
+      const summary = summarise(
+        report({
+          sources: [source({ probed: true, blocked_since: '2026-07-14T00:00:00.000Z' })],
+        }),
+      );
+      assert.match(summary, /still blocked since 2026-07-14T00:00:00\.000Z, asked once/);
+    });
+
+    it('says when it came back, which is the line worth finding', () => {
+      const summary = summarise(
+        report({
+          sources: [
+            source({ probed: true, unblocked: true, blocked_since: '2026-07-14T00:00:00.000Z' }),
+          ],
+        }),
+      );
+      assert.match(summary, /answered again; block cleared/);
+      assert.doesNotMatch(summary, /still blocked/);
+    });
   });
 });

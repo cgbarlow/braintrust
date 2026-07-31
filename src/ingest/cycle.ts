@@ -21,6 +21,7 @@ import type { Fetcher } from '../net/fetch.js';
 import { readCorpus, type Extractor, type ReadReport } from '../notes/index.js';
 import { indexCorpus, type Embedder, type IndexReport } from '../retrieval/index.js';
 import {
+  BLOCK_AFTER_FAILURES,
   RETRIEVAL_SPACING_MS,
   SHORT_MAX_SECONDS,
   type Audience,
@@ -30,6 +31,8 @@ import { feedSkippedAhead, newestPublished, readFeed } from './feed.js';
 import {
   activeSources,
   allSourcesForPerson,
+  blockSource,
+  clearBlock,
   completeBackfill,
   corpusCounts,
   dueSources,
@@ -120,6 +123,15 @@ export type SourceReport = {
   dated: number;
   /** Set when an operator turned `exclude_shorts` off and past skips came back. */
   reopened_shorts?: number;
+  /**
+   * The Source stopped answering, measured across distinct Items. Never the user's
+   * choice to stop, which is a Person being paused and is reported as `paused`.
+   */
+  blocked_since?: string;
+  /** This run spent the one daily request on an already-blocked Source rather than working it. */
+  probed?: true;
+  /** The probe was answered. The block is cleared and the next run works normally. */
+  unblocked?: true;
   error?: string;
 };
 
@@ -128,7 +140,14 @@ export type CycleReport = {
   finished: string;
   sources: SourceReport[];
   not_due: number;
-  paused_or_blocked: number;
+  /**
+   * Sources belonging to a Person the user stopped following. Counted separately from
+   * `blocked` on purpose: one is the user's decision and the other is a platform's, and
+   * a single number would let a Persona blame its own user for a Source's refusal.
+   */
+  paused: number;
+  /** Sources that had stopped answering when this run started. Each got one request. */
+  blocked: number;
   /**
    * People whose Corpus changed on this run. A report of what arrived, not the rebuild
    * trigger — that is `has_unseen`, asked of the rows, so a run that finishes yesterday's
@@ -153,6 +172,7 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
 
   const census = await takeCensus(deps, started);
   const { due, active, all } = census;
+  const blocked = due.filter((source) => source.blocked_at !== null).length;
 
   log(
     deps.only
@@ -160,7 +180,8 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
           `${all === 1 ? '' : 's'} to poll` +
           `${all - due.length > 0 ? `, ${all - due.length} blocked` : ''}`
       : `braintrust: ${due.length} of ${all} source${all === 1 ? '' : 's'} due` +
-          `${all - active.length > 0 ? `, ${all - active.length} paused or blocked` : ''}`,
+          `${all - active.length > 0 ? `, ${all - active.length} paused` : ''}` +
+          `${blocked > 0 ? `, ${blocked} blocked and getting one request` : ''}`,
   );
 
   const reports: SourceReport[] = [];
@@ -256,7 +277,8 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     finished: now().toISOString(),
     sources: reports,
     not_due: active.length - due.length,
-    paused_or_blocked: all - active.length,
+    paused: all - active.length,
+    blocked,
     rebuild_pending: [...changed].sort(),
     stopped_early: stoppedEarly,
     corpus: await corpusCounts(deps.db),
@@ -296,6 +318,8 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
     gap_detected: false,
     dated: 0,
   };
+
+  if (source.blocked_at) return probeSource(source, deps, report);
 
   try {
     // 1. Poll. One feed fetch, generic across platforms.
@@ -352,6 +376,95 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
     report.error = error instanceof BraintrustError ? error.message : String(error);
   }
 
+  return report;
+}
+
+/**
+ * A blocked Source's whole day: **one ordinary request, unchanged.**
+ *
+ * This is self-healing rather than evasion. Evasion means changing *how* you ask — a new
+ * address, a spoofed user-agent, a rotated identity — and braintrust crawls from one host
+ * at one address with nothing to rotate. So it asks again exactly as it asked before, and
+ * an answer is what clears the block.
+ *
+ * **The request is the one that was refused.** A block is measured on Item retrievals, so
+ * probing with a feed poll would prove the wrong thing: a bot gate that serves RSS and
+ * refuses watch pages would clear the block every morning and re-earn it every afternoon,
+ * which is a repair loop wearing a probe's clothes. Only when there is nothing left to
+ * retrieve does the feed become the question — because then it is the only one there is.
+ *
+ * Everything else a run does is skipped. No archive walk (a Source that cannot finish its
+ * backfill is precisely the one this exists to stop looping), no second Item, and no
+ * retry. Failure means nothing else happens until tomorrow.
+ *
+ * **Accepted cost, stated rather than engineered around:** a Source that has permanently
+ * and deliberately blocked braintrust receives one request a day, forever.
+ * See docs/design/ingestion.md §5.
+ */
+async function probeSource(
+  source: SourceRow,
+  deps: SourceDeps,
+  report: SourceReport,
+): Promise<SourceReport> {
+  report.probed = true;
+  report.blocked_since = source.blocked_at!.toISOString();
+
+  // Paywalled and unknown-audience rows are not requests braintrust would ever make, so
+  // they cannot answer the question this run is asking.
+  const askable = (await pendingItems(deps.db, source.id)).filter(
+    (item) => item.audience === 'everyone',
+  );
+
+  try {
+    if (askable[0]) {
+      const item = askable[0];
+      if (source.platform === 'substack') {
+        await retrieveSubstackItem(source, item, deps, report);
+      } else {
+        await retrieveYoutubeItem(source, item, deps, report);
+      }
+    } else {
+      // Nothing owed, so the feed is the only ordinary request left. Anything it turns up
+      // becomes a row and waits: discovery is free, and the Backlog stays suppressed until
+      // the block is gone.
+      const feed = readFeed(
+        await fetchPolitely(deps.fetcher, source.discovery_url, `the feed for ${source.handle}`, {
+          ...(deps.pause ? { pause: deps.pause } : {}),
+        }),
+        source.platform,
+      );
+      report.discovered = (
+        await insertDiscovered(deps.db, source, feed.entries, DISCOVERED_AUDIENCE[source.platform])
+      ).length;
+      await recordPoll(deps.db, source, {
+        cursor: newestPublished(feed.entries),
+        reopenBackfill: false,
+        now: deps.now(),
+      });
+    }
+  } catch (error) {
+    // A `PaywallChanged` reaches here as an answer, not a refusal — the Source served
+    // braintrust and said no. It falls through to the clear below, like any other reply.
+    if (!(error instanceof PaywallChanged)) {
+      report.error = error instanceof BraintrustError ? error.message : String(error);
+      deps.log(
+        `braintrust: ${source.platform} ${source.handle} has been blocked since ` +
+          `${report.blocked_since} and is still not answering. One request, again tomorrow.`,
+      );
+      return report;
+    }
+    if (askable[0]) {
+      await markSkippedPaywall(deps.db, askable[0].id);
+      report.skipped_paywall += 1;
+    }
+  }
+
+  await clearBlock(deps.db, source.id);
+  report.unblocked = true;
+  deps.log(
+    `braintrust: ${source.platform} ${source.handle} answered. The block set on ` +
+      `${report.blocked_since} is cleared and the next run works it normally.`,
+  );
   return report;
 }
 
@@ -440,6 +553,13 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
   const pending = await pendingItems(deps.db, source.id);
 
   let fetched = 0;
+  // Consecutive failures across *distinct* Items. Reset by anything that comes back —
+  // a body, a caption track, even a paywall, because a Source that says no is a Source
+  // that answered. Held in memory rather than a column: a run is the only span over
+  // which "consecutive" means anything, and a `failed` Item is never retried, so a
+  // Backlog too short to reach the threshold exhausts itself instead of looping.
+  let inARow = 0;
+
   for (const item of pending) {
     if (deps.stopping()) return;
 
@@ -476,20 +596,40 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
       } else {
         await retrieveYoutubeItem(source, item, deps, report);
       }
+      inARow = 0;
     } catch (error) {
       if (error instanceof PaywallChanged) {
         await markSkippedPaywall(deps.db, item.id);
         report.skipped_paywall += 1;
         deps.log(`braintrust: ${item.external_id} — ${error.message}`);
+        inARow = 0;
         continue;
       }
       await markFailed(deps.db, item.id);
       report.failed += 1;
+      inARow += 1;
       deps.log(
         `braintrust: ${item.external_id} failed — ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+
+      // The measurement, and the only place a block is ever set. braintrust has not
+      // classified a single response to get here — it has counted requests against
+      // different Items that came back with nothing usable, which is the one thing that
+      // distinguishes a Source refusing braintrust from a bad afternoon.
+      if (inARow >= BLOCK_AFTER_FAILURES) {
+        const at = deps.now();
+        await blockSource(deps.db, source.id, at);
+        report.blocked_since = at.toISOString();
+        deps.log(
+          `braintrust: ${BLOCK_AFTER_FAILURES} items of ${source.handle} failed in a row, so ` +
+            'that source has stopped serving braintrust. Everything already collected is kept, ' +
+            'the rest of its backlog is left alone, and braintrust asks once tomorrow. Every ' +
+            'other source carries on.',
+        );
+        return;
+      }
     }
   }
 }
@@ -614,6 +754,11 @@ export function summarise(report: CycleReport): string {
     if (source.dated > 0) parts.push(`${source.dated} dated`);
     if (source.failed > 0) parts.push(`${source.failed} failed`);
     if (!source.backfill_complete) parts.push('backfill incomplete');
+    // Three states worth their own words, because "blocked" alone reads as the user's
+    // doing and none of these is.
+    if (source.unblocked) parts.push('answered again; block cleared');
+    else if (source.probed) parts.push(`still blocked since ${source.blocked_since}, asked once`);
+    else if (source.blocked_since) parts.push('stopped answering; blocked, backlog left alone');
     if (source.error) parts.push(`error: ${source.error}`);
     return `  ${source.person} / ${source.platform} ${source.handle}: ${parts.join(', ')}`;
   });

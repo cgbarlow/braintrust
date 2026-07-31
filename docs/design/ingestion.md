@@ -366,6 +366,38 @@ countable shortfall.
 **Rejected: a notification.** v1 has no channel to notify through, and a persistently failing compiler is
 already accepted as silent. The two surfaces above are where someone already looks.
 
+### What the build settled about a Source that stops answering
+
+**The threshold is five, and the counter lives in memory rather than a column.** A run is the only span over
+which *consecutive* means anything, and a `failed` Item is never re-attempted — so a Source whose Backlog is
+shorter than five never reaches the threshold and never needs to: it exhausts its own Backlog instead of
+looping. The alternative, a counter persisted across days, would be a new column whose only job is to
+remember something the rows already imply.
+
+**The daily request is the one that was refused, not a feed poll.** This is the decision the spec leaves
+open, and picking the feed would have been wrong in a way that takes a fortnight to show: a bot gate that
+serves RSS and refuses watch pages would clear the block every morning and re-earn it every afternoon — a
+repair loop wearing a probe's clothes, and five requests a day rather than one. So a Blocked Source's whole
+day is *one Item retrieval*, the same request, unchanged. The feed becomes the question only when there is
+nothing left to retrieve, because then it is the only ordinary request there is. Either way it is one, which
+is what makes the accepted cost above true as written rather than approximately.
+
+*And nothing else runs on that day.* No archive walk, in particular — a Source that can never finish its
+backfill is precisely the one this exists to stop.
+
+**A Source that says no is a Source that answered.** A paywall reached during retrieval resets the counter
+rather than feeding it. The measurement is *did anything come back*, and `only_paid` came back; counting it
+would turn a publication that started charging into a publication that blocked braintrust.
+
+**A blocked Source's pending Items are not owed, and that is the whole of "a Compile still runs".** They are
+real rows and Coverage counts them as a shortfall the Persona names — but waiting on them would freeze the
+Persona for as long as a platform cared to refuse, which is the veto this section exists to deny. This is one
+`and s.blocked_at is null` in the backlog query, and without it every other guarantee here is decoration.
+
+**`blocked` sits beside `paused` in the listing rather than inside `corpus`.** Two facts, two fields, one
+glance — and `corpus` only exists once a Persona has been compiled, while a Source can refuse braintrust
+during the very first backfill, which is exactly when nobody has been told anything yet.
+
 ---
 
 ## Accepted costs

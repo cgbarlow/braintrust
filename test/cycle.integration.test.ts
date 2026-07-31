@@ -493,7 +493,7 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     const { report, fetcher } = await run();
 
     assert.deepEqual(report.sources, []);
-    assert.equal(report.paused_or_blocked, 2);
+    assert.equal(report.paused, 2);
     assert.deepEqual(fetcher.requests, []);
     assert.equal((await items()).length, 0);
 
@@ -503,18 +503,29 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.ok(rows.every((row) => row.last_checked_at === null));
   });
 
-  it('leaves a blocked source alone, and every other source running', async () => {
+  it("spends one request on a blocked source's backlog and runs every other source in full", async () => {
     await follow();
     await db.query(`update braintrust_sources set blocked_at = now() where platform = 'substack'`);
 
-    const { report } = await run();
+    const { report, fetcher } = await run();
+
+    // Both sources are reported, because a blocked source is still due — that daily
+    // request is the whole recovery mechanism. What is suppressed is its backlog.
+    const substack = of(report, 'substack');
+    assert.equal(substack.probed, true);
+    assert.equal(
+      fetcher.requests.filter((request) => request.includes(SUBSTACK_HOST)).length,
+      1,
+      'one ordinary request, and nothing else',
+    );
+    assert.equal(
+      fetcher.requests.filter((request) => request.includes('/archive')).length,
+      0,
+      'no archive walk: a source that cannot finish its backfill is the one this stops looping',
+    );
+    assert.equal((await items("s.platform = 'substack' and i.retrieval <> 'pending'")).length, 0);
 
     // One source's bad day is not another's.
-    assert.deepEqual(
-      report.sources.map((source) => source.platform),
-      ['youtube'],
-    );
-    assert.equal((await items("s.platform = 'substack'")).length, 0);
     assert.equal((await items("s.platform = 'youtube'")).length, YOUTUBE_LISTING_IN_WINDOW);
   });
 

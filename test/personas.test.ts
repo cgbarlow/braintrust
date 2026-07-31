@@ -4,10 +4,15 @@ import { describe, it } from 'node:test';
 import type { Db, QueryResult } from '../src/db.js';
 import { listPersonas } from '../src/personas.js';
 
-function fakeDb(rows: Record<string, unknown>[]): Db {
+/**
+ * The listing asks two questions — who exists, and which sources have stopped
+ * answering — so the fake answers by which one it was asked. A fake that returned the
+ * people rows to both would be testing a query braintrust does not make.
+ */
+function fakeDb(rows: Record<string, unknown>[], blocked: Record<string, unknown>[] = []): Db {
   return {
-    async query<Row>(): Promise<QueryResult<Row>> {
-      return { rows: rows as Row[] };
+    async query<Row>(sql: string): Promise<QueryResult<Row>> {
+      return { rows: (sql.includes('blocked_at is not null') ? blocked : rows) as Row[] };
     },
   };
 }
