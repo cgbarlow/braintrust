@@ -125,6 +125,14 @@ export function createExtractor(config: ExtractorConfig, fetcher: Fetcher): Extr
             // Nothing here wants variety: two runs over the same immutable item should
             // not disagree about what it said.
             temperature: 0,
+            // Declared, not just asked for in prose. Every prompt braintrust sends says
+            // "return a single JSON object and nothing else", so saying it in the request
+            // as well costs nothing and buys two things: endpoints that can constrain
+            // decoding do, and endpoints whose own output parser is fragile take the
+            // structured path instead. Found live — a gpt-oss server returned HTTP 500
+            // parsing its own model's `<|constrain|>json` marker, and answered cleanly
+            // with this set.
+            response_format: { type: 'json_object' },
             messages: [
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: user },

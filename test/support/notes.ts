@@ -19,7 +19,15 @@ export const TEST_GENERATION = `${testExtractorConfig.model}@notes-1`;
 export type FakeExtractor = {
   fetcher: Fetcher;
   /** Every request, so a test can check what the model was actually shown. */
-  sent: { url: string; model: string; system: string; user: string; authorization?: string }[];
+  sent: {
+    url: string;
+    model: string;
+    system: string;
+    user: string;
+    authorization?: string;
+    /** What the request itself declared about the answer's shape, not just what the prompt asked for. */
+    responseFormat?: string;
+  }[];
 };
 
 export type FakeOptions = {
@@ -36,6 +44,7 @@ export function fakeExtractor(options: FakeOptions = {}): FakeExtractor {
   const fetcher: Fetcher = async (url, init) => {
     const payload = (init?.json ?? {}) as {
       model?: string;
+      response_format?: { type?: string };
       messages?: { role: string; content: string }[];
     };
     const system = payload.messages?.find((message) => message.role === 'system')?.content ?? '';
@@ -47,6 +56,7 @@ export function fakeExtractor(options: FakeOptions = {}): FakeExtractor {
       system,
       user,
       ...(init?.headers?.authorization ? { authorization: init.headers.authorization } : {}),
+      ...(payload.response_format?.type ? { responseFormat: payload.response_format.type } : {}),
     });
 
     if (options.status && options.status >= 400) return response(options.status, 'nope');

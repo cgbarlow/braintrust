@@ -23,7 +23,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import {
   checkCompile,
   compileCorpus,
-  COMPILER_VERSION,
+  compilerVersion,
   gateFacts,
   INFERRED_MARKER,
   STALE_COMPILE_MS,
@@ -178,7 +178,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     const report = await compile();
 
     assert.deepEqual(report.compiled, ['nate']);
-    assert.equal(report.compiler_version, COMPILER_VERSION);
+    // No embedder in this run, so the version says so. It records what the compile could
+    // do rather than what the code supports.
+    assert.equal(report.compiler_version, compilerVersion({ revisions: false }));
 
     const persona = await loadPersona(db, 'nate');
     assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
@@ -415,6 +417,69 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     assert.deepEqual((await compile()).compiled, ['nate']);
     assert.notEqual(await currentCompileId(), before);
+  });
+
+  /**
+   * The second kind of staleness. A persona can be perfectly current with everything its
+   * subject published and out of date with what braintrust can now do with it — and no row
+   * changes in that case, so the content trigger never fires.
+   *
+   * Found live: Stuart Winter-Tear's persona compiled before an embeddings endpoint
+   * existed, so revision detection was skipped, and nothing would ever have re-run it.
+   */
+  describe('when the compiler changes rather than the corpus', () => {
+    async function storedVersion(): Promise<string> {
+      const { rows } = await db.query<{ compiler_version: string }>(
+        `select compiler_version from braintrust_compiles where status = 'current'`,
+      );
+      return rows[0]!.compiler_version;
+    }
+
+    it('records what the compile could actually do, not what the code supports', async () => {
+      await compile();
+
+      // No embedder was configured, so no pair was compared. A row claiming `revisions-1`
+      // would be the persona asserting it looked for changes of mind and found none.
+      assert.match(await storedVersion(), /revisions-none$/);
+    });
+
+    it('rebuilds once an embedder appears, with the corpus untouched', async () => {
+      await compile();
+      const before = await currentCompileId();
+      assert.deepEqual((await compile()).compiled, [], 'nothing changed, so nothing rebuilds');
+
+      // The capability changes. Not one row of the corpus does.
+      const report = await compile({ embedder: fakeEmbedder() });
+
+      assert.deepEqual(report.compiled, ['nate']);
+      assert.notEqual(await currentCompileId(), before);
+      assert.match(await storedVersion(), /revisions-1$/);
+    });
+
+    it('rebuilds exactly once, then goes quiet', async () => {
+      await compile();
+      await compile({ embedder: fakeEmbedder() });
+      const after = await currentCompileId();
+
+      // The stored version now matches, so the second question stops firing too.
+      const report = await compile({ embedder: fakeEmbedder() });
+
+      assert.deepEqual(report.compiled, []);
+      assert.equal(await currentCompileId(), after);
+    });
+
+    it('says which of the two reasons it rebuilt for', async () => {
+      await compile();
+      const lines: string[] = [];
+      await compile({ embedder: fakeEmbedder(), log: (line: string) => lines.push(line) });
+
+      // A burst of rebuilds on a day nothing was published is otherwise an unexplained
+      // cost, and this line is the only place it is ever explained.
+      assert.ok(
+        lines.some((line) => line.includes('rebuilt because the compiler changed, not the corpus')),
+        lines.join('\n'),
+      );
+    });
   });
 
   it('never rebuilds a paused person, because a pause is the user freezing the persona', async () => {
@@ -776,7 +841,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     const { personas } = await listPersonas(db);
 
     assert.equal(personas[0]!.compiled, true);
-    assert.equal(personas[0]!.compiler_version, COMPILER_VERSION);
+    assert.equal(personas[0]!.compiler_version, compilerVersion({ revisions: false }));
     assert.equal(personas[0]!.corpus!.items_retrieved, ITEMS);
     assert.equal(personas[0]!.corpus!.items_skipped_paywall, 1);
     assert.deepEqual(personas[0]!.corpus!.window, ['2025-01-01', '2025-04-01']);

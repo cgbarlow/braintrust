@@ -212,6 +212,12 @@ call of the follow handshake all run this same cycle.
 schedule merely bounds it to at most one rebuild per Person per day. This is affordable only because
 [the compiler reads Notes rather than transcripts](./compiler.md#1-each-item-is-read-once-and-what-was-read-is-kept).
 
+**And a second trigger, for the other way a Persona goes stale.** A Persona is rebuilt when what it was built
+*from* changes — **or when what built it changes.** The second is not a clock either: it is the Compile row's
+`compiler_version` differing from this run's, which happens when a measurement changes shape, a prompt is
+bumped, or a capability arrives that was missing. Nothing in the rows moves in those cases, so the content
+trigger never fires and the Persona would keep answering with a compiler that no longer exists.
+
 ### The Backlog is rows, not a queue
 
 Four things want to be long-running jobs — the first 12-month backfill (~395 fetches ≈ 26 minutes), catching
@@ -258,6 +264,31 @@ everything else here — the Backlog is rows, the resume point is rows, and now 
 
 *A status change needs no timestamp of its own.* A Compile only happens with an empty Backlog, so an Item
 that was `pending` at any point after the last Compile must also have been created after it.
+
+**And unseen content is only half of staleness.** A Persona can be perfectly current with everything its
+subject published and out of date with what braintrust can now do with it. Most of that space is already
+covered by the content trigger — changing the Note prompt re-reads the Corpus, which writes Notes; turning
+`exclude_shorts` off makes skipped Items `pending` again — but a capability arriving changes no row at all.
+
+**Found live.** A Persona compiled before an embeddings endpoint existed, so revision detection was skipped,
+and nothing would ever have re-run it: the Corpus had not changed and never would on that account.
+
+So the trigger asks a second question, and it is one comparison against a value already on the row:
+`compiler_version`. Which only works because **the version records what a Compile could actually do rather
+than what the code supports** — a Compile with no embedder writes `revisions-none`, not `revisions-1`. That
+is the honest value independently of this rule: a row claiming a revisions pass that never ran is a Persona
+asserting it looked for changes of mind and found none, which is a different sentence from *nobody looked*,
+and it travels out through both read tools.
+
+*Rejected: a `force` flag on refresh.* [#36](https://github.com/cgbarlow/braintrust/issues/36) settled that
+new content triggers a rebuild rather than the asking — and the reason was never cost, since a rebuild reads
+Notes and costs pennies. It was that the daily job and an AI-callable refresh must never disagree about what
+a rebuild *means*. A flag makes the trigger depend on who is asking; a version comparison keeps it a fact
+about the rows, like everything else here.
+
+*Accepted cost.* The day the compiler version is bumped, **every Persona rebuilds at once.** That is correct —
+they are all equally stale — and the run says so, because a burst of rebuilds on a day nothing was published
+is otherwise an unexplained cost.
 
 **Seen live.** A run that polled nothing — the Source was not due, so no feed was even fetched — read one
 Item whose Note had gone missing and rebuilt on the strength of it. The tally-based version rebuilds nothing

@@ -57,8 +57,32 @@ import { voiceLayer } from './voice.js';
  * both read tools, alongside the synthesis prompt version that wrote the other half.
  */
 export const MEASUREMENT_VERSION = 'measured-1';
-export const COMPILER_VERSION =
-  `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}.${POSITION_VERSION}.${REVISION_VERSION}`;
+
+/**
+ * What a Compile that could not compare revisions records instead of `revisions-1`.
+ *
+ * Revision detection needs an embeddings endpoint to find candidate pairs, and that
+ * endpoint is allowed to be absent — the Core is measured from Item text and synthesised
+ * from Notes, so a missing embedder delays the vectors rather than the Persona. But a row
+ * claiming `revisions-1` when nothing was compared is a Persona asserting it looked for
+ * changes of mind and found none, which is a different sentence from *nobody looked*.
+ */
+export const REVISION_SKIPPED = 'revisions-none';
+
+/**
+ * **The version records what this Compile could actually do, not what the code supports.**
+ *
+ * It is not a constant, because the same code produces a different Persona depending on
+ * what it was configured with — and the difference is exactly the thing a later run has to
+ * notice, via `CompilablePerson.stale_compiler`.
+ */
+export function compilerVersion(options: { revisions: boolean }): string {
+  const revisions = options.revisions ? REVISION_VERSION : REVISION_SKIPPED;
+  return `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}.${POSITION_VERSION}.${revisions}`;
+}
+
+/** The fully-capable string. Kept for callers that mean "the current code", not "this run". */
+export const COMPILER_VERSION = compilerVersion({ revisions: true });
 
 /**
  * How long a `running` Compile may sit before a later run treats its process as gone.
@@ -103,28 +127,42 @@ export type CompileReport = {
 
 export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
   const log = deps.log ?? ((line: string) => console.log(line));
+
+  // What this run can do, which is not always what the code can do. Everything below
+  // compares against this rather than against the constant.
+  const version = compilerVersion({ revisions: deps.embedder !== undefined });
+
   const report: CompileReport = {
-    compiler_version: COMPILER_VERSION,
+    compiler_version: version,
     compiled: [],
     waiting: [],
     failed: [],
     rejected: [],
   };
 
-  for (const person of await compilablePeople(deps.db, deps.person)) {
-    // New content triggers the rebuild, not the clock. Rebuilding a Persona from a
-    // Corpus it has already read costs real money to produce the same answer, so the
-    // question is what this Persona has not seen — never what happened today.
-    if (!person.has_unseen) continue;
+  for (const person of await compilablePeople(deps.db, version, deps.person)) {
+    // **Two questions, because there are two ways to be stale.**
+    //
+    // New content triggers a rebuild, not the clock — rebuilding a Persona from a Corpus
+    // it has already read costs real money to produce the same answer. But a Persona can
+    // also be current with everything its subject published and out of date with what
+    // braintrust can now do with it: an embeddings endpoint that was missing and now is
+    // not, a measurement that changed shape, a synthesis prompt that was bumped. Nothing
+    // in the rows changes in any of those cases, so `has_unseen` never fires and the
+    // Persona would keep answering with a compiler that no longer exists.
+    if (!person.has_unseen && !person.stale_compiler) continue;
 
     const outcome = await compilePerson({ ...deps, log }, person);
     if (outcome.kind === 'compiled') {
       report.compiled.push(person.slug);
       log(
         `braintrust: rebuilt ${person.slug} from ${outcome.items_measured} item` +
-          `${outcome.items_measured === 1 ? '' : 's'} as ${COMPILER_VERSION}, with ` +
+          `${outcome.items_measured === 1 ? '' : 's'} as ${version}, with ` +
           `${outcome.positions} position${outcome.positions === 1 ? '' : 's'} and ` +
-          `${outcome.revisions} relation${outcome.revisions === 1 ? '' : 's'} between them.`,
+          `${outcome.revisions} relation${outcome.revisions === 1 ? '' : 's'} between them` +
+          // Said out loud, because a burst of rebuilds on a day nothing was published
+          // is otherwise an unexplained cost. This is the line that explains it.
+          `${!person.has_unseen ? ' — rebuilt because the compiler changed, not the corpus' : ''}.`,
       );
     } else if (outcome.kind === 'waiting') {
       report.waiting.push({ person: person.slug, reason: outcome.reason });
@@ -160,6 +198,8 @@ type Outcome =
   | { kind: 'failed'; reason: string };
 
 export async function compilePerson(deps: CompileDeps, person: CompilablePerson): Promise<Outcome> {
+  // Composed here as well as in the loop, so a direct caller records the truth too.
+  const version = compilerVersion({ revisions: deps.embedder !== undefined });
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? ((line: string) => console.log(line));
 
@@ -211,7 +251,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     };
   }
 
-  const compileId = await beginCompile(deps.db, person.id, COMPILER_VERSION, deps.extractor);
+  const compileId = await beginCompile(deps.db, person.id, version, deps.extractor);
 
   try {
     const voice = voiceLayer(items);
