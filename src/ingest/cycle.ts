@@ -15,6 +15,7 @@
 import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
+import { readCorpus, type Extractor, type ReadReport } from '../notes/index.js';
 import { indexCorpus, type Embedder, type IndexReport } from '../retrieval/index.js';
 import {
   RETRIEVAL_SPACING_MS,
@@ -64,6 +65,11 @@ export type CycleDeps = {
    * unembedded — which is a real state the next run finishes, not a failure.
    */
   embedder?: Embedder | undefined;
+  /**
+   * The configured Note extractor. Absent leaves the Items unread — the expensive step
+   * is the one most worth being able to defer.
+   */
+  extractor?: Extractor | undefined;
   now?: (() => Date) | undefined;
   pause?: Pause | undefined;
   /**
@@ -105,6 +111,8 @@ export type CycleReport = {
   corpus: CorpusCounts;
   /** The retrieval index, brought up to date with what this run fetched. */
   index: IndexReport;
+  /** The read-once pass. Absent when no extractor was configured for the run. */
+  notes?: ReadReport;
 };
 
 export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
@@ -160,6 +168,20 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   }
   if (index.error) log(`braintrust: the index is behind — ${index.error}`);
 
+  // 5. Read what has not been read. After the index, because a claim carries the Chunk
+  // its quote came from, so an Item is not readable until it has been chunked.
+  const notes = deps.extractor
+    ? await readCorpus({ db: deps.db, extractor: deps.extractor, stopping, log })
+    : undefined;
+  if (notes && notes.items_read > 0) {
+    log(
+      `braintrust: read ${notes.items_read} item${notes.items_read === 1 ? '' : 's'} as ` +
+        `${notes.generation}, keeping ${notes.claims_kept} claim${notes.claims_kept === 1 ? '' : 's'}` +
+        `${notes.claims_dropped > 0 ? ` and dropping ${notes.claims_dropped} that could not be quoted` : ''}.`,
+    );
+  }
+  if (notes?.error) log(`braintrust: the notes are behind — ${notes.error}`);
+
   const report: CycleReport = {
     started: started.toISOString(),
     finished: now().toISOString(),
@@ -170,6 +192,7 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     stopped_early: stoppedEarly,
     corpus: await corpusCounts(deps.db),
     index,
+    ...(notes ? { notes } : {}),
   };
 
   // The rebuild is the fourth step of the cycle and it does not exist yet. Saying so is
@@ -479,8 +502,10 @@ async function allSourceCount(db: Db): Promise<number> {
 /** One line per source, for a job nobody is watching. */
 export function summarise(report: CycleReport): string {
   const index = report.index;
+  const notes = report.notes;
   const idleIndex = index.items_chunked === 0 && index.chunks_embedded === 0 && !index.error;
-  if (report.sources.length === 0 && idleIndex) return 'braintrust: nothing was due.';
+  const idleNotes = !notes || (notes.items_read === 0 && notes.items_failed === 0 && !notes.error);
+  if (report.sources.length === 0 && idleIndex && idleNotes) return 'braintrust: nothing was due.';
 
   // A run where no Source was due can still have real work to report: an endpoint that
   // was switched off yesterday leaves chunks waiting, and "nothing was due" would be a
@@ -506,6 +531,14 @@ export function summarise(report: CycleReport): string {
   if (index.model) indexed.push(`${index.chunks_embedded} embedded as ${index.model}`);
   if (index.error) indexed.push(`error: ${index.error}`);
   lines.push(`  index: ${indexed.join(', ')}`);
+
+  if (notes) {
+    const read = [`${notes.items_read} items read as ${notes.generation}`, `${notes.claims_kept} claims`];
+    if (notes.claims_dropped > 0) read.push(`${notes.claims_dropped} unquotable, dropped`);
+    if (notes.items_failed > 0) read.push(`${notes.items_failed} failed`);
+    if (notes.error) read.push(`error: ${notes.error}`);
+    lines.push(`  notes: ${read.join(', ')}`);
+  }
 
   if (report.stopped_early) lines.push('  stopped early; the next run continues from these rows');
 

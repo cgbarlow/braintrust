@@ -23,9 +23,11 @@ import { followPerson, type PlanResponse } from '../src/follow/index.js';
 import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { runCycle, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 import { recordCatalogued, type SourceRow } from '../src/ingest/items.js';
+import { createExtractor } from '../src/notes/index.js';
 import { createEmbedder } from '../src/retrieval/index.js';
 import { RETRIEVAL_SPACING_MS } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
+import { fakeExtractor, TEST_GENERATION, testExtractorConfig } from './support/notes.js';
 import {
   NOW,
   SUBSTACK_BODY_TEXT,
@@ -103,7 +105,23 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     fetcher?: FakeFetcher;
     /** Off by default: most of these tests are about what was fetched, not indexed. */
     embed?: boolean;
+    /** Off by default, and expensive when on: one model call per item. */
+    extract?: boolean;
   };
+
+  /**
+   * A model that quotes the item it was given rather than inventing something. The
+   * quote is the last forty characters, which no fixture body shares with another.
+   */
+  function quotingExtractor() {
+    return fakeExtractor({
+      note: (user) => ({
+        claims: [{ statement: 'It said this.', quote: user.slice(-40) }],
+        argument: 'Argues from what it opened with to what it closed with.',
+        assumptions: ['The reader has been paying attention.'],
+      }),
+    });
+  }
 
   async function run(options: RunOptions = {}): Promise<{ report: CycleReport; fetcher: FakeFetcher }> {
     const fetcher = options.fetcher ?? fakeFetcher(natesRoutes());
@@ -114,6 +132,9 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
       pause: async () => {},
       log: () => {},
       ...(options.embed ? { embedder: createEmbedder(testEmbeddingsConfig, fakeEmbeddings().fetcher) } : {}),
+      ...(options.extract
+        ? { extractor: createExtractor(testExtractorConfig, quotingExtractor().fetcher) }
+        : {}),
       ...(options.stopping ? { stopping: options.stopping } : {}),
     });
     return { report, fetcher };
@@ -659,6 +680,42 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     );
     assert.equal(Number(timings.find((row) => row.platform === 'substack')!.timed), 0);
     assert.ok(Number(timings.find((row) => row.platform === 'youtube')!.timed) > 0);
+  });
+
+  it('fetches, indexes and reads in one run, in that order', async () => {
+    await follow();
+    const { report } = await run({ embed: true, extract: true });
+
+    // The order matters and is not incidental: a claim carries the chunk its quote came
+    // from, so an item is not readable until it has been chunked.
+    assert.equal(report.notes!.items_read, SUBSTACK_FREE + YT_RETRIEVED);
+    assert.equal(report.notes!.generation, TEST_GENERATION);
+    assert.equal(report.notes!.claims_kept, SUBSTACK_FREE + YT_RETRIEVED);
+    assert.equal(report.notes!.claims_dropped, 0);
+    assert.equal(report.notes!.items_failed, 0);
+
+    const unquotable = await scalar(
+      `select count(*) from braintrust_item_notes n join braintrust_items i on i.id = n.item_id,
+              jsonb_array_elements(n.claims) c
+        where position(c->>'quote' in i.body_text) = 0`,
+    );
+    assert.equal(unquotable, 0);
+
+    const uncited = await scalar(
+      `select count(*) from braintrust_item_notes n, jsonb_array_elements(n.claims) c
+        where c->>'chunk_id' is null`,
+    );
+    assert.equal(uncited, 0);
+  });
+
+  it('reads nothing on the next day, because published items do not change', async () => {
+    await follow();
+    await run({ embed: true, extract: true });
+    const { report } = await run({ embed: true, extract: true, now: new Date(NOW.getTime() + 86_400_000) });
+
+    // This is the whole reason notes exist: the second day costs the feed poll, not
+    // 1.17M words of transcript.
+    assert.equal(report.notes!.items_read, 0);
   });
 
   it('indexes nothing when the run was told to stop, and picks it up next time', async () => {

@@ -8,6 +8,8 @@ const COMPLETE = {
   BRAINTRUST_MCP_KEY: 'sekrit',
   BRAINTRUST_EMBEDDINGS_BASE_URL: 'http://localhost:11434/v1',
   BRAINTRUST_EMBEDDINGS_MODEL: 'qwen3-embedding:0.6b',
+  BRAINTRUST_EXTRACTOR_BASE_URL: 'https://api.anthropic.com/v1',
+  BRAINTRUST_EXTRACTOR_MODEL: 'claude-sonnet-5',
 } as NodeJS.ProcessEnv;
 
 const silent = { warn: () => {} };
@@ -20,6 +22,8 @@ describe('loadConfig', () => {
     assert.equal(config.embeddings.baseUrl, 'http://localhost:11434/v1');
     assert.equal(config.embeddings.model, 'qwen3-embedding:0.6b');
     assert.equal(config.embeddings.apiKey, undefined);
+    assert.equal(config.extractor.baseUrl, 'https://api.anthropic.com/v1');
+    assert.equal(config.extractor.model, 'claude-sonnet-5');
     assert.equal(config.port, 3000);
   });
 
@@ -51,6 +55,8 @@ describe('loadConfig', () => {
           'BRAINTRUST_MCP_KEY',
           'BRAINTRUST_EMBEDDINGS_BASE_URL',
           'BRAINTRUST_EMBEDDINGS_MODEL',
+          'BRAINTRUST_EXTRACTOR_BASE_URL',
+          'BRAINTRUST_EXTRACTOR_MODEL',
         ]) {
           assert.match(error.message, new RegExp(name));
         }
@@ -82,6 +88,28 @@ describe('loadConfig', () => {
     assert.match(warnings[0]!, /session pooler/);
     // A warning, not a refusal — it still works, it is just the wrong fit.
     assert.equal(config.databaseUrl, 'postgresql://u:p@host:6543/postgres');
+  });
+
+  it('refuses to start with no note extractor, because a job that never distils is silent', () => {
+    // The failure mode here is not the embeddings one — nothing is shipped anywhere by
+    // accident. It is that the daily job runs green forever and no persona is ever
+    // compiled, which is exactly the invisible failure the schedule exists to prevent.
+    const { BRAINTRUST_EXTRACTOR_MODEL: _omitted, ...withoutModel } = COMPLETE;
+
+    assert.throws(
+      () => loadConfig(withoutModel as NodeJS.ProcessEnv, silent),
+      (error: unknown) => {
+        assert.ok(error instanceof ConfigError);
+        assert.match(error.message, /BRAINTRUST_EXTRACTOR_MODEL/);
+        assert.match(error.message, /cannot compile a persona/);
+        return true;
+      },
+    );
+  });
+
+  it('carries an optional extractor key when one is supplied', () => {
+    const config = loadConfig({ ...COMPLETE, BRAINTRUST_EXTRACTOR_API_KEY: 'sk-ant' }, silent);
+    assert.equal(config.extractor.apiKey, 'sk-ant');
   });
 
   it('does not warn about a session-pooler connection string', () => {

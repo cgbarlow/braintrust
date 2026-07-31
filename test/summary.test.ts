@@ -47,6 +47,44 @@ describe('the run summary', () => {
     assert.match(summary, /1199 embedded as qwen3-embedding:0\.6b/);
   });
 
+  it('reports the notes, including the claims it could not quote', () => {
+    // The drop count is the number worth watching: it is how a model tidying quotes
+    // shows up as a number rather than as a persona that cites itself.
+    const summary = summarise(
+      report({
+        notes: {
+          generation: 'claude-sonnet-5@notes-1',
+          items_read: 70,
+          claims_kept: 412,
+          claims_dropped: 9,
+          items_failed: 1,
+          stopped_early: false,
+        },
+      }),
+    );
+
+    assert.match(summary, /notes: 70 items read as claude-sonnet-5@notes-1, 412 claims/);
+    assert.match(summary, /9 unquotable, dropped/);
+    assert.match(summary, /1 failed/);
+  });
+
+  it('says nothing was due when the extractor had nothing to read either', () => {
+    const summary = summarise(
+      report({
+        notes: {
+          generation: 'claude-sonnet-5@notes-1',
+          items_read: 0,
+          claims_kept: 0,
+          claims_dropped: 0,
+          items_failed: 0,
+          stopped_early: false,
+        },
+      }),
+    );
+
+    assert.equal(summary, 'braintrust: nothing was due.');
+  });
+
   it('reports an index that could not finish, rather than a clean run', () => {
     const summary = summarise(
       report({ index: { ...report().index, error: 'braintrust could not reach the embeddings endpoint' } }),
