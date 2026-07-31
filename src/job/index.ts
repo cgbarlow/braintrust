@@ -14,6 +14,7 @@
  * See docs/design/deployment.md §2.
  */
 
+import { createSynthesiser, SYNTHESIS_TIMEOUT_MS } from '../compile/index.js';
 import { ConfigError, loadConfig, type Config } from '../config.js';
 import { createDb, type PostgresDb } from '../db.js';
 import { runCycle, summarise } from '../ingest/cycle.js';
@@ -43,13 +44,24 @@ async function main(): Promise<void> {
   try {
     const fetcher = createFetcher();
     const extractor = createExtractor(config.extractor, createFetcher({ timeoutMs: EXTRACTOR_TIMEOUT_MS }));
-    console.log(`${SERVER_NAME}: reading items as ${extractor.generation} via ${extractor.url}.`);
+    // The same endpoint, a different job: the extractor reads one item, the synthesiser
+    // reads the notes. Configured together because an operator who has decided where
+    // their corpus may go has decided it for both.
+    const synthesiser = createSynthesiser(
+      config.extractor,
+      createFetcher({ timeoutMs: SYNTHESIS_TIMEOUT_MS }),
+    );
+    console.log(
+      `${SERVER_NAME}: reading items as ${extractor.generation} and compiling as ` +
+        `${synthesiser.generation} via ${extractor.url}.`,
+    );
 
     const report = await runCycle({
       db,
       fetcher,
       embedder: await usableEmbedder(db, fetcher, config.embeddings),
       extractor,
+      synthesiser,
       stopping: () => stopping,
     });
 

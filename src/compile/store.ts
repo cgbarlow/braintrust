@@ -13,6 +13,7 @@
 
 import type { Db, TransactionalDb } from '../db.js';
 import type { CoverageEvidence, SourceCoverage } from './coverage.js';
+import type { GateFacts, GateLayer, ItemCounts } from './gate.js';
 import type { MeasuredItem } from './voice.js';
 
 export type CompilablePerson = {
@@ -246,6 +247,88 @@ export async function failCompile(db: Db, compileId: string, reason: string): Pr
       where id = $1`,
     [compileId, reason],
   );
+}
+
+/**
+ * Rejected, not failed, and not deleted. The two statuses are different facts: `failed`
+ * is a Compile that could not finish, `rejected` is one that finished and was not fit to
+ * publish. The rows stay for inspection — a rejected Persona is the most useful thing
+ * anyone diagnosing the compiler could be handed.
+ */
+export async function rejectCompile(db: Db, compileId: string, reason: string): Promise<void> {
+  await db.query(
+    `update braintrust_compiles set status = 'rejected', finished_at = now(), rejected_reason = $2
+      where id = $1`,
+    [compileId, reason],
+  );
+}
+
+/**
+ * Everything the gate checks, read at gate time rather than carried down from the build.
+ *
+ * Reading it back is the point of the exercise. A gate fed the compiler's own in-memory
+ * view would confirm that the compiler agrees with itself; what is worth knowing is
+ * whether the rows a client is about to be served agree with the rows they claim to
+ * describe.
+ */
+export async function gateFacts(db: Db, personId: string, compileId: string): Promise<GateFacts> {
+  const layers = await db.query<GateLayer & { evidence: unknown }>(
+    `select layer, basis, descriptive_md, generative_md, evidence
+       from braintrust_persona_layers where compile_id = $1 order by layer`,
+    [compileId],
+  );
+
+  const items = await db.query<Record<keyof ItemCounts, string>>(
+    `select
+       count(*) filter (where i.retrieval = 'retrieved')::text       as retrieved,
+       count(*) filter (where i.retrieval = 'skipped_paywall')::text as skipped_paywall,
+       count(*) filter (where i.retrieval = 'skipped_short')::text   as skipped_short,
+       count(*) filter (where i.retrieval = 'failed')::text          as failed,
+       count(*) filter (where i.retrieval = 'pending')::text         as pending
+       from braintrust_items i
+       join braintrust_sources s on s.id = i.source_id
+      where s.person_id = $1`,
+    [personId],
+  );
+
+  const positions = await db.query<{ slug: string; citations: string }>(
+    `select p.slug, count(c.id)::text as citations
+       from braintrust_positions p
+       left join braintrust_position_citations c on c.position_id = p.id
+      where p.compile_id = $1
+      group by p.id, p.slug
+      order by p.slug`,
+    [compileId],
+  );
+
+  const previous = await db.query<{ count: string }>(
+    `select count(*)::text as count
+       from braintrust_positions p
+       join braintrust_compiles c on c.id = p.compile_id
+      where c.person_id = $1 and c.status = 'current'`,
+    [personId],
+  );
+
+  const counts = items.rows[0]!;
+  return {
+    layers: layers.rows.map((row) => ({
+      layer: row.layer,
+      basis: row.basis,
+      descriptive_md: row.descriptive_md,
+      generative_md: row.generative_md,
+      evidence: row.evidence,
+    })),
+    coverage_evidence: layers.rows.find((row) => row.layer === 'coverage')?.evidence ?? null,
+    items: {
+      retrieved: Number(counts.retrieved),
+      skipped_paywall: Number(counts.skipped_paywall),
+      skipped_short: Number(counts.skipped_short),
+      failed: Number(counts.failed),
+      pending: Number(counts.pending),
+    },
+    positions: positions.rows.map((row) => ({ slug: row.slug, citations: Number(row.citations) })),
+    previous_positions: Number(previous.rows[0]!.count),
+  };
 }
 
 export type WritableLayer = {

@@ -1,0 +1,277 @@
+/**
+ * The publish gate.
+ *
+ * A rebuild deletes its predecessor and there is no archive, so the only protection
+ * against a bad Compile is refusing to publish it. Every check here is a count, a
+ * presence or a regex — **never a model** — because a check that needs an endpoint can
+ * fail the way the compiler fails, and a gate that needs a gate is not one.
+ *
+ * Failing means *not published*: rejected with a reason, rows kept, yesterday's Persona
+ * still answering.
+ */
+
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { describe, it } from 'node:test';
+
+import { checkCompile, CORE_LAYERS, POSITION_COLLAPSE_FLOOR, type GateFacts } from '../src/compile/gate.js';
+import { inferredMarker } from '../src/compile/infer.js';
+
+const ITEMS = { retrieved: 4, skipped_paywall: 1, skipped_short: 1, failed: 0, pending: 0 };
+
+function facts(overrides: Partial<GateFacts> = {}): GateFacts {
+  return {
+    layers: [
+      {
+        layer: 'voice',
+        basis: 'measured',
+        descriptive_md: 'Hedges in 4 of 4 measured items.',
+        generative_md: 'Hedge before committing.',
+        evidence: { items_measured: 4 },
+      },
+      {
+        layer: 'coverage',
+        basis: 'measured',
+        descriptive_md: 'braintrust has read 4 items.',
+        generative_md: null,
+        evidence: { ...ITEMS },
+      },
+      {
+        layer: 'reasoning',
+        basis: 'inferred',
+        descriptive_md: `${inferredMarker(4)}\n\nNames the constraint before the capability.`,
+        generative_md: null,
+        evidence: { entries: [{ label: 'Names the constraint first', items: ['a1'], items_traced: 1 }] },
+      },
+      {
+        layer: 'beliefs',
+        basis: 'inferred',
+        descriptive_md: `${inferredMarker(4)}\n\nHolds that judgement is the scarce thing.`,
+        generative_md: null,
+        evidence: { entries: [{ label: 'Judgement is scarce', items: ['a1'], items_traced: 1 }] },
+      },
+    ],
+    coverage_evidence: { ...ITEMS },
+    items: { ...ITEMS },
+    positions: [],
+    previous_positions: 0,
+    ...overrides,
+  };
+}
+
+function check(verdict: ReturnType<typeof checkCompile>, name: string) {
+  return verdict.checks.find((one) => one.check === name)!;
+}
+
+describe('a compile that earns promotion', () => {
+  it('passes every check, and there are six of them', () => {
+    const verdict = checkCompile(facts());
+
+    assert.equal(verdict.passed, true);
+    assert.equal(verdict.reason, null);
+    assert.equal(verdict.checks.length, 6);
+    assert.ok(verdict.checks.every((one) => one.passed));
+  });
+
+  it('is checked without ever reaching a model, so it cannot fail the way the compiler fails', async () => {
+    // Structural, mechanically: nothing in the gate can reach an endpoint, so it cannot
+    // fail the way the compiler fails.
+    const source = await readFile(new URL('../src/compile/gate.ts', import.meta.url), 'utf8');
+
+    assert.doesNotMatch(source, /\bfetch\(|\bSynthesiser\b|\bExtractor\b|\bEmbedder\b/);
+  });
+});
+
+describe('the four core layers', () => {
+  it('must all be there — a client loads the core whole', () => {
+    for (const missing of CORE_LAYERS) {
+      const verdict = checkCompile(
+        facts({ layers: facts().layers.filter((one) => one.layer !== missing) }),
+      );
+
+      assert.equal(verdict.passed, false);
+      assert.match(verdict.reason!, new RegExp(`${missing} missing`));
+    }
+  });
+
+  it('must list something, because an inferred layer that says it found nothing is empty', () => {
+    // The failure most likely to reach this gate in practice, and the one that taught it
+    // this shape: a synthesis that returned nothing usable does not produce a blank
+    // layer, it produces a marker and a sentence explaining itself. Prose is not the
+    // test; entries are.
+    const emptied = facts().layers.map((one) =>
+      one.layer === 'beliefs'
+        ? {
+            ...one,
+            descriptive_md: `${inferredMarker(4)}\n\nbraintrust could not synthesise anything here.`,
+            evidence: { entries: [] },
+          }
+        : one,
+    );
+
+    const verdict = checkCompile(facts({ layers: emptied }));
+
+    assert.equal(verdict.passed, false);
+    assert.match(check(verdict, 'core_layers_present').detail, /beliefs carried nothing to serve/);
+  });
+
+  it('is satisfied by a measured layer with no entries, which is not how they are shaped', () => {
+    // Voice and coverage carry counts rather than a list, so "empty" for them stays what
+    // it always was: no prose.
+    const blank = facts().layers.map((one) =>
+      one.layer === 'coverage' ? { ...one, descriptive_md: '  ' } : one,
+    );
+
+    assert.match(
+      check(checkCompile(facts({ layers: blank })), 'core_layers_present').detail,
+      /coverage carried nothing to serve/,
+    );
+  });
+});
+
+describe('voice', () => {
+  it('must carry both forms, because either alone is worse than useless', () => {
+    const verdict = checkCompile(
+      facts({
+        layers: facts().layers.map((one) =>
+          one.layer === 'voice' ? { ...one, generative_md: null } : one,
+        ),
+      }),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /missing one of its two forms/);
+  });
+});
+
+describe('the inferred marker', () => {
+  it('is required of every inferred layer, whatever the basis field says', () => {
+    const verdict = checkCompile(
+      facts({
+        layers: facts().layers.map((one) =>
+          one.layer === 'reasoning'
+            ? { ...one, descriptive_md: 'Names the constraint before the capability.' }
+            : one,
+        ),
+      }),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /reasoning is inferred and does not open with the inferred marker/);
+  });
+
+  it('is not satisfied by one buried further down the layer', () => {
+    const verdict = checkCompile(
+      facts({
+        layers: facts().layers.map((one) =>
+          one.layer === 'beliefs'
+            ? { ...one, descriptive_md: `Some prose first.\n\n${inferredMarker(4)}` }
+            : one,
+        ),
+      }),
+    );
+
+    // A client that pastes the opening paragraph into a system prompt would carry the
+    // prose and leave the label behind.
+    assert.equal(check(verdict, 'inferred_layers_marked').passed, false);
+  });
+
+  it('is not asked of a measured layer, which is labelled by having no model in its path', () => {
+    const verdict = checkCompile(
+      facts({
+        layers: facts().layers.map((one) =>
+          one.layer === 'coverage' ? { ...one, descriptive_md: 'No marker here.' } : one,
+        ),
+      }),
+    );
+
+    assert.equal(check(verdict, 'inferred_layers_marked').passed, true);
+  });
+});
+
+describe('coverage', () => {
+  it('must reconcile against the item rows, recounted at gate time', () => {
+    const verdict = checkCompile(facts({ coverage_evidence: { ...ITEMS, retrieved: 3 } }));
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /coverage says retrieved is 3, the rows say 4/);
+  });
+
+  it('names every field that disagrees, not just the first', () => {
+    const verdict = checkCompile(
+      facts({ coverage_evidence: { ...ITEMS, retrieved: 3, skipped_paywall: 9 } }),
+    );
+
+    assert.match(verdict.reason!, /retrieved is 3/);
+    assert.match(verdict.reason!, /skipped_paywall is 9/);
+  });
+
+  it('fails a coverage layer carrying no structured evidence at all', () => {
+    const verdict = checkCompile(facts({ coverage_evidence: null }));
+
+    // A persona names its own blind spots. A layer with no counts cannot.
+    assert.equal(check(verdict, 'coverage_reconciles').passed, false);
+  });
+});
+
+describe('positions', () => {
+  it('must each resolve to at least one citation', () => {
+    const verdict = checkCompile(
+      facts({
+        positions: [
+          { slug: 'speed-is-not-the-constraint', citations: 3 },
+          { slug: 'uncited', citations: 0 },
+        ],
+      }),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /1 position\(s\) resolve to no citation: uncited/);
+  });
+
+  it('may not collapse against the compile they would replace', () => {
+    const verdict = checkCompile(
+      facts({
+        positions: [{ slug: 'one', citations: 1 }],
+        previous_positions: 20,
+      }),
+    );
+
+    // The failure this catches is silent: a note generation that half-parsed produces a
+    // persona that is thinner rather than wrong, and no other check would notice.
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /positions fell from 20 to 1/);
+  });
+
+  it('may thin out without collapsing, because a quiet week is not a bug', () => {
+    const verdict = checkCompile(
+      facts({
+        positions: Array.from({ length: 10 }, (_, index) => ({ slug: `p${index}`, citations: 1 })),
+        previous_positions: 20,
+      }),
+    );
+
+    assert.equal(POSITION_COLLAPSE_FLOOR, 0.5);
+    assert.equal(verdict.passed, true);
+  });
+
+  it('passes a compile with no positions at all, which is where v1 starts', () => {
+    // Positions are #34's. The checks are written against the real tables so they hold
+    // the day positions exist, rather than being added once there is something to miss.
+    assert.equal(checkCompile(facts()).passed, true);
+  });
+});
+
+describe('the reason a rejection carries', () => {
+  it('collects every failure, because a compiler is rarely wrong in one way', () => {
+    const verdict = checkCompile(
+      facts({
+        layers: facts().layers.filter((one) => one.layer !== 'beliefs'),
+        coverage_evidence: { ...ITEMS, failed: 7 },
+      }),
+    );
+
+    assert.match(verdict.reason!, /beliefs missing/);
+    assert.match(verdict.reason!, /failed is 7/);
+  });
+});

@@ -95,6 +95,12 @@ export function buildServer({ db, tokens, fetcher }: ServerDeps): McpServer {
         'are the counts it was derived from, so you can check the instruction rather than trust ' +
         'it. `coverage` is measured too, and it is where a persona names its own blind spots: ' +
         'what was paywalled and never fetched, what failed, and what has not been read yet.\n\n' +
+        '`reasoning` and `beliefs` are inferred — synthesised across everything braintrust read, ' +
+        'because no single thing a person publishes states how they argue or what they take as ' +
+        'true. They carry that label in their own prose as well as in `basis`, so it survives ' +
+        'being pasted into a system prompt. Their `evidence` names the items each point was ' +
+        'traced to, which is a floor rather than a tally — treat it as where the point is ' +
+        'visible, not as how often it holds.\n\n' +
         'A persona braintrust has never compiled returns an error rather than being built on ' +
         'demand. Use braintrust_list_personas to see who exists and who has been compiled.',
       inputSchema: {

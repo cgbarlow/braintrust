@@ -12,7 +12,7 @@
  * See docs/design/ingestion.md §3.
  */
 
-import { compileCorpus, type CompileReport } from '../compile/index.js';
+import { compileCorpus, type CompileReport, type Synthesiser } from '../compile/index.js';
 import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
@@ -71,6 +71,12 @@ export type CycleDeps = {
    * is the one most worth being able to defer.
    */
   extractor?: Extractor | undefined;
+  /**
+   * What writes the inferred half of the Core. It shares the extractor's endpoint and
+   * reads Notes rather than Items, so it is cheap — but without it a Compile could only
+   * ever produce half a Core, which the gate would reject. Absent means no rebuild.
+   */
+  synthesiser?: Synthesiser | undefined;
   now?: (() => Date) | undefined;
   pause?: Pause | undefined;
   /**
@@ -186,16 +192,20 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   if (notes?.error) log(`braintrust: the notes are behind — ${notes.error}`);
 
   // 6. Rebuild. A Compile declares which generation of Notes it read, so without an
-  // extractor there is no honest value to put on the row and nothing is rebuilt.
-  const compile = deps.extractor
-    ? await compileCorpus({
-        db: deps.db,
-        extractor: deps.extractor.generation,
-        changed: [...changed],
-        now,
-        log,
-      })
-    : undefined;
+  // extractor there is no honest value to put on the row; without a synthesiser it could
+  // only build half a Core, which the gate would reject anyway. Either missing, and the
+  // Persona already serving is left alone.
+  const compile =
+    deps.extractor && deps.synthesiser
+      ? await compileCorpus({
+          db: deps.db,
+          extractor: deps.extractor.generation,
+          synthesiser: deps.synthesiser,
+          changed: [...changed],
+          now,
+          log,
+        })
+      : undefined;
 
   const report: CycleReport = {
     started: started.toISOString(),
@@ -519,7 +529,9 @@ export function summarise(report: CycleReport): string {
   const compile = report.compile;
   const idleIndex = index.items_chunked === 0 && index.chunks_embedded === 0 && !index.error;
   const idleNotes = !notes || (notes.items_read === 0 && notes.items_failed === 0 && !notes.error);
-  const idleCompile = !compile || (compile.compiled.length === 0 && compile.failed.length === 0);
+  const idleCompile =
+    !compile ||
+    (compile.compiled.length === 0 && compile.failed.length === 0 && compile.rejected.length === 0);
   if (report.sources.length === 0 && idleIndex && idleNotes && idleCompile) {
     return 'braintrust: nothing was due.';
   }
@@ -557,7 +569,13 @@ export function summarise(report: CycleReport): string {
     lines.push(`  notes: ${read.join(', ')}`);
   }
 
-  if (compile && (compile.compiled.length > 0 || compile.failed.length > 0 || compile.waiting.length > 0)) {
+  if (
+    compile &&
+    (compile.compiled.length > 0 ||
+      compile.failed.length > 0 ||
+      compile.rejected.length > 0 ||
+      compile.waiting.length > 0)
+  ) {
     const built = [
       compile.compiled.length > 0
         ? `rebuilt ${compile.compiled.join(', ')} as ${compile.compiler_version}`
@@ -565,6 +583,12 @@ export function summarise(report: CycleReport): string {
     ];
     if (compile.waiting.length > 0) {
       built.push(`${compile.waiting.length} waiting (${compile.waiting[0]!.reason})`);
+    }
+    if (compile.rejected.length > 0) {
+      built.push(
+        `${compile.rejected.length} rejected by the gate, not published: ` +
+          compile.rejected.map((one) => one.person).join(', '),
+      );
     }
     if (compile.failed.length > 0) {
       built.push(`${compile.failed.length} failed: ${compile.failed.map((one) => one.person).join(', ')}`);
