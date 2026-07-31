@@ -128,15 +128,43 @@ describe('the MCP surface', () => {
 
     assert.deepEqual(
       tools.map((tool) => tool.name).sort(),
-      ['braintrust_follow_person', 'braintrust_list_personas'],
+      ['braintrust_follow_person', 'braintrust_list_personas', 'braintrust_load_persona'],
     );
 
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
     assert.equal(byName.get('braintrust_list_personas')!.annotations?.readOnlyHint, true);
+    assert.equal(byName.get('braintrust_load_persona')!.annotations?.readOnlyHint, true);
     // A write tool, so it lands in the client's approval surface rather than running quietly.
     assert.equal(byName.get('braintrust_follow_person')!.annotations?.readOnlyHint, false);
     // OB1 reserves `search` and `fetch`; every braintrust tool is prefixed.
     assert.ok(tools.every((tool) => tool.name.startsWith('braintrust_')));
+    await client.close();
+  });
+
+  it('refuses braintrust_load_persona for someone braintrust does not follow, readably', async () => {
+    const client = await connect();
+    const result = await client.callTool({ name: 'braintrust_load_persona', arguments: { person: 'nobody' } });
+
+    // A refusal is a normal answer rather than a protocol fault: it comes back as tool
+    // content the calling model can read and act on, flagged as an error.
+    assert.equal(result.isError, true);
+    const content = result.content as { type: string; text: string }[];
+    assert.match(content[0]!.text, /does not follow anyone called "nobody"/);
+    assert.match(content[0]!.text, /braintrust_list_personas/);
+    await client.close();
+  });
+
+  it('tells a client loading a persona which layers it can check and which it cannot', async () => {
+    const client = await connect();
+    const { tools } = await client.listTools();
+    const description = tools.find((tool) => tool.name === 'braintrust_load_persona')!.description!;
+
+    assert.match(description, /measured or inferred/);
+    assert.match(description, /no model in the path/);
+    // The client acts on `generative`; `descriptive` and `evidence` are what make the
+    // instruction checkable rather than merely followed.
+    assert.match(description, /`generative` is the instruction to follow/);
+    assert.match(description, /never compiled/i);
     await client.close();
   });
 

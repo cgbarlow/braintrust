@@ -85,6 +85,71 @@ describe('the run summary', () => {
     assert.equal(summary, 'braintrust: nothing was due.');
   });
 
+  it('names the personas it rebuilt, and the version that built them', () => {
+    const summary = summarise(
+      report({
+        compile: {
+          compiler_version: '0.1.0+measured-1',
+          compiled: ['nate-b-jones'],
+          waiting: [],
+          failed: [],
+        },
+      }),
+    );
+
+    assert.match(summary, /compile: rebuilt nate-b-jones as 0\.1\.0\+measured-1/);
+  });
+
+  it('says why a persona was not rebuilt, because nothing retries it later in the run', () => {
+    const summary = summarise(
+      report({
+        index: { items_chunked: 3, chunks_written: 40, chunks_embedded: 0, stopped_early: false },
+        compile: {
+          compiler_version: '0.1.0+measured-1',
+          compiled: [],
+          waiting: [{ person: 'nate-b-jones', reason: '3 item(s) still owed' }],
+          failed: [],
+        },
+      }),
+    );
+
+    // A rebuild waits for an empty backlog, so "nothing rebuilt" on a day with new
+    // content is a normal outcome and an unexplained one is not.
+    assert.match(summary, /compile: nothing rebuilt, 1 waiting \(3 item\(s\) still owed\)/);
+  });
+
+  it('says nothing was due when the only compile outcome was waiting', () => {
+    const summary = summarise(
+      report({
+        compile: {
+          compiler_version: '0.1.0+measured-1',
+          compiled: [],
+          waiting: [{ person: 'nate-b-jones', reason: 'nothing has been retrieved yet' }],
+          failed: [],
+        },
+      }),
+    );
+
+    assert.equal(summary, 'braintrust: nothing was due.');
+  });
+
+  it('reports a compile that failed, rather than a run that did nothing', () => {
+    const summary = summarise(
+      report({
+        compile: {
+          compiler_version: '0.1.0+measured-1',
+          compiled: [],
+          waiting: [],
+          failed: [{ person: 'nate-b-jones', reason: 'the database went away' }],
+        },
+      }),
+    );
+
+    // The previous persona is still serving, which is exactly why a failure here would
+    // otherwise be invisible.
+    assert.match(summary, /1 failed: nate-b-jones/);
+  });
+
   it('reports an index that could not finish, rather than a clean run', () => {
     const summary = summarise(
       report({ index: { ...report().index, error: 'braintrust could not reach the embeddings endpoint' } }),

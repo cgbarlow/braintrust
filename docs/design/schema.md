@@ -359,19 +359,27 @@ counts — written into the coverage layer's `evidence` at compile time.
 ## Rebuilding
 
 ```
+insert into braintrust_compiles (person_id, status) values ($1, 'running') returning id;   -- committed
+-- write layers, positions, citations, relations against that compile_id
+-- run the gate against $new; on failure, set status = 'rejected' with a reason and stop here
+
 begin;
-  insert into braintrust_compiles (person_id, status) values ($1, 'running') returning id;
-  -- write layers, positions, citations, relations against that compile_id
-  -- run the gate against $new; on failure, set status = 'rejected' with a reason and commit here
   delete from braintrust_compiles where person_id = $1 and status = 'current';
-  update braintrust_compiles set status = 'current', finished_at = now() where id = $new;
+  update braintrust_compiles set status = 'current', finished_at = now()
+    where id = $new and status = 'running';   -- no row here means it was taken over; roll back
 commit;
 ```
 
+**The `running` row is committed on its own, and only the promotion is a transaction.** One transaction around
+the whole compile would hold a connection open across minutes of model calls, and would make the `running`
+partial unique index invisible to everyone else — which is the one thing it exists for. A `running` compile
+older than six hours has no process behind it and is recorded as `failed` by the next run, so a crash costs a
+day rather than a persona.
+
 Four properties worth naming:
 
-- **A failed compile changes nothing.** The old current compile is only deleted once the new one is
-  written, inside one transaction.
+- **A failed compile changes nothing.** The old current compile is only deleted inside the transaction that
+  promotes its replacement, so there is no instant where a client can observe neither.
 - **A compile must pass the gate to be promoted.** Structural checks only — all four core layers present
   and non-empty, voice carrying both forms, inferred layers carrying their marker, coverage reconciling
   against `braintrust_items`, every position resolving to a real citation, and position count not

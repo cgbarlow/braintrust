@@ -12,6 +12,7 @@
  * See docs/design/ingestion.md §3.
  */
 
+import { compileCorpus, type CompileReport } from '../compile/index.js';
 import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
@@ -113,6 +114,8 @@ export type CycleReport = {
   index: IndexReport;
   /** The read-once pass. Absent when no extractor was configured for the run. */
   notes?: ReadReport;
+  /** The rebuild. Absent when no extractor was configured, because a Compile declares a generation. */
+  compile?: CompileReport;
 };
 
 export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
@@ -182,6 +185,18 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   }
   if (notes?.error) log(`braintrust: the notes are behind — ${notes.error}`);
 
+  // 6. Rebuild. A Compile declares which generation of Notes it read, so without an
+  // extractor there is no honest value to put on the row and nothing is rebuilt.
+  const compile = deps.extractor
+    ? await compileCorpus({
+        db: deps.db,
+        extractor: deps.extractor.generation,
+        changed: [...changed],
+        now,
+        log,
+      })
+    : undefined;
+
   const report: CycleReport = {
     started: started.toISOString(),
     finished: now().toISOString(),
@@ -193,16 +208,14 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     corpus: await corpusCounts(deps.db),
     index,
     ...(notes ? { notes } : {}),
+    ...(compile ? { compile } : {}),
   };
 
-  // The rebuild is the fourth step of the cycle and it does not exist yet. Saying so is
-  // better than a no-op that reads like success: new content triggers a rebuild, so
-  // these people have work waiting rather than nothing to do.
-  if (report.rebuild_pending.length > 0) {
-    log(
-      `braintrust: ${report.rebuild_pending.join(', ')} ha${report.rebuild_pending.length === 1 ? 's' : 've'} ` +
-        'new content. The compile step is #32–#33; nothing is rebuilt yet.',
-    );
+  // A Person whose Corpus changed and who was not rebuilt has a reason, and it is worth
+  // a line: nothing here retries later in the run, so the reason is what the next run
+  // acts on.
+  for (const waiting of compile?.waiting ?? []) {
+    log(`braintrust: ${waiting.person} was not rebuilt — ${waiting.reason}.`);
   }
 
   return report;
@@ -503,9 +516,13 @@ async function allSourceCount(db: Db): Promise<number> {
 export function summarise(report: CycleReport): string {
   const index = report.index;
   const notes = report.notes;
+  const compile = report.compile;
   const idleIndex = index.items_chunked === 0 && index.chunks_embedded === 0 && !index.error;
   const idleNotes = !notes || (notes.items_read === 0 && notes.items_failed === 0 && !notes.error);
-  if (report.sources.length === 0 && idleIndex && idleNotes) return 'braintrust: nothing was due.';
+  const idleCompile = !compile || (compile.compiled.length === 0 && compile.failed.length === 0);
+  if (report.sources.length === 0 && idleIndex && idleNotes && idleCompile) {
+    return 'braintrust: nothing was due.';
+  }
 
   // A run where no Source was due can still have real work to report: an endpoint that
   // was switched off yesterday leaves chunks waiting, and "nothing was due" would be a
@@ -538,6 +555,21 @@ export function summarise(report: CycleReport): string {
     if (notes.items_failed > 0) read.push(`${notes.items_failed} failed`);
     if (notes.error) read.push(`error: ${notes.error}`);
     lines.push(`  notes: ${read.join(', ')}`);
+  }
+
+  if (compile && (compile.compiled.length > 0 || compile.failed.length > 0 || compile.waiting.length > 0)) {
+    const built = [
+      compile.compiled.length > 0
+        ? `rebuilt ${compile.compiled.join(', ')} as ${compile.compiler_version}`
+        : 'nothing rebuilt',
+    ];
+    if (compile.waiting.length > 0) {
+      built.push(`${compile.waiting.length} waiting (${compile.waiting[0]!.reason})`);
+    }
+    if (compile.failed.length > 0) {
+      built.push(`${compile.failed.length} failed: ${compile.failed.map((one) => one.person).join(', ')}`);
+    }
+    lines.push(`  compile: ${built.join(', ')}`);
   }
 
   if (report.stopped_early) lines.push('  stopped early; the next run continues from these rows');
