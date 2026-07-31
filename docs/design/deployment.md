@@ -111,6 +111,23 @@ different** model fails not at all — and cosine similarity across model famili
 dimensions match, so every search would return confidently-ranked nonsense. **Refusing to serve is the only
 honest response**, and it is what makes swapping models safe rather than merely reversible.
 
+Three things the build settled about how those refusals land:
+
+- **Check 2 has three states, not two.** Vectors under *other* models is a model swapped without a re-embed —
+  the silent failure. **No vectors at all is simply a new database**, and saying "nothing has been embedded
+  yet; the job embeds as it ingests" is more useful than reporting a corruption that has not happened. Both
+  withhold retrieval; they say different things.
+- **It is asked per request, not once at boot.** Both unready states are ended by the daily job in the *other*
+  deployment, so caching a refusal would turn "wait for the first run" into "wait for the first run, then
+  notice, then restart". Readiness is cached once true, because `model` is in the primary key and vectors are
+  never removed by another model's arriving. `/healthz` reports it, so the state is visible without opening an
+  AI client.
+- **In the job, failing check 1 stops the embedding and not the ingest.** Items and bodies are tier 1:
+  expensive to reacquire, and the whole terms posture exists to avoid asking a source twice. An embeddings
+  endpoint that is switched off is not a reason to stop collecting them. The run does everything except the
+  one step it cannot do honestly. In the web service the same failure is fatal, because a server that cannot
+  embed a question has nothing to serve.
+
 ## 4. Auth is OB1's, copied rather than reinvented
 
 **A shared secret, `?key=` in the URL, exactly as OB1's extension servers do it.** OAuth was rejected — there
