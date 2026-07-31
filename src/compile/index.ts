@@ -80,8 +80,11 @@ export type CompileDeps = {
    * tool. A Persona that says less is honest; one that guesses at supersession is not.
    */
   embedder?: Embedder | undefined;
-  /** Slugs whose Corpus changed on this run. New content triggers a rebuild; the clock does not. */
-  changed?: string[] | undefined;
+  /**
+   * One Person, by slug. Absent is the daily job: everyone with unseen content. A
+   * refresh names one, because it was asked about one.
+   */
+  person?: string | undefined;
   now?: (() => Date) | undefined;
   log?: ((line: string) => void) | undefined;
 };
@@ -100,7 +103,6 @@ export type CompileReport = {
 
 export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
   const log = deps.log ?? ((line: string) => console.log(line));
-  const changed = new Set(deps.changed ?? []);
   const report: CompileReport = {
     compiler_version: COMPILER_VERSION,
     compiled: [],
@@ -109,11 +111,11 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
     rejected: [],
   };
 
-  for (const person of await compilablePeople(deps.db)) {
-    // New content triggers the rebuild, not the clock — with one addition the clock does
-    // not cover: a Person who has never been compiled has work waiting whether or not
-    // today brought news, and would otherwise stay `compiled: false` forever.
-    if (!changed.has(person.slug) && person.compiled_at !== null) continue;
+  for (const person of await compilablePeople(deps.db, deps.person)) {
+    // New content triggers the rebuild, not the clock. Rebuilding a Persona from a
+    // Corpus it has already read costs real money to produce the same answer, so the
+    // question is what this Persona has not seen — never what happened today.
+    if (!person.has_unseen) continue;
 
     const outcome = await compilePerson({ ...deps, log }, person);
     if (outcome.kind === 'compiled') {

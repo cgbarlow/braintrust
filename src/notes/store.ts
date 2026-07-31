@@ -30,19 +30,26 @@ export type ReadableItem = {
  * Items owed a Note under this generation. Newest first, so a first read that is
  * interrupted has covered the most recent half of someone's work.
  */
-export async function unreadItems(db: Db, extractor: string, limit: number): Promise<ReadableItem[]> {
+export async function unreadItems(
+  db: Db,
+  extractor: string,
+  limit: number,
+  person?: string | undefined,
+): Promise<ReadableItem[]> {
   const { rows } = await db.query<ReadableItem>(
     `select i.id, i.external_id, i.title, i.body_text
        from braintrust_items i
+       join braintrust_sources s on s.id = i.source_id
       where i.retrieval = 'retrieved'
         and i.body_text is not null
+        and ($3::uuid is null or s.person_id = $3)
         and exists (select 1 from braintrust_chunks c where c.item_id = i.id)
         and not exists (
           select 1 from braintrust_item_notes n where n.item_id = i.id and n.extractor = $1
         )
       order by i.published_at desc nulls last, i.external_id
       limit $2`,
-    [extractor, limit],
+    [extractor, limit, person ?? null],
   );
   return rows;
 }

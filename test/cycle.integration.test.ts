@@ -442,7 +442,11 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     const captions = () => fetcher.requests.filter((request) => request.includes('/api/timedtext')).length;
     const first = await run({ fetcher, stopping: () => captions() >= 5 });
 
-    assert.equal(first.report.stopped_early, false, 'the run finished; retrieval is what stopped');
+    // The stop landed inside the last source rather than between two of them, which is
+    // where it lands nearly every time. The run still says it stopped: whoever reads
+    // this decides whether to run again, and "finished" would be the wrong word for a
+    // run that left items pending.
+    assert.equal(first.report.stopped_early, true);
     const partway = await items("s.platform = 'youtube'");
     assert.equal(partway.filter((row) => row.retrieval === 'retrieved').length, 5);
     assert.ok(partway.filter((row) => row.retrieval === 'pending').length > 0);

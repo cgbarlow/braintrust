@@ -23,20 +23,55 @@ export type CompilablePerson = {
   display_name: string;
   /** Null when this Person has never been compiled. New content is not the only trigger. */
   compiled_at: string | null;
+  /** Whether anything the compiler reads is newer than the Persona currently answering. */
+  has_unseen: boolean;
 };
 
 /**
  * Everyone the compiler may build. A paused Person is excluded here rather than skipped
  * later: unfollowing means the Persona freezes at its last Compile, so rebuilding one
  * would quietly undo the user's own decision.
+ *
+ * **`has_unseen` is what makes new content the trigger rather than the clock**, and it
+ * is a fact in the rows rather than a tally the run carries. That distinction is the
+ * whole point. A run that discovers nothing can still be the run that finishes work:
+ * yesterday's run was killed with a backlog, or the extractor was down and the Notes
+ * were only written this morning. Asking "did anything happen *today*" would leave that
+ * Persona stale until the person next published — the rebuild waiting on news that has
+ * nothing to do with what it is waiting for.
+ *
+ * Three ways to be unseen, and between them they cover everything a Compile reads:
+ *
+ * - never compiled at all;
+ * - an Item created or retrieved since. A status change needs no timestamp of its own,
+ *   because a Compile only happens with an empty Backlog — so an Item that was pending
+ *   at any point after the last one must have been created after it too;
+ * - a Note written since, which is the case a fetch count cannot see.
  */
-export async function compilablePeople(db: Db): Promise<CompilablePerson[]> {
+export async function compilablePeople(db: Db, person?: string | undefined): Promise<CompilablePerson[]> {
   const { rows } = await db.query<CompilablePerson>(
-    `select p.id, p.slug, p.display_name, c.finished_at::text as compiled_at
+    `select p.id, p.slug, p.display_name, c.finished_at::text as compiled_at,
+            (
+              c.finished_at is null
+              or exists (
+                select 1 from braintrust_items i
+                  join braintrust_sources s on s.id = i.source_id
+                 where s.person_id = p.id
+                   and (i.created_at > c.finished_at or i.retrieved_at > c.finished_at)
+              )
+              or exists (
+                select 1 from braintrust_item_notes n
+                  join braintrust_items i on i.id = n.item_id
+                  join braintrust_sources s on s.id = i.source_id
+                 where s.person_id = p.id and n.created_at > c.finished_at
+              )
+            ) as has_unseen
        from braintrust_people p
        left join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
       where p.paused_at is null
+        and ($1::text is null or p.slug = $1)
       order by p.slug`,
+    [person ?? null],
   );
   return rows;
 }
@@ -193,12 +228,16 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
 export type RunningCompile = { id: string; started_at: string };
 
 export async function runningCompile(db: Db, personId: string): Promise<RunningCompile | undefined> {
-  const { rows } = await db.query<RunningCompile>(
-    `select id, started_at::text as started_at
+  const { rows } = await db.query<{ id: string; started_at: Date }>(
+    `select id, started_at
        from braintrust_compiles where person_id = $1 and status = 'running'`,
     [personId],
   );
-  return rows[0];
+
+  const row = rows[0];
+  // ISO 8601: this is the time `braintrust_refresh_persona` hands a client when it
+  // refuses, so it is part of the surface rather than an internal detail.
+  return row ? { id: row.id, started_at: row.started_at.toISOString() } : undefined;
 }
 
 /**

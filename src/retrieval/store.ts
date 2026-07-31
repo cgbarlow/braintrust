@@ -33,17 +33,28 @@ export type UnchunkedItem = {
 /**
  * Retrieved Items with no Chunks. Newest first, so an interrupted first index has
  * covered the most recent half of someone's work rather than an arbitrary half.
+ *
+ * `person` narrows it to one Person's Items. The daily job passes nothing and indexes
+ * the whole Corpus; `braintrust_refresh_persona` names a Person, because a call about
+ * one member of a braintrust should not spend its minutes — or the operator's tokens —
+ * draining somebody else's backlog.
  */
-export async function unchunkedItems(db: Db, limit: number): Promise<UnchunkedItem[]> {
+export async function unchunkedItems(
+  db: Db,
+  limit: number,
+  person?: string | undefined,
+): Promise<UnchunkedItem[]> {
   const { rows } = await db.query<UnchunkedItem>(
     `select i.id, i.external_id, i.body_text, i.body_raw
        from braintrust_items i
+       join braintrust_sources s on s.id = i.source_id
       where i.retrieval = 'retrieved'
         and i.body_text is not null
+        and ($2::uuid is null or s.person_id = $2)
         and not exists (select 1 from braintrust_chunks c where c.item_id = i.id)
       order by i.published_at desc nulls last, i.external_id
       limit $1`,
-    [limit],
+    [limit, person ?? null],
   );
   return rows;
 }
@@ -78,16 +89,24 @@ export async function writeChunks(db: TransactionalDb, itemId: string, chunks: C
 export type UnembeddedChunk = { id: string; text: string };
 
 /** Chunks with no vector under this model. The second half of the Backlog query. */
-export async function unembeddedChunks(db: Db, model: string, limit: number): Promise<UnembeddedChunk[]> {
+export async function unembeddedChunks(
+  db: Db,
+  model: string,
+  limit: number,
+  person?: string | undefined,
+): Promise<UnembeddedChunk[]> {
   const { rows } = await db.query<UnembeddedChunk>(
     `select c.id, c.text
        from braintrust_chunks c
-      where not exists (
-        select 1 from braintrust_embeddings e where e.chunk_id = c.id and e.model = $1
-      )
+       join braintrust_items i on i.id = c.item_id
+       join braintrust_sources s on s.id = i.source_id
+      where ($3::uuid is null or s.person_id = $3)
+        and not exists (
+          select 1 from braintrust_embeddings e where e.chunk_id = c.id and e.model = $1
+        )
       order by c.item_id, c.ordinal
       limit $2`,
-    [model, limit],
+    [model, limit, person ?? null],
   );
   return rows;
 }

@@ -135,6 +135,8 @@ export type IndexDeps = {
   db: TransactionalDb;
   /** Absent means chunk only. Chunking is local and free; embedding needs the endpoint. */
   embedder?: Embedder | undefined;
+  /** One Person's Items, by id. Absent is the daily job: the whole Corpus. */
+  person?: string | undefined;
   stopping?: (() => boolean) | undefined;
   log?: ((line: string) => void) | undefined;
 };
@@ -168,8 +170,8 @@ export async function indexCorpus(deps: IndexDeps): Promise<IndexReport> {
   };
 
   try {
-    await chunkPass(deps.db, report, stopping, log);
-    if (deps.embedder) await embedPass(deps.db, deps.embedder, report, stopping);
+    await chunkPass(deps.db, deps.person, report, stopping, log);
+    if (deps.embedder) await embedPass(deps.db, deps.embedder, deps.person, report, stopping);
     else if (report.chunks_written > 0) {
       log('braintrust: no embeddings endpoint for this run, so the new chunks are unembedded.');
     }
@@ -185,6 +187,7 @@ export async function indexCorpus(deps: IndexDeps): Promise<IndexReport> {
 
 async function chunkPass(
   db: TransactionalDb,
+  person: string | undefined,
   report: IndexReport,
   stopping: () => boolean,
   log: (line: string) => void,
@@ -194,7 +197,7 @@ async function chunkPass(
   const attempted = new Set<string>();
 
   while (!stopping()) {
-    const items = (await unchunkedItems(db, CHUNK_PAGE)).filter((item) => !attempted.has(item.id));
+    const items = (await unchunkedItems(db, CHUNK_PAGE, person)).filter((item) => !attempted.has(item.id));
     if (items.length === 0) return;
 
     for (const item of items) {
@@ -219,11 +222,12 @@ async function chunkPass(
 async function embedPass(
   db: Db,
   embedder: Embedder,
+  person: string | undefined,
   report: IndexReport,
   stopping: () => boolean,
 ): Promise<void> {
   while (!stopping()) {
-    const batch = await unembeddedChunks(db, embedder.model, EMBED_BATCH);
+    const batch = await unembeddedChunks(db, embedder.model, EMBED_BATCH, person);
     if (batch.length === 0) return;
 
     const vectors = await embedder.embed(batch.map((chunk) => chunk.text));

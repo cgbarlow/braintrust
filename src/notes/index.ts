@@ -26,6 +26,12 @@ const READ_PAGE = 10;
 export type ReadDeps = {
   db: Db;
   extractor: Extractor;
+  /**
+   * One Person's Items, by id. Absent is the daily job: everything unread. This is the
+   * expensive pass, so a refresh naming one Person spends the operator's money on that
+   * Person and nobody else.
+   */
+  person?: string | undefined;
   stopping?: (() => boolean) | undefined;
   log?: ((line: string) => void) | undefined;
 };
@@ -62,9 +68,9 @@ export async function readCorpus(deps: ReadDeps): Promise<ReadReport> {
 
   try {
     while (!stopping()) {
-      const items = (await unreadItems(deps.db, deps.extractor.generation, READ_PAGE)).filter(
-        (item) => !attempted.has(item.id),
-      );
+      const items = (
+        await unreadItems(deps.db, deps.extractor.generation, READ_PAGE, deps.person)
+      ).filter((item) => !attempted.has(item.id));
       if (items.length === 0) break;
 
       for (const item of items) {

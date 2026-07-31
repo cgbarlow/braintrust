@@ -11,11 +11,15 @@ import { z } from 'zod';
 import type { TransactionalDb } from './db.js';
 import { DISCLOSURE } from './disclosure.js';
 import { BraintrustError } from './errors.js';
+import type { Synthesiser } from './compile/index.js';
 import { findPositions, MAX_LIMIT, type FindArgs } from './find.js';
 import { followPerson, type FollowArgs } from './follow/index.js';
 import type { ConfirmTokenStore } from './follow/tokens.js';
+import { unfollowPerson, type UnfollowArgs } from './follow/unfollow.js';
 import type { Fetcher } from './net/fetch.js';
+import type { Extractor } from './notes/index.js';
 import { listPersonas, loadPersona } from './personas.js';
+import { refreshPersona, type RefreshArgs } from './refresh.js';
 import type { Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
 import { VERSION } from './version.js';
@@ -36,6 +40,14 @@ export type ServerDeps = {
    */
   embedder?: Embedder | undefined;
   retrieval?: QueryGate | undefined;
+  /**
+   * What a refresh needs to finish the job it starts: something to read new items with
+   * and something to rebuild from the notes. Both together or neither — a refresh that
+   * could fetch but never recompile would report success while the persona stayed
+   * exactly as stale as it was, which is worse than a tool the client cannot see.
+   */
+  extractor?: Extractor | undefined;
+  synthesiser?: Synthesiser | undefined;
 };
 
 /**
@@ -78,7 +90,15 @@ const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'A date as YYYY-MM-DD, e.g. "2026-01-01".');
 
-export function buildServer({ db, tokens, fetcher, embedder, retrieval }: ServerDeps): McpServer {
+export function buildServer({
+  db,
+  tokens,
+  fetcher,
+  embedder,
+  retrieval,
+  extractor,
+  synthesiser,
+}: ServerDeps): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: DISCLOSURE },
@@ -269,6 +289,111 @@ export function buildServer({ db, tokens, fetcher, embedder, retrieval }: Server
         return failure(
           'braintrust_follow_person failed for a reason braintrust did not expect. Nothing was ' +
             'ingested. The server log has the detail.',
+        );
+      }
+    },
+  );
+
+  if (extractor && synthesiser) {
+    server.registerTool(
+      'braintrust_refresh_persona',
+      {
+        title: 'Refresh a persona now',
+        description:
+          'Pull whatever this person has published since braintrust last looked, and rebuild ' +
+          'their persona from it. The same cycle the daily job runs, aimed at one person.\n\n' +
+          '**Call this freely.** No human needs to approve it: the decision that mattered — ' +
+          'following this person — was already made by one, nothing new is introduced, and a ' +
+          'persona that keeps up with what someone is publishing is the entire point of ' +
+          'braintrust over a written-once prompt. Reach for it when an answer needs to reflect ' +
+          'something recent, or when braintrust_list_personas shows a compile date older than ' +
+          'the question deserves.\n\n' +
+          '**New content is what triggers a rebuild, not the asking.** If nothing has arrived ' +
+          'that the persona has not already read, `rebuilt` comes back false with `not_rebuilt` ' +
+          'saying so, and that is a normal answer rather than a failure — the persona already ' +
+          'reflects everything braintrust holds.\n\n' +
+          'Fetching is time-boxed, because a first backfill is around half an hour of polite ' +
+          '4-second spacing and this is one request. A call that runs out returns what it did ' +
+          'and how much is `still_owed`; nothing is wasted, and the daily job continues from ' +
+          'the same rows.\n\n' +
+          'It has a second answer — **`already_running`, with the time that rebuild started** — ' +
+          'because one rebuild per person at a time is enforced by the database. That is why ' +
+          'calling this is safe: two clients seconds apart cannot produce two rebuilds.\n\n' +
+          'A paused person is refused. Refreshing them would start downloading their work ' +
+          'again, and that decision belongs to the handshake in braintrust_follow_person.',
+        inputSchema: {
+          person: z
+            .string()
+            .min(1)
+            .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+      async (args: RefreshArgs) => {
+        try {
+          return text(await refreshPersona(args, { db, fetcher, extractor, synthesiser, embedder }));
+        } catch (error) {
+          if (error instanceof BraintrustError) return failure(error.message);
+          console.error('braintrust: braintrust_refresh_persona failed', error);
+          return failure(
+            'braintrust_refresh_persona failed for a reason braintrust did not expect. Whatever ' +
+              'it had already written is kept and the previous persona is still answering. The ' +
+              'server log has the detail.',
+          );
+        }
+      },
+    );
+  }
+
+  server.registerTool(
+    'braintrust_unfollow_person',
+    {
+      title: 'Stop following a person (nothing is deleted)',
+      description:
+        'Stop the daily updates for someone. **This is not a takedown and it deletes nothing.**\n\n' +
+        'One timestamp is set. The daily job skips them from its next run, so no more of their ' +
+        'work is fetched and no more money is spent on them. Everything braintrust already ' +
+        'holds stays: their items, the text, the notes, and the compiled persona, which keeps ' +
+        'answering braintrust_load_persona and braintrust_find_positions frozen at its last ' +
+        'compile. braintrust_list_personas shows the pause, so nobody reads a stale answer ' +
+        'thinking it is current.\n\n' +
+        'Fully reversible: following them again clears the pause. That does go through the ' +
+        'full two-call handshake with a human, because resuming means fetching their work ' +
+        'again — which is the thing the handshake is for.\n\n' +
+        'Use it when the person you are working for says they want to stop following someone. ' +
+        'If what they actually want is their material removed, this is not that tool, and ' +
+        'braintrust has no tool that is.',
+      inputSchema: {
+        person: z
+          .string()
+          .min(1)
+          .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+      },
+      annotations: {
+        readOnlyHint: false,
+        // Nothing is removed and the act is undone by following again — the flag that
+        // would put this in a client's "are you sure" category is the flag that would
+        // make it read as a delete.
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (args: UnfollowArgs) => {
+      try {
+        return text(await unfollowPerson(args, { db }));
+      } catch (error) {
+        if (error instanceof BraintrustError) return failure(error.message);
+        console.error('braintrust: braintrust_unfollow_person failed', error);
+        return failure(
+          'braintrust_unfollow_person failed for a reason braintrust did not expect. Nothing was ' +
+            'deleted — this tool never deletes — and the daily job may still be following them. ' +
+            'The server log has the detail.',
         );
       }
     },

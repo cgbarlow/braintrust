@@ -59,6 +59,52 @@ type Row = {
   corpus_stats: Record<string, unknown> | null;
 };
 
+/** One Person and the state of their Persona: enough for a write tool to answer with. */
+export type PersonRecord = {
+  id: string;
+  slug: string;
+  display_name: string;
+  paused_at: string | null;
+  compiled_at: string | null;
+  compiler_version: string | null;
+};
+
+/**
+ * Looks a Person up by the slug every tool takes.
+ *
+ * Deliberately not an error when they are paused — refresh and unfollow both have
+ * something to say about a paused Person, and each says its own thing.
+ */
+export async function personBySlug(db: Db, slug: string): Promise<PersonRecord | undefined> {
+  const { rows } = await db.query<{
+    id: string;
+    slug: string;
+    display_name: string;
+    paused_at: Date | null;
+    compiled_at: Date | null;
+    compiler_version: string | null;
+  }>(
+    `select p.id, p.slug, p.display_name, p.paused_at,
+            c.finished_at      as compiled_at,
+            c.compiler_version as compiler_version
+       from braintrust_people p
+       left join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
+      where p.slug = $1`,
+    [slug],
+  );
+
+  const row = rows[0];
+  if (!row) return undefined;
+
+  // ISO 8601, like every other date this surface returns. Postgres's own text form
+  // reads as a different kind of value to a client comparing two answers.
+  return {
+    ...row,
+    paused_at: row.paused_at?.toISOString() ?? null,
+    compiled_at: row.compiled_at?.toISOString() ?? null,
+  };
+}
+
 export async function listPersonas(db: Db): Promise<{ personas: PersonaListing[] }> {
   const { rows } = await db.query<Row>(LIST_SQL);
   return { personas: rows.map(toListing) };
