@@ -15,7 +15,12 @@
 import type { Db } from '../db.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
-import { RETRIEVAL_SPACING_MS, type Audience, type Platform } from '../sources/types.js';
+import {
+  RETRIEVAL_SPACING_MS,
+  SHORT_MAX_SECONDS,
+  type Audience,
+  type Platform,
+} from '../sources/types.js';
 import { feedSkippedAhead, newestPublished, readFeed } from './feed.js';
 import {
   activeSources,
@@ -25,9 +30,12 @@ import {
   insertDiscovered,
   markFailed,
   markSkippedPaywall,
+  markSkippedShort,
   pendingItems,
   recordCatalogued,
   recordPoll,
+  recordPublished,
+  reopenShorts,
   storeBody,
   type CorpusCounts,
   type PendingItem,
@@ -35,6 +43,7 @@ import {
 } from './items.js';
 import { fetchPolitely, sleep, type Pause } from './pace.js';
 import { PaywallChanged, retrieveSubstackPost, walkArchive } from './substack.js';
+import { NoCaptions, retrieveYoutubeCaptions, videoMetadata, walkChannel } from './youtube.js';
 
 /**
  * What discovery can say about a new Item's audience before anything else runs.
@@ -67,11 +76,14 @@ export type SourceReport = {
   catalogued: number;
   retrieved: number;
   skipped_paywall: number;
+  skipped_short: number;
   failed: number;
   backfill_complete: boolean;
   gap_detected: boolean;
-  /** Set when braintrust cannot do this platform's expensive half yet. */
-  awaiting?: string;
+  /** Items whose date the feed never carried and a per-item fetch supplied. */
+  dated: number;
+  /** Set when an operator turned `exclude_shorts` off and past skips came back. */
+  reopened_shorts?: number;
   error?: string;
 };
 
@@ -86,10 +98,6 @@ export type CycleReport = {
   stopped_early: boolean;
   corpus: CorpusCounts;
 };
-
-/** YouTube's expensive half — captions at 4s spacing — is issue #29. */
-const YOUTUBE_RETRIEVAL_PENDING =
-  'YouTube bodies are not implemented yet (#29); items are discovered and left pending';
 
 export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   const now = deps.now ?? (() => new Date());
@@ -119,7 +127,9 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
 
     const report = await runSource(source, { ...deps, now, log, stopping });
     reports.push(report);
-    if (report.discovered + report.retrieved + report.skipped_paywall > 0) changed.add(source.person);
+    if (report.discovered + report.retrieved + report.skipped_paywall + report.skipped_short > 0) {
+      changed.add(source.person);
+    }
     if (report.error) log(`braintrust: ${source.platform} ${source.handle} — ${report.error}`);
   }
 
@@ -162,9 +172,11 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
     catalogued: 0,
     retrieved: 0,
     skipped_paywall: 0,
+    skipped_short: 0,
     failed: 0,
     backfill_complete: source.backfill_complete,
     gap_detected: false,
+    dated: 0,
   };
 
   try {
@@ -198,13 +210,23 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
       );
     }
 
-    // 3. Drain the Backlog: the catalogue first, so every body fetch knows its audience.
-    if (source.platform === 'substack') {
-      await catalogue({ ...source, backfill_complete: report.backfill_complete }, deps, report);
-      await retrieveBodies(source, deps, report);
-    } else {
-      report.awaiting = YOUTUBE_RETRIEVAL_PENDING;
+    // An operator who turned the Shorts rule off is owed the videos braintrust
+    // declined to read, and the rows are already there — so this is an update, not a
+    // crawl. Before the Backlog is read, so those Items are in it on this run.
+    if (!source.exclude_shorts) {
+      const reopened = await reopenShorts(deps.db, source.id);
+      if (reopened > 0) {
+        report.reopened_shorts = reopened;
+        deps.log(
+          `braintrust: exclude_shorts is off for ${source.handle}, so ${reopened} short ` +
+            'item(s) braintrust skipped are pending again.',
+        );
+      }
     }
+
+    // 3. Drain the Backlog: the catalogue first, so every body fetch knows its audience.
+    await catalogue({ ...source, backfill_complete: report.backfill_complete }, deps, report);
+    await retrieveBodies(source, deps, report);
   } catch (error) {
     // One source's bad day is not another's. The two platforms share nothing but a
     // Person and they fail in opposite directions, so stopping the run would be a
@@ -221,7 +243,11 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
  * - **Backfill** — the Source is not `backfill_complete`, so walk to the floor and take
  *   everything. Reaching the floor is what sets the flag.
  * - **Audience** — the Source is complete, but the feed just found posts whose paywall
- *   status is unknown. Walk only as far as it takes to describe them.
+ *   status is unknown. Walk only as far as it takes to describe them. Substack only:
+ *   a YouTube video's audience is never in question.
+ *
+ * The two platforms' walks return the same shape and write through the same `record`,
+ * which is why the Shorts rule and the paywall rule are applied in one place for both.
  */
 async function catalogue(source: SourceRow, deps: SourceDeps, report: SourceReport): Promise<void> {
   const walkDeps = { fetcher: deps.fetcher, ...(deps.pause ? { pause: deps.pause } : {}) };
@@ -230,10 +256,14 @@ async function catalogue(source: SourceRow, deps: SourceDeps, report: SourceRepo
     const outcome = await recordCatalogued(deps.db, source, item);
     report.catalogued += 1;
     if (outcome === 'skipped_paywall') report.skipped_paywall += 1;
+    if (outcome === 'skipped_short') report.skipped_short += 1;
   };
 
   if (!source.backfill_complete) {
-    const outcome = await walkArchive(source, walkDeps, record);
+    const outcome =
+      source.platform === 'substack'
+        ? await walkArchive(source, walkDeps, record)
+        : await walkChannel(source, { ...walkDeps, now: deps.now }, record);
     if (outcome.reachedFloor) {
       await completeBackfill(deps.db, source);
       report.backfill_complete = true;
@@ -244,6 +274,8 @@ async function catalogue(source: SourceRow, deps: SourceDeps, report: SourceRepo
     }
     return;
   }
+
+  if (source.platform !== 'substack') return;
 
   const unknown = (await pendingItems(deps.db, source.id)).filter((item) => item.audience === 'unknown');
   if (unknown.length === 0) return;
@@ -275,7 +307,16 @@ async function catalogue(source: SourceRow, deps: SourceDeps, report: SourceRepo
   }
 }
 
-/** The expensive half, at 4s spacing, newest first. */
+/**
+ * The expensive half, at 4s spacing, newest first.
+ *
+ * **The 4 seconds are between Items, not between requests.** One YouTube Item costs two
+ * or three back-to-back calls — the date, the caption list, the track — and the spacing
+ * that tested clean was measured per *video*, with yt-dlp making exactly those calls
+ * inside each one. Spacing the requests instead would turn the 26-minute backfill in
+ * `ingestion.md` §3 into 79 minutes without making braintrust any better behaved: the
+ * average is still well under one request a second.
+ */
 async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: SourceReport): Promise<void> {
   const pause = deps.pause ?? sleep;
   const pending = await pendingItems(deps.db, source.id);
@@ -285,9 +326,26 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
     if (deps.stopping()) return;
 
     // The allow-list, one last time before any request is made. `everyone` or nothing.
-    if (item.audience !== 'everyone') {
+    //
+    // The two ways of not being `everyone` are not the same fact, and recording them as
+    // one would make a Persona claim a paywall it never saw. `paid` is a source's
+    // decision braintrust is respecting; `unknown` means the catalogue never described
+    // this Item — which happens when `backfill_floor` is nearer than the feed's window,
+    // so a post appears in the feed and is older than anything the archive walk reads.
+    // That is the same unknowable-audience case `catalogue` already resolves as failed.
+    if (item.audience === 'paid') {
       await markSkippedPaywall(deps.db, item.id);
       report.skipped_paywall += 1;
+      continue;
+    }
+    if (item.audience !== 'everyone') {
+      await markFailed(deps.db, item.id);
+      report.failed += 1;
+      deps.log(
+        `braintrust: ${item.external_id} is in ${source.handle}'s feed but older than its ` +
+          'backfill floor, so its audience is unknowable. Recorded as failed rather than ' +
+          'as a paywall braintrust never saw.',
+      );
       continue;
     }
 
@@ -295,9 +353,11 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
     fetched += 1;
 
     try {
-      const body = await retrieveSubstackPost(source, item.external_id, deps);
-      await storeBody(deps.db, item.id, body);
-      report.retrieved += 1;
+      if (source.platform === 'substack') {
+        await retrieveSubstackItem(source, item, deps, report);
+      } else {
+        await retrieveYoutubeItem(source, item, deps, report);
+      }
     } catch (error) {
       if (error instanceof PaywallChanged) {
         await markSkippedPaywall(deps.db, item.id);
@@ -316,6 +376,73 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
   }
 }
 
+async function retrieveSubstackItem(
+  source: SourceRow,
+  item: PendingItem,
+  deps: SourceDeps,
+  report: SourceReport,
+): Promise<void> {
+  const body = await retrieveSubstackPost(source, item.external_id, deps);
+  await storeBody(deps.db, item.id, body);
+  report.retrieved += 1;
+}
+
+/**
+ * One video, in the order that spends the least.
+ *
+ * The date first, because an Item the channel walk found has none and ~15KB buys both
+ * the date and the duration — so a Short is recognised before the ~500KB of caption
+ * list and track is ever requested. An Item the feed already dated skips straight to
+ * the captions, and learns its duration from the same response.
+ */
+async function retrieveYoutubeItem(
+  source: SourceRow,
+  item: PendingItem,
+  deps: SourceDeps,
+  report: SourceReport,
+): Promise<void> {
+  let duration: number | undefined;
+
+  if (!item.published_at) {
+    const metadata = await videoMetadata(item.external_id, deps);
+    duration = metadata.durationSeconds;
+    if (metadata.publishedAt) {
+      await recordPublished(deps.db, item.id, metadata.publishedAt);
+      report.dated += 1;
+    }
+  }
+
+  if (source.exclude_shorts && duration !== undefined && duration < SHORT_MAX_SECONDS) {
+    await skipShort(item, duration, deps, report);
+    return;
+  }
+
+  const captions = await retrieveYoutubeCaptions(item.external_id, deps, {
+    excludeShorts: source.exclude_shorts,
+  });
+  if ('tooShort' in captions) {
+    await skipShort(item, captions.tooShort, deps, report);
+    return;
+  }
+
+  await storeBody(deps.db, item.id, { text: captions.text, raw: captions.raw });
+  report.retrieved += 1;
+}
+
+async function skipShort(
+  item: PendingItem,
+  seconds: number,
+  deps: SourceDeps,
+  report: SourceReport,
+): Promise<void> {
+  await markSkippedShort(deps.db, item.id, seconds);
+  report.skipped_short += 1;
+  deps.log(
+    `braintrust: ${item.external_id} is ${seconds}s, under the ${SHORT_MAX_SECONDS}s line. ` +
+      'Recorded as a short rather than read; turn exclude_shorts off to include it.',
+  );
+}
+
 async function allSourceCount(db: Db): Promise<number> {
   const { rows } = await db.query<{ count: string }>('select count(*)::text as count from braintrust_sources');
   return Number(rows[0]!.count);
@@ -326,21 +453,20 @@ export function summarise(report: CycleReport): string {
   if (report.sources.length === 0) return 'braintrust: nothing was due.';
 
   const lines = report.sources.map((source) => {
-    const parts = [
-      `+${source.discovered} discovered`,
-      `${source.retrieved} retrieved`,
-      `${source.skipped_paywall} skipped (paywall)`,
-    ];
+    const parts = [`+${source.discovered} discovered`, `${source.retrieved} retrieved`];
+    if (source.skipped_paywall > 0) parts.push(`${source.skipped_paywall} skipped (paywall)`);
+    if (source.skipped_short > 0) parts.push(`${source.skipped_short} skipped (short)`);
+    if (source.dated > 0) parts.push(`${source.dated} dated`);
     if (source.failed > 0) parts.push(`${source.failed} failed`);
     if (!source.backfill_complete) parts.push('backfill incomplete');
-    if (source.awaiting) parts.push(source.awaiting);
     if (source.error) parts.push(`error: ${source.error}`);
     return `  ${source.person} / ${source.platform} ${source.handle}: ${parts.join(', ')}`;
   });
 
-  const { pending, retrieved, skipped_paywall, failed } = report.corpus;
+  const { pending, retrieved, skipped_paywall, skipped_short, failed } = report.corpus;
   lines.push(
-    `  corpus: ${retrieved} retrieved, ${skipped_paywall} skipped, ${pending} pending, ${failed} failed`,
+    `  corpus: ${retrieved} retrieved, ${skipped_paywall} skipped (paywall), ` +
+      `${skipped_short} skipped (short), ${pending} pending, ${failed} failed`,
   );
   if (report.stopped_early) lines.push('  stopped early; the next run continues from these rows');
 

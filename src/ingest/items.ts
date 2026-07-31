@@ -17,7 +17,7 @@
  */
 
 import type { Db } from '../db.js';
-import type { Audience, Platform, Retrieval } from '../sources/types.js';
+import { SHORT_MAX_SECONDS, type Audience, type Platform, type Retrieval } from '../sources/types.js';
 import type { FeedEntry } from './feed.js';
 
 export type SourceRow = {
@@ -149,6 +149,12 @@ export type ArchiveItem = {
   title?: string | undefined;
   publishedAt?: Date | undefined;
   audience: Audience;
+  /**
+   * Present when the catalogue happens to say how long the thing is — YouTube's
+   * listing carries a duration badge. When it does, a Short is excluded here and
+   * never reaches the expensive half at all.
+   */
+  durationSeconds?: number | undefined;
 };
 
 /**
@@ -160,9 +166,13 @@ export type ArchiveItem = {
  * later turns paid: ingested text is kept permanently (ADR 0003), and pretending
  * otherwise would make Coverage lie about what was read. A `failed` Item is not
  * resurrected: a terminal recorded outcome is not a pending item.
+ *
+ * `skipped_short` is the exception that proves the rule — it is the one skip made by
+ * *braintrust's own policy* rather than by a source, so `reopenShorts` can undo it
+ * when the operator changes their mind. Nothing a source decided is revisited here.
  */
 export async function recordCatalogued(db: Db, source: SourceRow, item: ArchiveItem): Promise<Retrieval> {
-  const decided: Retrieval = item.audience === 'everyone' ? 'pending' : 'skipped_paywall';
+  const decided = decide(source, item);
 
   const { rows } = await db.query<{ retrieval: Retrieval }>(
     `insert into braintrust_items (source_id, external_id, url, title, published_at, audience, retrieval)
@@ -189,6 +199,22 @@ export async function recordCatalogued(db: Db, source: SourceRow, item: ArchiveI
   );
 
   return rows[0]!.retrieval;
+}
+
+/**
+ * The pre-fetch filters, in the order they matter.
+ *
+ * The paywall comes first because it is a hard line and not braintrust's to weigh; the
+ * Shorts rule comes second because it is a preference the operator owns. An Item whose
+ * duration the catalogue did not mention is `pending`, and the Shorts rule gets its
+ * second chance at retrieval, where the duration always arrives.
+ */
+function decide(source: SourceRow, item: ArchiveItem): Retrieval {
+  if (item.audience !== 'everyone') return 'skipped_paywall';
+  if (source.exclude_shorts && item.durationSeconds !== undefined && item.durationSeconds < SHORT_MAX_SECONDS) {
+    return 'skipped_short';
+  }
+  return 'pending';
 }
 
 export async function completeBackfill(db: Db, source: SourceRow): Promise<void> {
@@ -242,6 +268,53 @@ export async function markSkippedPaywall(db: Db, itemId: string): Promise<void> 
   );
 }
 
+/**
+ * Excluded by the Shorts rule, and the duration is kept so nothing has to ask again.
+ *
+ * `body_raw` rather than `body_text`: braintrust learned something about this Item
+ * without reading it, and `body_text` is reserved for words that were actually
+ * published.
+ */
+export async function markSkippedShort(
+  db: Db,
+  itemId: string,
+  durationSeconds: number,
+): Promise<void> {
+  await db.query(
+    `update braintrust_items
+        set retrieval = 'skipped_short',
+            body_raw = jsonb_build_object('platform', 'youtube', 'duration_seconds', $2::int)
+      where id = $1 and retrieval = 'pending'`,
+    [itemId, durationSeconds],
+  );
+}
+
+/**
+ * **This is what makes `exclude_shorts` a setting rather than a one-way door.**
+ *
+ * Turn it off and the Items braintrust declined to read become pending again on the
+ * next run, with no second crawl and no lost rows — which is the whole reason a
+ * policy skip is a state of its own instead of a `failed` row or an absent one.
+ */
+export async function reopenShorts(db: Db, sourceId: string): Promise<number> {
+  const { rows } = await db.query<{ id: string }>(
+    `update braintrust_items
+        set retrieval = 'pending', body_raw = null
+      where source_id = $1 and retrieval = 'skipped_short'
+      returning id`,
+    [sourceId],
+  );
+  return rows.length;
+}
+
+/** The exact date, once a per-item fetch has found one the listing could not give. */
+export async function recordPublished(db: Db, itemId: string, publishedAt: Date): Promise<void> {
+  await db.query(
+    `update braintrust_items set published_at = $2::date where id = $1 and published_at is null`,
+    [itemId, publishedAt.toISOString().slice(0, 10)],
+  );
+}
+
 export async function markFailed(db: Db, itemId: string): Promise<void> {
   await db.query(
     `update braintrust_items set retrieval = 'failed' where id = $1 and retrieval = 'pending'`,
@@ -253,6 +326,7 @@ export type CorpusCounts = {
   pending: number;
   retrieved: number;
   skipped_paywall: number;
+  skipped_short: number;
   failed: number;
 };
 
@@ -262,6 +336,7 @@ export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCou
     `select count(*) filter (where retrieval = 'pending')         as pending,
             count(*) filter (where retrieval = 'retrieved')       as retrieved,
             count(*) filter (where retrieval = 'skipped_paywall') as skipped_paywall,
+            count(*) filter (where retrieval = 'skipped_short')   as skipped_short,
             count(*) filter (where retrieval = 'failed')          as failed
        from braintrust_items
       where ($1::uuid is null or source_id = $1::uuid)`,
@@ -273,6 +348,7 @@ export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCou
     pending: Number(row.pending),
     retrieved: Number(row.retrieved),
     skipped_paywall: Number(row.skipped_paywall),
+    skipped_short: Number(row.skipped_short),
     failed: Number(row.failed),
   };
 }

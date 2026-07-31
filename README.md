@@ -64,17 +64,19 @@ Some things braintrust does to keep that honest rather than just say it:
 - **Paywalled content is never ingested**, and braintrust records what it skipped. A persona can tell you how much of someone's output it has not read, so it names its own blind spots rather than silently having them.
 - **Anything a model synthesised is labelled.** Voice and coverage are counted from the source text; reasoning and beliefs are inferred, and say so. You can check the first kind. The second kind tells you it is the second kind.
 - **Positions carry their evidence.** Every claim is dated and cited back to what the person actually published, and where they've changed their mind, braintrust shows the older position rather than quietly dropping it.
-- **Quotes are verbatim.** Most of what braintrust reads is auto-generated video captions, so quoted passages come back as unpunctuated speech. That is what was said; braintrust would rather hand you something ugly and true than tidy prose it made up.
+- **Quotes are verbatim.** Most of what braintrust reads is auto-generated video captions — a machine's transcript of someone speaking, not something they wrote. It mishears names and technical terms, and it is not a text the person ever approved. braintrust hands you what was actually said rather than tidying it into prose nobody spoke.
 
 ## Status and roadmap
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for Substack**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts, walks their archive back twelve months, skips every paywalled post as a recorded gap, and stores the text of the free ones.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for both sources**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, and stores the text of the free posts and the transcript of every long-form video.
 
-What does not work yet: YouTube captions, so videos are discovered and left waiting; and nothing is distilled, so a person's persona is still `compiled: false` however much of their writing is on disk.
+A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again.
+
+What does not work yet: nothing is distilled, so a person's persona is still `compiled: false` however much of their corpus is on disk.
 
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 
-- [ ] Source ingestion pipeline — Substack done; YouTube captions next
+- [x] Source ingestion pipeline — Substack and YouTube
 - [ ] Persona compiler and daily refresh loop
 - [ ] MCP server exposing personas as tools
 - [ ] Council mode: one question, every persona answers

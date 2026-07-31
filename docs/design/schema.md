@@ -123,7 +123,8 @@ create table braintrust_items (
   audience      text not null default 'unknown'
                   check (audience in ('everyone', 'paid', 'unknown')),
   retrieval     text not null default 'pending'
-                  check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'failed')),
+                  check (retrieval in ('pending', 'retrieved', 'skipped_paywall',
+                                       'skipped_short', 'failed')),
   body_text     text,                 -- null until retrieved; null forever if skipped
   body_raw      jsonb,                -- caption events, feed entry — whatever the platform actually gave
   retrieved_at  timestamptz,
@@ -142,15 +143,21 @@ Four things this shape is deliberately doing:
   external identity.
 - **`body_text` is nullable and that is the normal state.** Discovery returns metadata without a body on
   both platforms; retrieval is a separate step. For 93% of Substack items the body never arrives at all.
-- **`published_at` is nullable but load-bearing.** It costs a third fetch per item on YouTube (the watch
-  page, ~1.3MB). Without it there are no held-then-revised positions at all, so an undated item is a
-  degraded item rather than a normal one.
-- **`retrieval = 'skipped_paywall'` is a row, not an absence.** `audience` is known before fetching, so
-  braintrust records exactly what it declined to read. This is what lets a persona state its own blind
-  spots instead of silently having them.
+- **`published_at` is nullable but load-bearing.** It costs a second call per item on YouTube — measured at
+  ~15KB against the player endpoint, where the watch page it was specced as would have been ~1.3MB. Without
+  it there are no held-then-revised positions at all, so an undated item is a degraded item rather than a
+  normal one. The channel listing's own "3 months ago" is deliberately **not** written here: an approximate
+  date stored as if measured would poison every position built on it.
+- **A skip is a row, not an absence.** `audience` is known before fetching, so braintrust records exactly
+  what it declined to read, which is what lets a persona state its own blind spots instead of silently
+  having them. The two skips are different facts and stay separate columns of the same vocabulary:
+  `skipped_paywall` is a source's decision braintrust is respecting, and `skipped_short` is braintrust's own
+  policy — so it is the only one that turning `exclude_shorts` off undoes, without a second crawl.
 
-**No separate transcript-segment table.** `body_raw` holds the caption events as the platform gave them;
-timestamps reach a citation via chunks. A segments table would be a third copy of the same text.
+**No separate transcript-segment table.** `body_raw` holds the caption lines with one start time each, so a
+citation can name a moment rather than gesture at a 20-minute video; timestamps reach a citation via chunks.
+A segments table would be a third copy of the same text. The per-*word* offsets YouTube also sends are
+dropped: keeping them would be ~344KB per video against ~40KB, and no citation is finer than a line.
 
 ## Tier 2 — derived, expensive
 

@@ -25,7 +25,16 @@ export type FetchResponse = {
   headers?: { get(name: string): string | null } | undefined;
 };
 
-export type Fetcher = (url: string) => Promise<FetchResponse>;
+/**
+ * A POST, and there is exactly one reason braintrust needs one: YouTube's player
+ * endpoint takes its request as a JSON body. `json` rather than a raw body string,
+ * because that keeps the seam small enough that a fake is still a few lines.
+ */
+export type FetchInit = {
+  json: unknown;
+};
+
+export type Fetcher = (url: string, init?: FetchInit) => Promise<FetchResponse>;
 
 /**
  * braintrust says who it is. No user-agent spoofing beyond what a normal client
@@ -41,9 +50,14 @@ export type FetcherOptions = {
 };
 
 export function createFetcher({ timeoutMs = 20_000 }: FetcherOptions = {}): Fetcher {
-  return async (url) =>
+  return async (url, init) =>
     fetch(url, {
-      headers: { 'user-agent': USER_AGENT, accept: '*/*' },
+      headers: {
+        'user-agent': USER_AGENT,
+        accept: '*/*',
+        ...(init ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(init ? { method: 'POST', body: JSON.stringify(init.json) } : {}),
       redirect: 'follow',
       signal: AbortSignal.timeout(timeoutMs),
     });
