@@ -36,6 +36,14 @@ export const SYNTHESIS_VERSION = 'core-1';
  */
 export const POSITION_VERSION = 'positions-1';
 
+/**
+ * Versioned apart again, for the same reason and a sharper one: this is the only prompt
+ * whose output can change what a Persona *stops* saying. A Compile says which prompt
+ * decided that one Position supersedes another, because that decision is the one a Person
+ * would most want to argue with.
+ */
+export const REVISION_VERSION = 'revisions-1';
+
 /** Synthesis is a long read for a model, like the extractor's. Not a 20-second fetch. */
 export const SYNTHESIS_TIMEOUT_MS = 300_000;
 
@@ -63,16 +71,32 @@ export type ClusteredPosition = {
   claims: string[];
 };
 
+/**
+ * One judgement on one candidate pair. `none` is the answer the prompt expects most of
+ * the time — two Positions can be near neighbours in a vector space and have nothing to
+ * say about each other — and it is the answer that writes no row.
+ */
+export type JudgedPair = {
+  /** The pair ref braintrust issued. Anything else is dropped before a row is written. */
+  pair: string;
+  relation: 'revised' | 'unsettled' | 'drifting' | 'none';
+  rationale: string;
+};
+
 export type Synthesiser = {
   /** `model@prompt-version`. Half of `compiler_version`; the other half is the measurement. */
   generation: string;
   /** `model@positions-version`. The growing layer says which prompt grouped it. */
   clusterer: string;
+  /** `model@revisions-version`. Which prompt decided a Position was superseded. */
+  judge: string;
   model: string;
   url: string;
   synthesise(kind: InferredKind, digest: string, mode: SynthesisMode): Promise<SynthesisedEntry[]>;
   /** The growing layer. Same endpoint, a third question: which claims are one position? */
   cluster(digest: string, mode: SynthesisMode): Promise<ClusteredPosition[]>;
+  /** The fourth question, and the only one that can take something off the record. */
+  judgePairs(digest: string): Promise<JudgedPair[]>;
 };
 
 /** A pass reads Notes; a merge reads the passes. Same call, one extra instruction. */
@@ -198,6 +222,52 @@ const POSITION_MERGE = [
   'input, and do not add claim ids that are not already against a position you are merging.',
 ].join('\n');
 
+/**
+ * The fourth prompt, and the asymmetric one.
+ *
+ * Three of the four labels cost nothing if they are wrong: `unsettled`, `drifting` and
+ * `none` all leave both Positions current and both answers on the record. `revised` takes
+ * one off. So the instruction leans the whole way in one direction — when the choice is
+ * close, answer `unsettled` — because the error this project cannot absorb is putting a
+ * contradiction on a real person's record that they would dispute.
+ *
+ * See docs/design/compiler.md §4.
+ */
+export const REVISION_PROMPT = [
+  'You are comparing pairs of positions held by the same author at different times, to',
+  'decide whether the later one changes the earlier one. Each pair carries the id braintrust',
+  'gave it, both positions with the date braintrust can first cite each from, and one thing',
+  'the author actually wrote on each side.',
+  '',
+  'Return a single JSON object, and nothing else:',
+  '',
+  '{ "judgements": [ { "pair": "p1", "relation": "...", "rationale": "..." } ] }',
+  '',
+  'pair — copied exactly from the [id] marker. Only ids you were given, and judge each pair',
+  '  on its own: a pair id that is not among them will be dropped.',
+  'relation — exactly one of:',
+  '  revised   — the later position withdraws, narrows or reverses the earlier one, and the',
+  '              author says so in their own words. Not "these differ": they changed their',
+  '              mind, and a reader could point at where.',
+  '  unsettled — the two are in real tension and nothing here resolves it. Both may still',
+  '              be held.',
+  '  drifting  — the emphasis moved over time, without either position being withdrawn.',
+  '  none      — nothing worth recording. Two ways of saying the same thing, two different',
+  '              subjects, and a later restatement that adds nothing are all none.',
+  'rationale — one sentence, written for a reader who is looking at both positions. Say what',
+  '  moved, in the author\'s own terms. For revised, name the words that show the change.',
+  '',
+  'Most pairs are none. They reached you because they were near neighbours, which is a fact',
+  '  about wording and not about disagreement.',
+  'revised is the only label that changes what this persona says — it takes the earlier',
+  '  position off the record as a current view. Use it only where a reader shown both would',
+  '  agree the author changed their mind. **If you are weighing revised against unsettled,',
+  '  answer unsettled.** A rephrase recorded as a reversal puts a contradiction on a real',
+  '  person\'s record that they would dispute, and that is a worse error than a revision you',
+  '  did not catch.',
+  'Do not judge whether either position is right, and do not resolve the tension yourself.',
+].join('\n');
+
 export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Synthesiser {
   const url = chatUrl(config.baseUrl);
 
@@ -243,6 +313,7 @@ export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Sy
   return {
     generation: `${config.model}@${SYNTHESIS_VERSION}`,
     clusterer: `${config.model}@${POSITION_VERSION}`,
+    judge: `${config.model}@${REVISION_VERSION}`,
     model: config.model,
     url,
 
@@ -254,6 +325,10 @@ export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Sy
     async cluster(digest, mode): Promise<ClusteredPosition[]> {
       const system = POSITION_PROMPT + (mode === 'merge' ? POSITION_MERGE : '');
       return readClusterContent(await ask(system, digest, 'positions'), url);
+    },
+
+    async judgePairs(digest): Promise<JudgedPair[]> {
+      return readJudgementContent(await ask(REVISION_PROMPT, digest, 'revisions'), url);
     },
   };
 }
@@ -379,4 +454,39 @@ export function readClusterContent(content: string, url: string): ClusteredPosit
   // Corpus, and a cap applied to every call would also cap the *merge* — which would
   // quietly limit a 400-item Persona to one pass's worth of positions. The per-pass bound
   // lives with the fold, in ./positions.ts, where the merge can be bounded differently.
+}
+
+const RELATIONS = new Set(['revised', 'unsettled', 'drifting', 'none']);
+
+/**
+ * The judge's answers, strictly. A judgement missing its pair id or carrying a label that
+ * is not one of the four is dropped: the alternative is a relation braintrust cannot
+ * explain, on a record whose whole value is that every line can be explained.
+ *
+ * A *missing* `judgements` throws, as the other two parsers do — an endpoint answering a
+ * different question would otherwise read as "no revisions in this corpus", which is the
+ * most believable wrong answer in the whole compiler.
+ */
+export function readJudgementContent(content: string, url: string): JudgedPair[] {
+  const parsed = readObject(content, url);
+
+  if (!Array.isArray(parsed.judgements)) {
+    throw new BraintrustError(
+      `The synthesiser at ${url} returned JSON with no judgements array: ` +
+        `${content.slice(0, 200)}…`,
+    );
+  }
+
+  return parsed.judgements.flatMap((judgement: unknown) => {
+    const { pair, relation, rationale } = (judgement ?? {}) as Partial<JudgedPair>;
+    if (typeof pair !== 'string' || pair.trim() === '') return [];
+    if (typeof relation !== 'string' || !RELATIONS.has(relation)) return [];
+    return [
+      {
+        pair: pair.trim(),
+        relation: relation as JudgedPair['relation'],
+        rationale: typeof rationale === 'string' ? rationale.trim() : '',
+      },
+    ];
+  });
 }

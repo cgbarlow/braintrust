@@ -223,7 +223,7 @@ in the extractor's shape reached the gate as *"beliefs carried nothing to serve"
 looking at the Corpus instead of at the endpoint.
 
 **Synthesis is versioned separately from measurement.** `compiler_version` is
-`0.1.0+measured-1.core-1.positions-1` — the hypothesis that produced the counts, the prompt that produced the
+`0.1.0+measured-1.core-1.positions-1.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
 prose, and the prompt that grouped the Positions. Three versions rather than one because they change for
 different reasons, and all of them are cheap in a way bumping `notes-1` is not: they re-read Notes that
 already exist rather than re-reading the Corpus.
@@ -268,6 +268,48 @@ Relation direction and the read path are in
 [`schema.md`](./schema.md#tier-3--derived-cheap) — `from` is the earlier Position, `to` the later, and
 `relation` describes what the later does to the earlier.
 
+### What the build settled about revisions
+
+**The floor was measured, not chosen.** Over 275 claims extracted from 23 real Substack posts and embedded
+with a real sentence-transformer, the 36,168 cross-Position claim pairs run: median 0.175, p99 0.593, max
+0.907. Reading the pairs at each level is what picked the number. At 0.62 they include *"the most common
+approach is to treat AI like a human"* against *"every few months I put together a guide on which AI system to
+use"* — a shared subject only in the sense that everything in that Corpus is about AI. From about **0.65** up
+they are recognisably about one thing, and the nearest pairs are the same claim restated months apart, which is
+exactly the shape a revision has. It is a **recall** knob rather than a verdict: everything above it is still
+judged, and the judge answers `none` to most of it. **It is a property of the configured embeddings model, not
+of braintrust** — an operator who changes model should re-measure it the same way.
+
+**Direction comes from the dates, never from the model.** `from` is whichever Position has the earlier
+`held_since`, and `gap_days` is the distance between the two dates a reader is already shown — so both can be
+checked against the Positions rather than taken on trust. **A pair braintrust cannot order in time is
+dropped**: with no date on one side, or the same date on both, there is no earlier, and saying which came
+first would be exactly the guess this layer exists to avoid.
+
+**The judge is asked about Positions and shown claims.** A candidate pair is represented by the two nearest
+claims, one per side, with the Person's own quote against each — because `revised` is defined as a change *in
+their own words*, and a judge shown only braintrust's summaries would be grading two summaries against each
+other. A hundred near-identical claim pairs between the same two Positions is still one question.
+
+**A judgement on a pair braintrust never sent is dropped**, the same rule as a claim ref a clusterer invented,
+and so is a relation naming a Position this Compile did not write — the ids come from the write, not from a
+lookup, so a relation cannot reach back to a previous Compile's rows.
+
+**No Compile may retire more than half a Persona.** Found live: a judge answering `revised` freely superseded
+18 of 23 Positions in one rebuild, and every other check passed — the rows were well-formed, dated, cited and
+ordered, and the Persona was quietly four-fifths retired. Real supersession is rare, so a rebuild that takes
+half of what someone holds off `current` is describing the model rather than the author. The
+[gate](#5-a-compile-must-earn-the-right-to-replace-its-predecessor) rejects it and yesterday's Persona keeps
+answering.
+
+**Accepted costs.**
+
+| Cost | Why it is worth paying |
+| --- | --- |
+| The per-Compile bound is 120 pairs, so a large Corpus judges only its nearest neighbours | Pairs grow with the square of the Positions. The nearest are where revisions live, and `bounded_out` is counted and logged rather than hidden — a bound nobody is told about reads as coverage |
+| Two Positions with the same `held_since` are never compared | There is no earlier, and inventing one to fill the field would put a direction on the record that nothing supports |
+| A revision missed is invisible; only a revision recorded is legible | The asymmetry is deliberate. The judge is told to answer `unsettled` whenever the call is close, because a rephrase recorded as a reversal is the one error this project cannot absorb |
+
 ---
 
 ## 5. A Compile must earn the right to replace its predecessor
@@ -291,6 +333,7 @@ the way the compiler fails:
 - Coverage counts reconcile against `braintrust_items`
 - every Position resolves to at least one real citation
 - Position count is not a collapse against the previous Compile
+- no more than half the Positions were superseded on this rebuild
 
 The promoting transaction is in [`schema.md`](./schema.md#rebuilding). Four properties it buys: a failed
 Compile changes nothing; a rejected Compile keeps its rows for inspection; `on delete cascade` does all the

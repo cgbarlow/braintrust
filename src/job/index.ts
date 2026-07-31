@@ -53,7 +53,8 @@ async function main(): Promise<void> {
     );
     console.log(
       `${SERVER_NAME}: reading items as ${extractor.generation}, compiling as ` +
-        `${synthesiser.generation} and grouping positions as ${synthesiser.clusterer} ` +
+        `${synthesiser.generation}, grouping positions as ${synthesiser.clusterer}, judging ` +
+        `revisions as ${synthesiser.judge} ` +
         `via ${extractor.url}.`,
     );
 

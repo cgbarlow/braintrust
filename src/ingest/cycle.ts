@@ -201,6 +201,10 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
           db: deps.db,
           extractor: deps.extractor.generation,
           synthesiser: deps.synthesiser,
+          // The same embedder that just indexed the corpus, doing a second job: an
+          // endpoint good enough to index with is the one revisions have to be judged in,
+          // because both are asking what is near what.
+          embedder: deps.embedder,
           changed: [...changed],
           now,
           log,

@@ -10,22 +10,30 @@
 import type {
   ClusteredPosition,
   InferredKind,
+  JudgedPair,
   SynthesisedEntry,
   SynthesisMode,
   Synthesiser,
 } from '../../src/compile/synthesis.js';
 
-export type FakeCall = { kind: InferredKind | 'positions'; mode: SynthesisMode; digest: string };
+export type FakeCall = {
+  kind: InferredKind | 'positions' | 'revisions';
+  mode: SynthesisMode;
+  digest: string;
+};
 
 export type FakeSynthesiser = Synthesiser & { calls: FakeCall[] };
 
 export type FakeOptions = {
   generation?: string;
   clusterer?: string;
+  judge?: string;
   /** Replaces the default answer. Given the ids the digest actually carried. */
   entriesFor?: (kind: InferredKind, items: string[], mode: SynthesisMode) => SynthesisedEntry[];
   /** Replaces the default grouping. Given the claim refs the digest actually carried. */
   positionsFor?: (claims: string[], mode: SynthesisMode) => ClusteredPosition[];
+  /** Replaces the default judgement. Given the pair refs the digest actually carried. */
+  judgementsFor?: (pairs: string[], digest: string) => JudgedPair[];
   /** Throws instead of answering — an endpoint that went away mid-compile. */
   throws?: Error;
 };
@@ -36,9 +44,27 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
   return {
     generation: options.generation ?? 'test-model@core-1',
     clusterer: options.clusterer ?? 'test-model@positions-1',
+    judge: options.judge ?? 'test-model@revisions-1',
     model: 'test-model',
     url: 'https://example.test/v1/chat/completions',
     calls,
+
+    async judgePairs(digest): Promise<JudgedPair[]> {
+      calls.push({ kind: 'revisions', mode: 'pass', digest });
+      if (options.throws) throw options.throws;
+
+      const pairs = pairsFromDigest(digest);
+      if (options.judgementsFor) return options.judgementsFor(pairs, digest);
+
+      // `none` on everything, because that is what a good judge says to most of what a
+      // neighbourhood hands it — being near in a vector space is a fact about wording. A
+      // test that wants a relation asks for one.
+      return pairs.map((pair) => ({
+        pair,
+        relation: 'none' as const,
+        rationale: 'Two ways of saying the same thing.',
+      }));
+    },
 
     async cluster(digest, mode): Promise<ClusteredPosition[]> {
       calls.push({ kind: 'positions', mode, digest });
@@ -101,6 +127,11 @@ function idsFromEntries(digest: string): string[] {
 /** The claim refs braintrust issued, read back out of the digest it handed over. */
 export function refsFromDigest(digest: string): string[] {
   return [...digest.matchAll(/^\[(c\d+)\]/gm)].map((match) => match[1]!);
+}
+
+/** The pair refs braintrust issued, read back out of the digest it handed over. */
+export function pairsFromDigest(digest: string): string[] {
+  return [...digest.matchAll(/^\[(p\d+)\]/gm)].map((match) => match[1]!);
 }
 
 function refsFromClusters(digest: string): string[] {
