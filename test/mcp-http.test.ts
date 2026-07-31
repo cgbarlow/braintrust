@@ -128,18 +128,24 @@ describe('the MCP surface', () => {
     const client = await connect();
     const { tools } = await client.listTools();
 
-    // No embeddings endpoint configured on this server, so there is no retrieval tool.
-    // A search that cannot search is worse than one that is not offered.
-    assert.deepEqual(
-      tools.map((tool) => tool.name).sort(),
-      ['braintrust_follow_person', 'braintrust_list_personas', 'braintrust_load_persona'],
-    );
+    // No embeddings endpoint and no extractor configured on this server, so there is
+    // neither a retrieval tool nor a refresh tool. A search that cannot search, or a
+    // refresh that could fetch but never rebuild, is worse than one not offered.
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+      'braintrust_follow_person',
+      'braintrust_list_personas',
+      'braintrust_load_persona',
+      'braintrust_unfollow_person',
+    ]);
 
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
     assert.equal(byName.get('braintrust_list_personas')!.annotations?.readOnlyHint, true);
     assert.equal(byName.get('braintrust_load_persona')!.annotations?.readOnlyHint, true);
     // A write tool, so it lands in the client's approval surface rather than running quietly.
     assert.equal(byName.get('braintrust_follow_person')!.annotations?.readOnlyHint, false);
+    // Unfollow writes too, but it is offered whatever else is configured: stopping is
+    // never the thing a missing endpoint should be able to prevent.
+    assert.equal(byName.get('braintrust_unfollow_person')!.annotations?.readOnlyHint, false);
     // OB1 reserves `search` and `fetch`; every braintrust tool is prefixed.
     assert.ok(tools.every((tool) => tool.name.startsWith('braintrust_')));
     await client.close();

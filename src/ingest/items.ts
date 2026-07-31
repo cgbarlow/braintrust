@@ -71,6 +71,44 @@ export async function dueSources(db: Db, now: Date): Promise<SourceRow[]> {
   return rows;
 }
 
+/**
+ * Every Source of one Person, due or not.
+ *
+ * `poll_interval_hours` exists to stop the daily job re-reading a feed it read this
+ * morning. `braintrust_refresh_persona` is somebody asking *now*, so it has nothing to
+ * decide here — and it is still not a second scheduler, because nothing about this
+ * repeats.
+ *
+ * A blocked Source is still skipped. A block is measured rather than chosen, and a
+ * refresh is not evidence that the source started answering again; the daily job finds
+ * that out for itself. See docs/design/ingestion.md §5.
+ */
+export async function sourcesForPerson(db: Db, personId: string): Promise<SourceRow[]> {
+  const { rows } = await db.query<SourceRow>(
+    `select ${SOURCE_COLUMNS}
+       from braintrust_sources s
+       join braintrust_people p on p.id = s.person_id
+      where s.person_id = $1
+        and s.blocked_at is null
+      order by s.platform`,
+    [personId],
+  );
+  return rows;
+}
+
+/** Every Source of one Person, blocked ones included. Used to report, not to fetch. */
+export async function allSourcesForPerson(db: Db, personId: string): Promise<SourceRow[]> {
+  const { rows } = await db.query<SourceRow>(
+    `select ${SOURCE_COLUMNS}
+       from braintrust_sources s
+       join braintrust_people p on p.id = s.person_id
+      where s.person_id = $1
+      order by s.platform`,
+    [personId],
+  );
+  return rows;
+}
+
 /** Every Source of every Person who is not paused. Used to report, not to fetch. */
 export async function activeSources(db: Db): Promise<SourceRow[]> {
   const { rows } = await db.query<SourceRow>(

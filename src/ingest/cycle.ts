@@ -1,10 +1,12 @@
 /**
  * The cycle: poll → check for a gap → drain the Backlog → rebuild.
  *
- * **One code path, three triggers.** The daily clock runs it, and later
- * `braintrust_refresh_persona` and the second call of the follow handshake will run the
- * same function. There is no separate initial-load mode: the first run after following
- * someone *is* the backfill.
+ * **One code path, three triggers.** The daily clock runs it over everyone due;
+ * `braintrust_refresh_persona` runs it over one named Person; and following someone puts
+ * a Source in front of whichever fires next. There is no separate initial-load mode: the
+ * first run after following someone *is* the backfill. The only thing that varies is
+ * `only` — the scope — because two implementations of "poll, drain, rebuild" is how two
+ * triggers start disagreeing about what a rebuild means.
  *
  * Nothing here is a job with state. Every loop reads what the rows say and does the next
  * thing, so being killed at any point costs the time since the last row and nothing else.
@@ -27,6 +29,7 @@ import {
 import { feedSkippedAhead, newestPublished, readFeed } from './feed.js';
 import {
   activeSources,
+  allSourcesForPerson,
   completeBackfill,
   corpusCounts,
   dueSources,
@@ -39,6 +42,7 @@ import {
   recordPoll,
   recordPublished,
   reopenShorts,
+  sourcesForPerson,
   storeBody,
   type CorpusCounts,
   type PendingItem,
@@ -57,6 +61,9 @@ const DISCOVERED_AUDIENCE: Record<Platform, Audience> = {
   youtube: 'everyone',
   substack: 'unknown',
 };
+
+/** Who a scoped run is about. Both halves are needed: the rows key on one, the reports on the other. */
+export type PersonScope = { id: string; slug: string };
 
 export type CycleDeps = {
   db: TransactionalDb;
@@ -77,6 +84,16 @@ export type CycleDeps = {
    * ever produce half a Core, which the gate would reject. Absent means no rebuild.
    */
   synthesiser?: Synthesiser | undefined;
+  /**
+   * One Person, or the whole braintrust.
+   *
+   * **This is the only difference between the three triggers.** The daily clock passes
+   * nothing and sweeps everyone due; `braintrust_refresh_persona` names one Person and
+   * runs the identical four steps over their rows. There is no refresh code path — a
+   * second implementation of "poll, drain, rebuild" is exactly how two triggers start
+   * disagreeing about what a rebuild means.
+   */
+  only?: PersonScope | undefined;
   now?: (() => Date) | undefined;
   pause?: Pause | undefined;
   /**
@@ -112,7 +129,11 @@ export type CycleReport = {
   sources: SourceReport[];
   not_due: number;
   paused_or_blocked: number;
-  /** People whose Corpus changed. A Compile is what they are waiting for. */
+  /**
+   * People whose Corpus changed on this run. A report of what arrived, not the rebuild
+   * trigger — that is `has_unseen`, asked of the rows, so a run that finishes yesterday's
+   * work rebuilds even though nothing new turned up today.
+   */
   rebuild_pending: string[];
   stopped_early: boolean;
   corpus: CorpusCounts;
@@ -130,25 +151,36 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   const stopping = deps.stopping ?? (() => false);
   const started = now();
 
-  const due = await dueSources(deps.db, started);
-  const active = await activeSources(deps.db);
-  const all = await allSourceCount(deps.db);
+  const census = await takeCensus(deps, started);
+  const { due, active, all } = census;
 
   log(
-    `braintrust: ${due.length} of ${all} source${all === 1 ? '' : 's'} due` +
-      `${all - active.length > 0 ? `, ${all - active.length} paused or blocked` : ''}`,
+    deps.only
+      ? `braintrust: refreshing ${deps.only.slug} — ${due.length} of ${all} source` +
+          `${all === 1 ? '' : 's'} to poll` +
+          `${all - due.length > 0 ? `, ${all - due.length} blocked` : ''}`
+      : `braintrust: ${due.length} of ${all} source${all === 1 ? '' : 's'} due` +
+          `${all - active.length > 0 ? `, ${all - active.length} paused or blocked` : ''}`,
   );
 
   const reports: SourceReport[] = [];
   const changed = new Set<string>();
   let stoppedEarly = false;
 
+  // Asked before the loop as well as inside it. The stop lands in the middle of a
+  // source's items far more often than between two sources — and with one source
+  // configured, *only* there. A run that gave up on the last item of the only source
+  // would otherwise report a clean finish, which is the one thing a caller deciding
+  // whether to call again must not be told. Found live.
+  const stopHere = (): boolean => {
+    if (!stopping()) return false;
+    if (!stoppedEarly) log('braintrust: asked to stop; the rows written so far are the progress.');
+    stoppedEarly = true;
+    return true;
+  };
+
   for (const source of due) {
-    if (stopping()) {
-      stoppedEarly = true;
-      log('braintrust: asked to stop; the rows written so far are the progress.');
-      break;
-    }
+    if (stopHere()) break;
 
     const report = await runSource(source, { ...deps, now, log, stopping });
     reports.push(report);
@@ -157,6 +189,7 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     }
     if (report.error) log(`braintrust: ${source.platform} ${source.handle} — ${report.error}`);
   }
+  stopHere();
 
   // 4. Index what was fetched. Corpus-wide and outside the per-source loop, because a
   // Chunk belongs to an Item and neither chunking nor embedding cares which platform
@@ -165,6 +198,7 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   const index = await indexCorpus({
     db: deps.db,
     embedder: deps.embedder,
+    ...(deps.only ? { person: deps.only.id } : {}),
     stopping,
     log,
   });
@@ -180,7 +214,13 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   // 5. Read what has not been read. After the index, because a claim carries the Chunk
   // its quote came from, so an Item is not readable until it has been chunked.
   const notes = deps.extractor
-    ? await readCorpus({ db: deps.db, extractor: deps.extractor, stopping, log })
+    ? await readCorpus({
+        db: deps.db,
+        extractor: deps.extractor,
+        ...(deps.only ? { person: deps.only.id } : {}),
+        stopping,
+        log,
+      })
     : undefined;
   if (notes && notes.items_read > 0) {
     log(
@@ -205,7 +245,7 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
           // endpoint good enough to index with is the one revisions have to be judged in,
           // because both are asking what is near what.
           embedder: deps.embedder,
-          changed: [...changed],
+          ...(deps.only ? { person: deps.only.slug } : {}),
           now,
           log,
         })
@@ -519,6 +559,30 @@ async function skipShort(
     `braintrust: ${item.external_id} is ${seconds}s, under the ${SHORT_MAX_SECONDS}s line. ` +
       'Recorded as a short rather than read; turn exclude_shorts off to include it.',
   );
+}
+
+/**
+ * Which Sources this run touches, and what it should say about the ones it does not.
+ *
+ * The scoped answer is not the sweeping one narrowed down. Nothing is *not due* in a
+ * refresh — somebody asked — so the only Sources it holds back are the blocked ones,
+ * and it says so with the same words the daily job uses.
+ */
+async function takeCensus(
+  deps: CycleDeps,
+  started: Date,
+): Promise<{ due: SourceRow[]; active: SourceRow[]; all: number }> {
+  if (deps.only) {
+    const due = await sourcesForPerson(deps.db, deps.only.id);
+    const all = await allSourcesForPerson(deps.db, deps.only.id);
+    return { due, active: due, all: all.length };
+  }
+
+  return {
+    due: await dueSources(deps.db, started),
+    active: await activeSources(deps.db),
+    all: await allSourceCount(deps.db),
+  };
 }
 
 async function allSourceCount(db: Db): Promise<number> {

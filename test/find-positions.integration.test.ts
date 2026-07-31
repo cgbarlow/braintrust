@@ -237,7 +237,6 @@ describe('finding positions, against real Postgres', { skip }, () => {
             }))),
       }),
       ...(options.judgementsFor ? { embedder: topical } : {}),
-      changed: ['nate'],
       log: () => {},
     });
   }

@@ -8,11 +8,13 @@
  * See docs/design/deployment.md §2.
  */
 
+import { createSynthesiser, SYNTHESIS_TIMEOUT_MS } from '../compile/index.js';
 import { ConfigError, loadConfig } from '../config.js';
 import { createDb } from '../db.js';
 import { createApp, HEALTH_PATH, MCP_PATH } from '../http/app.js';
 import { createFetcher } from '../net/fetch.js';
 import { SERVER_NAME, SERVER_VERSION } from '../mcp.js';
+import { createExtractor, EXTRACTOR_TIMEOUT_MS } from '../notes/index.js';
 import { checkDimension, createEmbedder, createQueryGate } from '../retrieval/index.js';
 
 async function main(): Promise<void> {
@@ -43,7 +45,17 @@ async function main(): Promise<void> {
   const readiness = await retrieval.check();
   if (!readiness.ready) console.warn(`${SERVER_NAME}: retrieval is unavailable. ${readiness.reason}`);
 
-  const app = createApp({ db, mcpKey: config.mcpKey, retrieval, embedder });
+  // The web service can now do the expensive half too, for one person at a time, because
+  // `braintrust_refresh_persona` runs the same cycle the job does. It is still the job
+  // that does the sweeping: a refresh is bounded and asked for, where the daily run is
+  // unattended and allowed to take half an hour.
+  const extractor = createExtractor(config.extractor, createFetcher({ timeoutMs: EXTRACTOR_TIMEOUT_MS }));
+  const synthesiser = createSynthesiser(
+    config.extractor,
+    createFetcher({ timeoutMs: SYNTHESIS_TIMEOUT_MS }),
+  );
+
+  const app = createApp({ db, mcpKey: config.mcpKey, retrieval, embedder, extractor, synthesiser });
 
   const server = app.listen(config.port, () => {
     console.log(
@@ -51,7 +63,9 @@ async function main(): Promise<void> {
         `  MCP     ${MCP_PATH}?key=…\n` +
         `  health  ${HEALTH_PATH}\n` +
         `  embeddings: ${config.embeddings.model}, ${dimension} dimensions, at ${embedder.url}\n` +
-        `  retrieval: ${readiness.ready ? 'ready' : 'unavailable until the corpus is embedded'}`,
+        `  retrieval: ${readiness.ready ? 'ready' : 'unavailable until the corpus is embedded'}\n` +
+        `  refresh: reading as ${extractor.generation}, compiling as ${synthesiser.generation}, ` +
+        `via ${extractor.url}`,
     );
   });
 

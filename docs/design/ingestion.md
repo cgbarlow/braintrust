@@ -245,6 +245,44 @@ by `create unique index on braintrust_compiles (person_id) where status = 'runni
 structurally impossible rather than politely avoided, which is what makes AI-callable refresh safe to leave
 ungated.
 
+### What the build settled about the three triggers
+
+**The trigger is unseen content, not this run's activity.** The obvious reading of *new content triggers the
+rebuild* is "rebuild whoever the poll brought something in for", and it is wrong in a way that only shows up
+on the second day. Yesterday's run was killed with a Backlog, or the extractor was down and the Notes were
+written this morning: nothing arrives today, so nothing is rebuilt, and the Persona stays stale until the
+person next publishes — waiting on news that has nothing to do with what it is actually waiting for. So the
+question a Compile asks is whether anything it reads is newer than the Persona currently answering: an Item
+created or retrieved since, or a Note written since. Both are rows, which keeps this consistent with
+everything else here — the Backlog is rows, the resume point is rows, and now the trigger is too.
+
+*A status change needs no timestamp of its own.* A Compile only happens with an empty Backlog, so an Item
+that was `pending` at any point after the last Compile must also have been created after it.
+
+**Seen live.** A run that polled nothing — the Source was not due, so no feed was even fetched — read one
+Item whose Note had gone missing and rebuilt on the strength of it. The tally-based version rebuilds nothing
+there, because its tally is empty.
+
+**A refresh is scoped, not just filtered.** `braintrust_refresh_persona` runs the same four steps over one
+Person's rows: their Sources, their unchunked Items, their unread Items, their Compile. Draining somebody
+else's Backlog inside a call about this Person would spend the operator's tokens on a question nobody asked,
+and it is the expensive step that would spend them.
+
+**The fetch half of a refresh is time-boxed at 30 seconds, and says what it did not reach.** A first backfill
+is ~395 fetches at 4s spacing and a refresh is one HTTP request with a client waiting on it. Something has to
+give and it is not going to be the spacing. This costs nothing precisely because the Backlog is rows: the
+call's work is on disk, `still_owed` says what is left, and the next call or the next daily run continues
+rather than starting again. The rebuild is outside the budget — it only happens when the Backlog is empty, so
+a call that runs out never reaches it.
+
+*A run that stops must say so even when it stops inside the only Source there is.* The stop lands between two
+Items far more often than between two Sources. Found live, reporting a clean finish on a run that had given
+up two thirds of the way through — the one answer a caller deciding whether to call again must not be given.
+
+**A refresh will not resume a paused Person.** Refreshing them starts downloading their work again, which is
+the decision the handshake exists to put in front of a human. An ungated tool that could do it would make the
+handshake a lock with the key left beside it. Re-following is the way back, and it is both calls.
+
 ---
 
 ## 4. Falling behind is detected, recorded, and repaired

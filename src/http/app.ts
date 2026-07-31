@@ -12,10 +12,12 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
+import type { Synthesiser } from '../compile/index.js';
 import type { TransactionalDb } from '../db.js';
 import { createConfirmTokenStore, type ConfirmTokenStore } from '../follow/tokens.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from '../mcp.js';
 import { createFetcher, type Fetcher } from '../net/fetch.js';
+import type { Extractor } from '../notes/index.js';
 import type { Embedder } from '../retrieval/embed.js';
 import type { QueryGate } from '../retrieval/index.js';
 import {
@@ -48,9 +50,25 @@ export type AppDeps = {
    */
   retrieval?: QueryGate;
   embedder?: Embedder;
+  /**
+   * What `braintrust_refresh_persona` needs. Absent together means the tool is not
+   * registered — the same posture retrieval takes, for the same reason: a refresh that
+   * cannot rebuild would report a success that left the persona exactly as stale.
+   */
+  extractor?: Extractor;
+  synthesiser?: Synthesiser;
 };
 
-export function createApp({ db, mcpKey, tokens, fetcher, retrieval, embedder }: AppDeps): Express {
+export function createApp({
+  db,
+  mcpKey,
+  tokens,
+  fetcher,
+  retrieval,
+  embedder,
+  extractor,
+  synthesiser,
+}: AppDeps): Express {
   const confirmTokens = tokens ?? createConfirmTokenStore();
   const sourceFetcher = fetcher ?? createFetcher();
 
@@ -89,7 +107,13 @@ export function createApp({ db, mcpKey, tokens, fetcher, retrieval, embedder }: 
       db,
       tokens: confirmTokens,
       fetcher: sourceFetcher,
-      ...(embedder && retrieval ? { embedder, retrieval } : {}),
+      // The embedder goes through on its own, but the query gate only alongside it:
+      // registering the search tool needs both, while a refresh needs only the embedder
+      // — it indexes and judges revisions in that space while the corpus is still half
+      // embedded, which is precisely when a search would be answering nonsense.
+      ...(embedder ? { embedder } : {}),
+      ...(embedder && retrieval ? { retrieval } : {}),
+      ...(extractor && synthesiser ? { extractor, synthesiser } : {}),
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 

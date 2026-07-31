@@ -239,10 +239,21 @@ Pull new Items for an already-followed Person and recompile — the same cycle t
 **Callable freely by the AI.** The human decision that matters (following this Person) was already made,
 nothing new is introduced, and self-maintaining currency is the entire pitch over a static prompt.
 
-Returns a Compile summary: new Items, Compile duration, new `compiled_at`. **It has a second return shape —
-*already running, started at X*** — because
+Returns a Compile summary: what each Source turned up, `still_owed`, whether it rebuilt, and the new
+`compiled_at`. **It has a second return shape — *already running, started at X*** — because
 [one rebuild per Person is enforced by the database](./ingestion.md#one-rebuild-per-person-at-a-time). That is
 a more useful answer than silently duplicating ~26 minutes of work, and it is what makes ungated refresh safe.
+
+Two answers that are not failures and are described as such in the tool's own text, because a model that
+reads them as failures will retry them:
+
+- **`rebuilt: false` with `not_rebuilt`** — nothing arrived that this Persona has not already read. New
+  content triggers the rebuild; asking does not.
+- **`stopped_early` with `still_owed`** — the fetch budget ran out. Nothing is lost and nothing repeats;
+  the rows this call wrote are where the next one starts.
+
+**A paused Person is refused**, with the refusal pointing at `braintrust_follow_person` — see
+[what the build settled](./ingestion.md#what-the-build-settled-about-the-three-triggers).
 
 ### 6. `braintrust_unfollow_person`
 
@@ -256,7 +267,12 @@ deleted.** Details and the reasoning are in
 approval surface. The two-call handshake exists to gate *downloading someone's work*; stopping downloads is
 strictly less exposure, and it is fully reversible because nothing is deleted.
 
-**It is not a takedown.**
+**It is not a takedown.** The tool says so in its own description, and the answer carries `deleted: "nothing"`
+as a field alongside counts of what was kept — because the thing most likely to be misread here is what the
+word *unfollow* covers, and a sentence in a doc nobody has open is not where that gets settled.
+
+It is idempotent: unfollowing twice reports the pause it already set rather than moving the timestamp, which
+would rewrite when the user actually decided.
 
 ---
 

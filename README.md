@@ -69,7 +69,7 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, `braintrust_load_persona`, `braintrust_find_positions`, **following someone**, and **the daily job, for both sources, through to a searchable index, a note on every item, and a compiled persona**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, `braintrust_load_persona`, `braintrust_find_positions`, `braintrust_refresh_persona`, `braintrust_unfollow_person`, **following someone**, and **the daily job, for both sources, through to a searchable index, a note on every item, and a compiled persona**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
 
 A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again. Chunking and embedding resume the same way, and an embeddings endpoint that is switched off delays the vectors rather than the collecting.
 
@@ -87,11 +87,30 @@ The other two — **how someone reasons** and **what they believe** — are synt
 
 **And when someone changes their mind, both states survive.** This is the thing braintrust exists for. Claims that sit near each other in meaning but were published months apart become candidate pairs, and a model is asked one question about each: does the later one withdraw, narrow or reverse the earlier? Only the strongest answer — `revised`, and only where the person says so in their own words — takes a position off `current`, and even then it is kept, served flagged, with the words it rested on and what replaced it. `unsettled` and `drifting` leave both positions standing, visible to anyone who looks and never spoken in the person's voice: a rephrase recorded as a reversal puts a contradiction on a real person's record that they would dispute, and that is the one error this cannot absorb. Direction comes from the dates rather than from the model, and a pair braintrust cannot place in time is not judged at all.
 
+**And braintrust now runs itself.** One daily job does the whole cycle — poll, check for a gap, drain the
+backlog, rebuild — and your AI client can ask for the same thing on demand with `braintrust_refresh_persona`,
+freely and without a human in the way, because the human decision that mattered was following the person in
+the first place. **A rebuild is triggered by content the persona has not read, never by the clock or by the
+asking**, so a run that brings in nothing costs nothing, and a run that finishes reading something last
+week's run collected does rebuild — the case a simple "did anything happen today" check gets wrong. Two
+clients asking at once cannot produce two rebuilds: the second is told when the first started, and that is
+the database refusing rather than braintrust remembering to. A refresh spends thirty seconds fetching and
+then tells you what it did not reach, because a first backfill is half an hour and your client is waiting;
+nothing repeats, so calling again carries on where it stopped.
+
+**And you can stop.** `braintrust_unfollow_person` ends the updates and **deletes nothing** — the items, the
+text, the notes and the compiled persona all stay, and that persona keeps answering, frozen at its last
+compile and shown as paused so nobody mistakes it for current. It is one call rather than a handshake,
+because stopping downloads is less exposure than starting them, and it is fully reversible: following them
+again picks up exactly where it left off, with nothing to re-fetch. **It is not a takedown**, and braintrust
+says so where it matters rather than in a footnote. Resuming does go through the full two-call handshake,
+because it does mean fetching someone's work again — and a refresh will not do it for you.
+
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 
 - [x] Source ingestion pipeline — Substack and YouTube
-- [ ] Persona compiler and daily refresh loop — the compiler works; the refresh loop is not wired yet
-- [ ] MCP server exposing personas as tools — three of the six are live
+- [x] Persona compiler and daily refresh loop — one cycle, three triggers: the daily clock, an AI-callable refresh, and following someone
+- [ ] MCP server exposing personas as tools — five of the six are live
 - [ ] Council mode: one question, every persona answers
 - [x] Drift tracking: see how someone's thinking has changed over time — the compiler writes the relations and both states are served; the judgement itself has not yet been run against a real model
 

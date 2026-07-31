@@ -118,8 +118,15 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         [itemId, chunk.ordinal, chunk.text, chunk.charStart, chunk.charEnd, chunk.startMs, chunk.endMs],
       );
     }
-    // Two claims, quoted from the body above — the growing layer is built from these, and
-    // a citation carries the quote braintrust verified rather than one written later.
+    await writeNote(itemId);
+    return itemId;
+  }
+
+  /**
+   * Two claims, quoted from the body — the growing layer is built from these, and a
+   * citation carries the quote braintrust verified rather than one written later.
+   */
+  async function writeNote(itemId: string): Promise<void> {
     await db.query(
       `insert into braintrust_item_notes (item_id, extractor, claims, argument_md, assumptions)
        values ($1, $2, $3::jsonb, 'an argument', '[]'::jsonb)`,
@@ -142,7 +149,6 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         ]),
       ],
     );
-    return itemId;
   }
 
   function compile(overrides: Partial<Parameters<typeof compileCorpus>[0]> = {}) {
@@ -150,7 +156,6 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       db,
       extractor: GENERATION,
       synthesiser: fakeSynthesiser(),
-      changed: ['nate'],
       log: () => {},
       ...overrides,
     });
@@ -374,8 +379,8 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     assert.deepEqual(report.compiled, ['nate']);
   });
 
-  it('rebuilds a person who has never been compiled, even with nothing new', async () => {
-    const report = await compile({ changed: [] });
+  it('rebuilds a person who has never been compiled, because everything is unseen', async () => {
+    const report = await compile();
 
     assert.deepEqual(report.compiled, ['nate']);
   });
@@ -384,11 +389,32 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     await compile();
     const before = await currentCompileId();
 
-    const report = await compile({ changed: [] });
+    const report = await compile();
 
     assert.deepEqual(report.compiled, []);
     assert.deepEqual(report.waiting, []);
     assert.equal(await currentCompileId(), before);
+  });
+
+  it('rebuilds on the run that finishes the reading, not the run that found the item', async () => {
+    // The seam between two rules: new content triggers a rebuild, and a rebuild waits
+    // for an empty backlog. An item that arrives on Monday and is read on Tuesday is
+    // news to nobody on Tuesday — and asking "did anything happen today" would leave
+    // this persona stale until the person next published, which has nothing to do with
+    // what it is actually waiting for.
+    await compile();
+    const before = await currentCompileId();
+
+    const itemId = await addItem('post-late', body(9), '2025-09-01');
+    await db.query('delete from braintrust_item_notes where item_id = $1', [itemId]);
+    assert.deepEqual((await compile()).compiled, [], 'the backlog is not empty yet');
+    assert.equal(await currentCompileId(), before);
+
+    // Tuesday: the note is written and nothing else about the world changes.
+    await writeNote(itemId);
+
+    assert.deepEqual((await compile()).compiled, ['nate']);
+    assert.notEqual(await currentCompileId(), before);
   });
 
   it('never rebuilds a paused person, because a pause is the user freezing the persona', async () => {
@@ -410,7 +436,6 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       db: failingOn(db, 'braintrust_persona_layers'),
       extractor: GENERATION,
       synthesiser: fakeSynthesiser(),
-      changed: ['nate'],
       log: () => {},
     });
 
