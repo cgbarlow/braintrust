@@ -24,6 +24,7 @@ import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { runCycle, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 import { recordCatalogued, type SourceRow } from '../src/ingest/items.js';
 import { createExtractor } from '../src/notes/index.js';
+import { loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
 import { RETRIEVAL_SPACING_MS } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
@@ -625,11 +626,14 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.ok(row.body_text);
   });
 
-  it('names the people whose corpus changed, and says nothing is rebuilt yet', async () => {
+  it('names the people whose corpus changed, and rebuilds nobody without an extractor', async () => {
     await follow();
     const { report } = await run();
 
     assert.deepEqual(report.rebuild_pending, ['nate-b-jones']);
+    // A compile declares which generation of notes it read, so with no extractor
+    // configured there is no honest value to put on the row and nothing is rebuilt.
+    assert.equal(report.compile, undefined);
     assert.equal(report.corpus.retrieved, SUBSTACK_FREE + YT_RETRIEVED);
     assert.equal(report.corpus.skipped_paywall, SUBSTACK_PAYWALLED);
     assert.equal(report.corpus.skipped_short, YT_SHORTS);
@@ -716,6 +720,37 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     // This is the whole reason notes exist: the second day costs the feed poll, not
     // 1.17M words of transcript.
     assert.equal(report.notes!.items_read, 0);
+  });
+
+  it('finishes the run with a persona, built from what that run collected', async () => {
+    await follow();
+    const { report } = await run({ embed: true, extract: true });
+
+    assert.deepEqual(report.compile!.compiled, ['nate-b-jones']);
+
+    // The point of compiling inside the cycle: someone who followed a person this
+    // morning has a persona this evening, without doing anything else.
+    const persona = await loadPersona(db, 'nate-b-jones');
+    assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
+    assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'voice']);
+
+    // Measured over everything the run retrieved, and nothing it did not.
+    const voice = persona.layers.voice!.evidence as { items_measured: number };
+    const coverage = persona.layers.coverage!.evidence as { retrieved: number; skipped_paywall: number };
+    assert.equal(voice.items_measured, SUBSTACK_FREE + YT_RETRIEVED);
+    assert.equal(coverage.retrieved, SUBSTACK_FREE + YT_RETRIEVED);
+    assert.equal(coverage.skipped_paywall, SUBSTACK_PAYWALLED);
+  });
+
+  it('rebuilds nothing on a day that brought nothing', async () => {
+    await follow();
+    await run({ embed: true, extract: true });
+    const { report } = await run({ embed: true, extract: true, now: new Date(NOW.getTime() + 86_400_000) });
+
+    // New content triggers the rebuild, not the clock. A day with no new items costs
+    // the feed poll and nothing else.
+    assert.deepEqual(report.compile!.compiled, []);
+    assert.deepEqual(report.compile!.waiting, []);
   });
 
   it('indexes nothing when the run was told to stop, and picks it up next time', async () => {

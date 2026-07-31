@@ -1,12 +1,15 @@
 /**
- * The read path for `braintrust_list_personas`: who exists, whether they have ever
- * been compiled, and how stale each core is.
+ * The two read paths for a Persona: `braintrust_list_personas` — who exists, whether
+ * they have ever been compiled, and how stale each Core is — and
+ * `braintrust_load_persona`, which serves that Core whole.
  *
- * See docs/design/mcp-surface.md §1.
+ * See docs/design/mcp-surface.md §1 and §2.
  */
 
+import { loadCurrent, personExists } from './compile/store.js';
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
+import { BraintrustError } from './errors.js';
 
 export type CorpusSummary = {
   items_retrieved: number;
@@ -106,5 +109,75 @@ function asCorpusSummary(stats: Record<string, unknown> | null): CorpusSummary |
     items_retrieved: retrieved,
     items_skipped_paywall: skipped,
     window: [window[0], window[1]],
+  };
+}
+
+export type LoadedLayerPayload = {
+  basis: string;
+  descriptive: string;
+  /** Voice only. Two columns of one row, so returning both costs nothing. */
+  generative?: string;
+  evidence: unknown;
+};
+
+export type LoadedPersonaPayload = {
+  subject: string;
+  compiled_at: string | null;
+  compiler_version: string;
+  /** Which generation of Notes this Persona was built from. Declared, never inferred. */
+  extractor: string | null;
+  layers: Record<string, LoadedLayerPayload>;
+};
+
+/**
+ * The Core, whole. No query and no assembly step: serving it is reading the layer rows
+ * of the one Compile whose status is `current`.
+ *
+ * **Never compiled means answer nothing.** Compiling on demand was rejected — a first
+ * question that hangs for minutes and spends real money unannounced is a bad first
+ * impression, and it puts the most expensive action in the product behind a read call.
+ * The two ways of having no Persona are two different sentences, because "braintrust has
+ * never heard of them" and "braintrust follows them and has not built one yet" send the
+ * caller somewhere different.
+ *
+ * Voice returns both forms. The client acts on `generative`; `descriptive` and
+ * `evidence` are what make the instruction checkable. Returning only the first leaves it
+ * unfalsifiable, and returning only the second means two clients build two different
+ * personalities from identical data.
+ */
+export async function loadPersona(db: Db, person: string): Promise<LoadedPersonaPayload> {
+  const slug = person.trim();
+  const loaded = await loadCurrent(db, slug);
+
+  if (!loaded) {
+    if (await personExists(db, slug)) {
+      throw new BraintrustError(
+        `braintrust follows ${slug} but has not built a persona for them yet. Nothing is compiled ` +
+          'on demand: the scheduled job builds a persona once it has read what it collected, so ' +
+          'this resolves itself rather than needing anything from you.',
+      );
+    }
+    throw new BraintrustError(
+      `braintrust does not follow anyone called "${slug}". braintrust_list_personas has the ones ` +
+        'it does, and braintrust_follow_person adds someone new — which only a human can complete.',
+    );
+  }
+
+  const layers: Record<string, LoadedLayerPayload> = {};
+  for (const layer of loaded.layers) {
+    layers[layer.layer] = {
+      basis: layer.basis,
+      descriptive: layer.descriptive_md,
+      ...(layer.generative_md !== null ? { generative: layer.generative_md } : {}),
+      evidence: layer.evidence,
+    };
+  }
+
+  return {
+    subject: subjectFor(loaded.display_name),
+    compiled_at: loaded.compiled_at?.toISOString() ?? null,
+    compiler_version: loaded.compiler_version,
+    extractor: loaded.extractor,
+    layers,
   };
 }

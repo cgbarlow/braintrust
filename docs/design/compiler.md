@@ -123,6 +123,33 @@ stable across Compiles, more honest.
 **Anything precise and filterable stays query-time** — *"what did they say about X in Q2"* is not compiled.
 Compiling it would duplicate the database and add a staleness window for no gain.
 
+### What the build settled about "measured"
+
+**The patterns are a hypothesis; the counts are the measurement.** Counting hedging means first deciding what
+hedging sounds like, and that decision is a human judgement no amount of arithmetic launders. So the judgement
+is written down where it can be argued with — each move's regex travels in the layer's `evidence` as its own
+field — and it is never what a Persona acts on. What protects the Persona is the second half: **a move earns
+its line in `generative_md` from its spread across Items**, and the strength of the wording is a function of
+that spread rather than of anyone's ear. Built at a third of Items to be instructed at all and two thirds to
+be instructed as characteristic; both are starting points to tune, not findings.
+
+A move measured in one Item of thirty is described and not instructed, and `generative_md` says which moves it
+left out so a client cannot helpfully add them back. **A move measured at zero stays in the evidence as a row
+of zeroes**, because *braintrust looked for this and did not find it* is a different statement from silence —
+and it is exactly the statement the first prototype needed and did not have when it asserted *"no hedging"*.
+
+**No number appears in a measured layer's prose that is not also a field of its `evidence`.** The reason
+Coverage returns structured counts is that a figure buried in a sentence cannot be checked, filtered or
+displayed as a fact — which is only true if the sentence never becomes the only place that figure lives. There
+are no percentages and no derived totals in either measured layer, and a test extracts every numeric token
+from the prose and fails if it is not in the structure.
+
+**Coverage's fixed shape gained two fields**, because folding either into an existing one would make a Persona
+claim a blind spot it does not have: `skipped_short` is braintrust's own policy rather than a Source's, and
+`pending` is work not yet done rather than work declined. `by_source` is keyed `platform:handle` rather than
+by platform, since one Person may follow two publications on the same platform and merging them silently
+would produce a count nobody could check.
+
 ---
 
 ## 3. The inferred marker is written by the compiler, never by the serialiser
@@ -211,6 +238,28 @@ the Corpus, full regeneration stops being cheap and the no-drift guarantee goes 
 **A gate rejection does not stop the schedule.** The daily job keeps trying, because a retry is cheap and new
 Items can genuinely fix a gate failure — a Position-count collapse caused by a thin day resolves itself the
 next day.
+
+### Three things the build settled about promotion
+
+**The `running` row is committed before the layers are built, and only the promotion is a transaction.**
+Wrapping the whole Compile in one transaction would make "a failed Compile changes nothing" true by
+construction — and would also hold a connection open across minutes of model calls, and make the `running`
+partial unique index unobservable to anyone else, which is the one thing it exists for. The promotion buys the
+same guarantee: the delete of the old `current` and the promotion of the new one are one statement pair, so
+there is no instant in which a client can observe neither Persona.
+
+**A Compile whose process died must not freeze a Persona forever.** With `running` visible, a crash leaves a
+row nobody will ever finish, and left alone it would refuse every future rebuild of that Person — a crash on a
+Tuesday becoming a permanently stale Persona. A `running` Compile older than six hours is therefore recorded
+as `failed` by the next run and taken over. **The daily clock is the recovery mechanism**, so a crash costs a
+day rather than a Persona.
+
+**A rebuild waits for an empty Backlog, and vectors are not in it.** What the Core reads is Item text and
+Notes, so the Backlog a Compile waits on is Items to retrieve, Items to chunk and Items to read. Nothing in
+the Core reads an embedding, and blocking a rebuild on the index would hand a switched-off embeddings endpoint
+a veto over the two layers that cost nothing to compute — while the whole reason chunking survives an endpoint
+being off is that the vectors are allowed to wait. Position retrieval is what needs them, and that is a
+serve-time concern.
 
 ---
 
@@ -317,6 +366,7 @@ embedding cost.
 | **You can sit on a stale Persona without knowing.** The gate records why it rejected; nothing in v1 reads it. | §5 |
 | **Passages read like unpunctuated speech**, because that is what they are. | §6 |
 | **Beliefs are uncitable.** No single Item asserts one, so provenance comes from the label rather than from pretending otherwise. | §2 |
+| **Voice can only find moves someone thought to look for.** A Corpus whose most distinctive habit is not in the pattern list is measured as ordinary, and nothing in the layer can notice the omission. | §2 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
 
@@ -328,6 +378,10 @@ embedding cost.
   for claims with verbatim quotes, the argument, and the assumptions, and it is versioned precisely so that
   improving it costs a re-read rather than a migration.
 - The similarity threshold for revision candidates.
+- **The voice moves themselves, and the spread thresholds that turn them into instructions.** Version
+  `measured-1` counts six moves at a third and two thirds of Items, and it is a **starting point, not a
+  finding** — the same status as `notes-1`, and versioned in `compiler_version` for the same reason. Tuning it
+  is a free rebuild, because the layer costs nothing to compute.
 - Exact chunk window size and overlap. Built at 1,500 characters with one unit of overlap, and still a
   starting point to tune against real retrieval results rather than a finding.
 - Whether a reranker is ever added. Retrieval quality should be measured before anything is added to fix it.

@@ -70,6 +70,7 @@ four `braintrust_persona_layers` rows; there is no assembly step.
 { "subject": "braintrust model of Nate B. Jones",
   "compiled_at": "2026-07-28T09:14:22Z",
   "compiler_version": "0.3.1",
+  "extractor": "gpt-5@notes-1",
   "layers": {
     "voice":     { "basis": "measured",
                    "generative":  "Hedge before committing…",
@@ -83,7 +84,8 @@ four `braintrust_persona_layers` rows; there is no assembly step.
                    "evidence": { "window": ["2025-08-01","2026-07-29"],
                                  "retrieved": 412, "skipped_paywall": 304, "failed": 3,
                                  "words_retrieved": 1170000,
-                                 "by_source": { "youtube": {…}, "substack": {…} } } }
+                                 "by_source": { "youtube:UC0C…": {…},
+                                                "substack:nate.substack.com": {…} } } }
   } }
 ```
 
@@ -97,7 +99,17 @@ checked, filtered or displayed as a fact. The fields are fixed
 ([compiler](./compiler.md#2-six-layers-a-bounded-core-and-an-indexed-growing-layer)), and Coverage is where a
 Blocked Source is named — when it stopped, and how much of that Source went unread.
 
-**Not compiled → this errors.** See the third rule below.
+**Not compiled → this errors**, and the two ways of having no persona are two different sentences. *braintrust
+has never heard of them* sends the caller to `braintrust_follow_person`, which only a human can complete;
+*braintrust follows them and has not built one yet* sends them nowhere, because the scheduled job resolves it
+without anyone doing anything. See the third rule below.
+
+**`by_source` is keyed `platform:handle`.** One person may follow two publications on the same platform, and a
+key of `substack` alone would merge them into a count nobody could check.
+
+**`extractor` says which generation of notes the persona was built from.** It is on the compile row rather
+than read from whatever happens to be configured now, because two generations coexist while a prompt upgrade
+re-reads the corpus.
 
 ### 3. `braintrust_find_positions`
 

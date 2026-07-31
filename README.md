@@ -69,7 +69,7 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for both sources, through to a searchable index and a note on every item**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, `braintrust_load_persona`, **following someone**, and **the daily job, for both sources, through to a searchable index, a note on every item, and a compiled persona**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
 
 A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again. Chunking and embedding resume the same way, and an embeddings endpoint that is switched off delays the vectors rather than the collecting.
 
@@ -77,7 +77,11 @@ braintrust refuses to start against an endpoint whose vectors do not fit the col
 
 Each item is then read exactly once and what was read is kept — the claims it makes, each with a quote braintrust checked against the item itself, the argument, and the assumptions. **A claim braintrust cannot quote is dropped rather than stored**, and the run says how many were. That is what makes every later rebuild cheap: following someone costs a few dollars once, and a rebuild reads notes rather than a million words.
 
-What does not work yet: nothing is compiled from those notes, so a person's persona is still `compiled: false` however much of their corpus is on disk, and nothing reads the index yet.
+The same run then builds a persona from what it collected, and `braintrust_load_persona` serves it. Two of its layers work today, and they are the two **no model ever writes**: **voice**, counted over what the person actually published, and **coverage**, counted over the item rows. Voice comes back as an instruction to follow *and* as the counts that instruction was derived from, so you can check it rather than take its word — and a habit measured in one item of thirty is described but never instructed, because a persona should not perform someone's rarest tic in their name. Coverage is where a persona names its own blind spots: what was paywalled and never fetched, what braintrust skipped by its own rule, and what it has not read yet.
+
+A rebuild waits until there is nothing left in the backlog, so a persona is never measured over half a corpus, and it replaces its predecessor in a single step — there is no moment where a question would find no persona at all.
+
+What does not work yet: the other half of the core. Nothing is synthesised from the notes yet, so a persona can tell you how someone sounds and what braintrust has read of them, but not yet how they reason, what they believe, or what they have said about anything. Nothing reads the index yet either.
 
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 

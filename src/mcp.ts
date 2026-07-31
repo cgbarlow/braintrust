@@ -14,7 +14,7 @@ import { BraintrustError } from './errors.js';
 import { followPerson, type FollowArgs } from './follow/index.js';
 import type { ConfirmTokenStore } from './follow/tokens.js';
 import type { Fetcher } from './net/fetch.js';
-import { listPersonas } from './personas.js';
+import { listPersonas, loadPersona } from './personas.js';
 import { VERSION } from './version.js';
 
 export const SERVER_NAME = 'braintrust';
@@ -79,6 +79,44 @@ export function buildServer({ db, tokens, fetcher }: ServerDeps): McpServer {
       annotations: { readOnlyHint: true },
     },
     async () => text(await listPersonas(db)),
+  );
+
+  server.registerTool(
+    'braintrust_load_persona',
+    {
+      title: 'Load a persona',
+      description:
+        'The core of one persona, whole: how they sound, and what braintrust has and has not ' +
+        'read of them. This is what you load to answer *as* a braintrust model of someone, ' +
+        'rather than to look something up.\n\n' +
+        'Every layer says whether it was measured or inferred. `voice` is measured — counted ' +
+        'over what the person actually published, with no model in the path — and comes back in ' +
+        'two forms: `generative` is the instruction to follow, and `descriptive` plus `evidence` ' +
+        'are the counts it was derived from, so you can check the instruction rather than trust ' +
+        'it. `coverage` is measured too, and it is where a persona names its own blind spots: ' +
+        'what was paywalled and never fetched, what failed, and what has not been read yet.\n\n' +
+        'A persona braintrust has never compiled returns an error rather than being built on ' +
+        'demand. Use braintrust_list_personas to see who exists and who has been compiled.',
+      inputSchema: {
+        person: z
+          .string()
+          .min(1)
+          .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ person }: { person: string }) => {
+      try {
+        return text(await loadPersona(db, person));
+      } catch (error) {
+        if (error instanceof BraintrustError) return failure(error.message);
+        console.error('braintrust: braintrust_load_persona failed', error);
+        return failure(
+          'braintrust_load_persona failed for a reason braintrust did not expect. The server log ' +
+            'has the detail.',
+        );
+      }
+    },
   );
 
   server.registerTool(
