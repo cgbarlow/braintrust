@@ -33,6 +33,19 @@ export const CORE_LAYERS = ['beliefs', 'coverage', 'reasoning', 'voice'] as cons
  */
 export const POSITION_COLLAPSE_FLOOR = 0.5;
 
+/**
+ * How much of a Persona one rebuild may take off `current` before it reads as a judge
+ * having a bad afternoon rather than a person changing their mind.
+ *
+ * Found live: a judge that answers `revised` freely superseded 16 of 23 positions in a
+ * single compile, and every other check passed — the rows were well-formed, every
+ * relation was dated and cited, and the Persona was quietly two thirds retired. Real
+ * supersession is rare: fourteen months of near-daily output yielded one clean one. So a
+ * compile that retires half of what someone holds is describing the model, not the author,
+ * and yesterday's Persona is the better answer.
+ */
+export const REVISION_SWEEP_CEILING = 0.5;
+
 export type GateLayer = {
   layer: string;
   basis: string;
@@ -59,6 +72,8 @@ export type GateFacts = {
   positions: { slug: string; citations: number }[];
   /** Positions on the Compile this one would replace. Zero when there is no predecessor. */
   previous_positions: number;
+  /** Positions this Compile put on the earlier side of a `revised` relation. */
+  superseded_positions: number;
 };
 
 export type GateCheck = { check: string; passed: boolean; detail: string };
@@ -78,6 +93,7 @@ export function checkCompile(facts: GateFacts): GateVerdict {
     coverageReconciles(facts),
     positionsAreCited(facts),
     positionsHaveNotCollapsed(facts),
+    revisionsHaveNotSwept(facts),
   ];
 
   const failed = checks.filter((check) => !check.passed);
@@ -229,6 +245,27 @@ function positionsHaveNotCollapsed(facts: GateFacts): GateCheck {
     detail: passed
       ? `${now} position(s) against ${before} on the previous compile`
       : `positions fell from ${before} to ${now}, below the ${floor} this compile had to hold`,
+  };
+}
+
+/**
+ * The one check about revisions, and it is a count rather than a reading of them: a
+ * Persona where most of what someone holds has been retired in one rebuild is the failure
+ * that looks like working software, because every individual row is well-formed.
+ */
+function revisionsHaveNotSwept(facts: GateFacts): GateCheck {
+  const now = facts.positions.length;
+  const superseded = facts.superseded_positions;
+  const ceiling = Math.floor(now * REVISION_SWEEP_CEILING);
+  const passed = now === 0 || superseded <= ceiling;
+
+  return {
+    check: 'revisions_have_not_swept',
+    passed,
+    detail: passed
+      ? `${superseded} of ${now} position(s) were superseded on this rebuild`
+      : `${superseded} of ${now} position(s) were superseded on one rebuild, past the ${ceiling} ` +
+        'this compile had to stay under — that is a judge changing its mind, not a person',
   };
 }
 

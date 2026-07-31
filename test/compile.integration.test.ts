@@ -27,10 +27,12 @@ import {
   gateFacts,
   INFERRED_MARKER,
   STALE_COMPILE_MS,
+  writeRelations,
 } from '../src/compile/index.js';
 import { createDb, type Db, type PostgresDb, type TransactionalDb } from '../src/db.js';
 import { listPersonas, loadPersona } from '../src/personas.js';
 import { chunkItem } from '../src/retrieval/index.js';
+import { fakeEmbedder } from './support/embeddings.js';
 import { fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
 
 const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
@@ -592,6 +594,155 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     );
 
     assert.equal(checkCompile(await gateFacts(db, personId, compileId!)).passed, true);
+  });
+
+  it('writes the relations between positions, and nothing when there is no endpoint to ask', async () => {
+    // Without an embedder there is no neighbourhood, so nothing is compared and every
+    // position is current. A persona that says less is honest; one that guesses is not.
+    await compile();
+    assert.equal(await count('select count(*) from braintrust_position_relations'), 0);
+
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) =>
+        claims.map((claim, index) => ({
+          slug: `position-${index}`,
+          statement: `Position ${index}.`,
+          claims: [claim],
+        })),
+      // One revision and the rest left standing, which is what a judge told to answer
+      // unsettled whenever the call is close should look like.
+      judgementsFor: (pairs) =>
+        pairs.map((pair) => ({
+          pair,
+          relation: pair === 'p1' ? ('revised' as const) : ('unsettled' as const),
+          rationale:
+            pair === 'p1'
+              ? 'The later piece narrows the earlier one in their own words.'
+              : 'Both readings are still argued for.',
+        })),
+    });
+
+    await addItem('post-later', body(9), '2025-11-01');
+    const report = await compile({ synthesiser, embedder: fakeEmbedder() });
+    assert.deepEqual(report.compiled, ['nate']);
+
+    const relations = await db.query<{
+      relation: string;
+      gap_days: number;
+      rationale: string;
+      earlier: string;
+      later: string;
+      earlier_held: string;
+      later_held: string;
+    }>(
+      `select r.relation, r.gap_days, r.rationale, earlier.slug as earlier, later.slug as later,
+              earlier.held_since::text as earlier_held, later.held_since::text as later_held
+         from braintrust_position_relations r
+         join braintrust_positions earlier on earlier.id = r.from_position_id
+         join braintrust_positions later on later.id = r.to_position_id
+         join braintrust_compiles c on c.id = r.compile_id
+        where c.person_id = $1 and c.status = 'current'`,
+      [personId],
+    );
+
+    assert.ok(relations.rows.length > 0, 'the judge answered, so rows are owed');
+    assert.equal(relations.rows.filter((row) => row.relation === 'revised').length, 1);
+    for (const row of relations.rows) {
+      assert.match(row.rationale, /narrows the earlier one|still argued for/);
+      // `from` is the earlier position, and the gap is the two dates a reader is shown.
+      assert.ok(row.earlier_held < row.later_held, `${row.earlier} should predate ${row.later}`);
+      assert.equal(
+        row.gap_days,
+        Math.round((Date.parse(row.later_held) - Date.parse(row.earlier_held)) / 86_400_000),
+      );
+    }
+  });
+
+  it('never speaks a relation in the core, whatever the judge decided', async () => {
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) =>
+        claims.map((claim, index) => ({
+          slug: `position-${index}`,
+          statement: `Position ${index}.`,
+          claims: [claim],
+        })),
+      judgementsFor: (pairs) =>
+        pairs.map((pair) => ({
+          pair,
+          relation: 'unsettled' as const,
+          rationale: 'They argue both sides in different pieces.',
+        })),
+    });
+
+    await compile({ synthesiser, embedder: fakeEmbedder() });
+    assert.ok(await count('select count(*) from braintrust_position_relations') > 0);
+
+    // `unsettled` and `drifting` are visible to anyone who goes looking and are never
+    // spoken in the person's voice — so nothing a client loads to answer *as* them
+    // carries a tension the person never resolved.
+    const persona = await loadPersona(db, 'nate');
+    for (const [name, layer] of Object.entries(persona.layers)) {
+      const prose = `${layer.descriptive} ${layer.generative ?? ''}`;
+      assert.doesNotMatch(prose, /unsettled|drifting|superseded|revised/i, `${name} speaks a relation`);
+      assert.doesNotMatch(prose, /argue both sides in different pieces/, `${name} carries a rationale`);
+    }
+  });
+
+  it('refuses to publish a compile whose judge retired most of the persona', async () => {
+    await compile();
+    const before = await currentCompileId();
+
+    await addItem('post-later', body(9), '2025-11-01');
+    const report = await compile({
+      synthesiser: fakeSynthesiser({
+        positionsFor: (claims) =>
+          claims.map((claim, index) => ({
+            slug: `position-${index}`,
+            statement: `Position ${index}.`,
+            claims: [claim],
+          })),
+        judgementsFor: (pairs) =>
+          pairs.map((pair) => ({
+            pair,
+            relation: 'revised' as const,
+            rationale: 'Everything supersedes everything, says the judge.',
+          })),
+      }),
+      embedder: fakeEmbedder(),
+    });
+
+    // Every row is well-formed — dated, cited, ordered — and the persona is quietly
+    // retired. Found live, which is why this check exists at all.
+    assert.deepEqual(report.compiled, []);
+    assert.match(report.rejected[0]!.reason, /position\(s\) were superseded on one rebuild/);
+    assert.equal(await currentCompileId(), before);
+  });
+
+  it('drops a relation naming a position this compile did not write', async () => {
+    await compile();
+    const compileId = await currentCompileId();
+    const ids = new Map(
+      (
+        await db.query<{ slug: string; id: string }>(
+          `select slug, id from braintrust_positions where compile_id = $1`,
+          [compileId!],
+        )
+      ).rows.map((row) => [row.slug, row.id]),
+    );
+    const [real] = [...ids.keys()];
+
+    const written = await writeRelations(
+      db,
+      compileId!,
+      [
+        { from: real!, to: 'a-position-that-was-never-written', relation: 'revised', gap_days: 5, rationale: 'no' },
+        { from: real!, to: real!, relation: 'unsettled', gap_days: 0, rationale: 'itself' },
+      ],
+      ids,
+    );
+
+    assert.deepEqual(written, { written: 0, dropped: 2 });
+    assert.equal(await count('select count(*) from braintrust_position_relations'), 0);
   });
 
   it('writes the corpus stats braintrust_list_personas reports', async () => {

@@ -4,8 +4,9 @@
  * The claims only a database can settle: that the question is embedded at serve time and
  * matched in the same space the Corpus was indexed in, that the Positions those Items
  * support come back with the Person's own words attached, that the passages fallback fires
- * exactly when the compiler formed no Position on a topic, and that a superseded Position
- * is served flagged rather than dropped — which is #35's rows and this ticket's read path.
+ * exactly when the compiler formed no Position on a topic, and that a Position the
+ * compiler decided was superseded is served flagged rather than dropped — end to end,
+ * from the judgement that wrote the row to the answer a client reads.
  *
  * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
  *
@@ -27,6 +28,7 @@ import {
   createEmbedder,
   createQueryGate,
   storeEmbeddings,
+  type Embedder,
   type QueryGate,
 } from '../src/retrieval/index.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
@@ -107,6 +109,22 @@ const UNCLAIMED = {
     'Pricing an agent product is its own problem. Seat-based pricing collapses the moment the ' +
     'software does the work of the seat, and usage pricing punishes exactly the customers you ' +
     'most want. Nobody has a good answer to this yet.',
+};
+
+/**
+ * The endpoint the compiler asks *which claims are near which* — near when they are about
+ * the same subject, and orthogonal otherwise. Deliberately cruder than the bag of words
+ * the corpus is indexed with: these tests are about what braintrust does with a
+ * neighbourhood, and a neighbourhood nobody can predict tests nothing.
+ */
+const topical: Embedder = {
+  model: 'test-topics',
+  url: 'https://example.test/v1/embeddings',
+  async embed(inputs: string[]): Promise<number[][]> {
+    return inputs.map((text) =>
+      /eval/i.test(text) ? [1, 0, 0] : /context|memory/i.test(text) ? [0, 1, 0] : [0, 0, 1],
+    );
+  },
 };
 
 describe('finding positions, against real Postgres', { skip }, () => {
@@ -203,11 +221,12 @@ describe('finding positions, against real Postgres', { skip }, () => {
    * and this test is not about the model — it is about what braintrust does with the
    * grouping, which is where every guarantee in the answer comes from.
    */
-  function compile(positionsFor?: FakeOptions['positionsFor']) {
+  function compile(positionsFor?: FakeOptions['positionsFor'], options: FakeOptions = {}) {
     return compileCorpus({
       db,
       extractor: GENERATION,
       synthesiser: fakeSynthesiser({
+        ...options,
         positionsFor:
           positionsFor ??
           ((claims) =>
@@ -217,10 +236,23 @@ describe('finding positions, against real Postgres', { skip }, () => {
               claims: [claim],
             }))),
       }),
+      ...(options.judgementsFor ? { embedder: topical } : {}),
       changed: ['nate'],
       log: () => {},
     });
   }
+
+  /**
+   * One position per item, oldest last — the shape the revision tests need, because a
+   * revision is between two things said at different times and the default grouping puts
+   * every claim in its own position.
+   */
+  const byItem: FakeOptions['positionsFor'] = (claims) =>
+    [...ITEMS].reverse().map((item, index) => ({
+      slug: item.external_id,
+      statement: `What braintrust says ${item.external_id} holds.`,
+      claims: claims.slice(index * CLAIMS_PER_ITEM, (index + 1) * CLAIMS_PER_ITEM),
+    })).filter((position) => position.claims.length > 0);
 
   function find(args: Partial<Parameters<typeof findPositions>[0]> = {}) {
     return findPositions(
@@ -416,40 +448,73 @@ describe('finding positions, against real Postgres', { skip }, () => {
     assert.ok(!urls.includes('https://example.test/evals'));
   });
 
-  it('serves a superseded position flagged rather than dropping it', async () => {
-    await compile();
+  /** A judge that always answers the same way, on whatever pairs it is sent. */
+  function judgeSays(relation: 'revised' | 'unsettled' | 'drifting' | 'none', rationale: string) {
+    return (pairs: string[]) => pairs.map((pair) => ({ pair, relation, rationale }));
+  }
 
-    // The first two positions are the two claims of the newest item, which is the one
-    // this test asks about — so both sides of the relation are in the answer.
-    const { rows } = await db.query<{ id: string; slug: string }>(
-      `select id, slug from braintrust_positions order by slug`,
-    );
+  it('serves a position the compiler superseded flagged, rather than dropping it', async () => {
+    await compile(byItem, {
+      judgementsFor: judgeSays(
+        'revised',
+        'The later item withdraws the earlier framing in their own words.',
+      ),
+    });
 
-    // #35's row, written by hand: this ticket's job is that the read path already means
-    // something when it arrives.
-    await db.query(
-      `insert into braintrust_position_relations
-         (compile_id, from_position_id, to_position_id, relation, gap_days, rationale)
-       values ((select compile_id from braintrust_positions where id = $1), $1, $2, 'revised', 793,
-               'The later item withdraws the earlier framing in their own words.')`,
-      [rows[0]!.id, rows[1]!.id],
-    );
-
-    const answer = await find({ query: await chunkTextOf('evals-again'), limit: 50 });
-    const earlier = answer.positions.find((position) => position.slug === rows[0]!.slug)!;
-    const later = answer.positions.find((position) => position.slug === rows[1]!.slug)!;
+    // Two items on evals, 792 days apart, and one about context windows that is nowhere
+    // near either. The compiler found the pair; nothing here inserted a row by hand.
+    const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
+    const earlier = answer.positions.find((position) => position.slug === 'evals')!;
 
     // Retained and returned, which is the entire point of the design.
     assert.equal(earlier.current, false);
     assert.equal(earlier.relations[0]!.relation, 'revised');
     assert.equal(earlier.relations[0]!.direction, 'superseded_by');
-    assert.equal(earlier.relations[0]!.other, rows[1]!.slug);
-    assert.equal(earlier.relations[0]!.gap_days, 793);
+    assert.equal(earlier.relations[0]!.other, 'evals-again');
+    // Counted from the two held_since dates a reader is shown, so it can be checked
+    // against them rather than taken on trust.
+    assert.equal(earlier.relations[0]!.gap_days, 792);
     assert.match(earlier.relations[0]!.rationale!, /withdraws the earlier framing/);
 
-    assert.equal(later.current, true);
-    assert.equal(later.relations[0]!.direction, 'supersedes');
-    assert.equal(later.relations[0]!.other, rows[0]!.slug);
+    // The later position, whether or not this question surfaced it, reads the same
+    // relation from the other side.
+    const later = await find({ query: await chunkTextOf('evals-again'), limit: 50 });
+    const replacement = later.positions.find((position) => position.slug === 'evals-again')!;
+    assert.equal(replacement.current, true);
+    assert.equal(replacement.relations[0]!.direction, 'supersedes');
+    assert.equal(replacement.relations[0]!.other, 'evals');
+
+    // The position on another subject was never a candidate: a neighbourhood is what
+    // decides that, and the third item is not in this one.
+    const untouched = await find({ query: await chunkTextOf('context'), limit: 50 });
+    assert.deepEqual(untouched.positions.find((one) => one.slug === 'context')!.relations, []);
+  });
+
+  it('leaves both positions current when the judge stops short of a revision', async () => {
+    await compile(byItem, {
+      judgementsFor: judgeSays('unsettled', 'Both readings are still argued for.'),
+    });
+
+    const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
+    const earlier = answer.positions.find((position) => position.slug === 'evals')!;
+
+    // Visible to anyone who goes looking, and never spoken as a change of mind.
+    assert.equal(earlier.current, true);
+    assert.equal(earlier.relations[0]!.relation, 'unsettled');
+    assert.equal(earlier.relations[0]!.direction, 'earlier');
+    assert.equal(earlier.relations[0]!.other, 'evals-again');
+    assert.match(earlier.relations[0]!.rationale!, /still argued for/);
+  });
+
+  it('records nothing at all when the judge dismisses the pair', async () => {
+    await compile(byItem, { judgementsFor: judgeSays('none', 'Two ways of saying one thing.') });
+
+    const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
+
+    for (const position of answer.positions) {
+      assert.deepEqual(position.relations, []);
+      assert.equal(position.current, true);
+    }
   });
 
   it('says how many positions it held back rather than trimming silently', async () => {

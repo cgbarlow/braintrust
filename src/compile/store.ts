@@ -310,6 +310,15 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     [personId],
   );
 
+  // Distinct positions, not relations: a position superseded by three later ones is one
+  // view off the record, and counting the rows would read as three.
+  const superseded = await db.query<{ count: string }>(
+    `select count(distinct r.from_position_id)::text as count
+       from braintrust_position_relations r
+      where r.compile_id = $1 and r.relation = 'revised'`,
+    [compileId],
+  );
+
   const counts = items.rows[0]!;
   return {
     layers: layers.rows.map((row) => ({
@@ -329,6 +338,7 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     },
     positions: positions.rows.map((row) => ({ slug: row.slug, citations: Number(row.citations) })),
     previous_positions: Number(previous.rows[0]!.count),
+    superseded_positions: Number(superseded.rows[0]!.count),
   };
 }
 
@@ -345,8 +355,9 @@ export async function writePositions(
   db: TransactionalDb,
   compileId: string,
   positions: BuiltPosition[],
-): Promise<number> {
-  if (positions.length === 0) return 0;
+): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
+  if (positions.length === 0) return ids;
 
   await db.transaction(async (tx) => {
     for (const position of positions) {
@@ -366,6 +377,8 @@ export async function writePositions(
       );
 
       const positionId = rows[0]!.id;
+      ids.set(position.slug, positionId);
+
       for (const citation of position.citations) {
         await tx.query(
           `insert into braintrust_position_citations (position_id, item_id, start_ms, quote)
@@ -376,8 +389,66 @@ export async function writePositions(
     }
   });
 
-  return positions.length;
+  return ids;
 }
+
+/**
+ * The relation rows, written against the Positions this Compile just wrote.
+ *
+ * **A relation naming a Position braintrust did not write is dropped**, which is the same
+ * rule as a Position resolving to no claim and a claim with no quote in the body. The ids
+ * come from `writePositions` rather than from a lookup, so a relation cannot reach across
+ * to a previous Compile's Positions even if a judge names one — every Compile's relations
+ * are about that Compile's rows, and a rebuild replaces the lot.
+ *
+ * Returned rather than logged: the count is what the caller reports, and the dropped ones
+ * are what it warns about.
+ */
+export async function writeRelations(
+  db: TransactionalDb,
+  compileId: string,
+  relations: WritableRelation[],
+  positionIds: Map<string, string>,
+): Promise<{ written: number; dropped: number }> {
+  const writable = relations.filter(
+    (relation) =>
+      positionIds.has(relation.from) &&
+      positionIds.has(relation.to) &&
+      relation.from !== relation.to,
+  );
+
+  if (writable.length > 0) {
+    await db.transaction(async (tx) => {
+      for (const relation of writable) {
+        await tx.query(
+          `insert into braintrust_position_relations
+             (compile_id, from_position_id, to_position_id, relation, gap_days, rationale)
+           values ($1, $2, $3, $4, $5, $6)`,
+          [
+            compileId,
+            positionIds.get(relation.from),
+            positionIds.get(relation.to),
+            relation.relation,
+            relation.gap_days,
+            relation.rationale === '' ? null : relation.rationale,
+          ],
+        );
+      }
+    });
+  }
+
+  return { written: writable.length, dropped: relations.length - writable.length };
+}
+
+export type WritableRelation = {
+  /** The earlier Position's slug. */
+  from: string;
+  /** The later Position's slug. The relation describes what this one does to the earlier. */
+  to: string;
+  relation: string;
+  gap_days: number;
+  rationale: string;
+};
 
 export type WritableLayer = {
   layer: 'voice' | 'reasoning' | 'beliefs' | 'coverage';

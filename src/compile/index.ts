@@ -18,11 +18,13 @@
 
 import type { TransactionalDb } from '../db.js';
 import { notesFor } from '../notes/store.js';
+import type { Embedder } from '../retrieval/embed.js';
 import { VERSION } from '../version.js';
 import { coverageLayer } from './coverage.js';
 import { checkCompile } from './gate.js';
 import { inferLayer, INFERRED_LAYERS } from './infer.js';
 import { compilePositions } from './positions.js';
+import { compileRevisions } from './revisions.js';
 import {
   abandonStale,
   backlogOwed,
@@ -37,9 +39,15 @@ import {
   runningCompile,
   writeLayer,
   writePositions,
+  writeRelations,
   type CompilablePerson,
 } from './store.js';
-import { POSITION_VERSION, SYNTHESIS_VERSION, type Synthesiser } from './synthesis.js';
+import {
+  POSITION_VERSION,
+  REVISION_VERSION,
+  SYNTHESIS_VERSION,
+  type Synthesiser,
+} from './synthesis.js';
 import { voiceLayer } from './voice.js';
 
 /**
@@ -50,7 +58,7 @@ import { voiceLayer } from './voice.js';
  */
 export const MEASUREMENT_VERSION = 'measured-1';
 export const COMPILER_VERSION =
-  `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}.${POSITION_VERSION}`;
+  `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}.${POSITION_VERSION}.${REVISION_VERSION}`;
 
 /**
  * How long a `running` Compile may sit before a later run treats its process as gone.
@@ -65,6 +73,13 @@ export type CompileDeps = {
   extractor: string;
   /** What writes Reasoning and Beliefs. It reads Notes; nothing here re-reads the Corpus. */
   synthesiser: Synthesiser;
+  /**
+   * What finds the similarity neighbourhoods revisions are judged inside. Absent means no
+   * pair is compared and every Position is returned current — the same posture the read
+   * side takes, where a deployment with no embeddings endpoint does not register a search
+   * tool. A Persona that says less is honest; one that guesses at supersession is not.
+   */
+  embedder?: Embedder | undefined;
   /** Slugs whose Corpus changed on this run. New content triggers a rebuild; the clock does not. */
   changed?: string[] | undefined;
   now?: (() => Date) | undefined;
@@ -106,7 +121,8 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
       log(
         `braintrust: rebuilt ${person.slug} from ${outcome.items_measured} item` +
           `${outcome.items_measured === 1 ? '' : 's'} as ${COMPILER_VERSION}, with ` +
-          `${outcome.positions} position${outcome.positions === 1 ? '' : 's'}.`,
+          `${outcome.positions} position${outcome.positions === 1 ? '' : 's'} and ` +
+          `${outcome.revisions} relation${outcome.revisions === 1 ? '' : 's'} between them.`,
       );
     } else if (outcome.kind === 'waiting') {
       report.waiting.push({ person: person.slug, reason: outcome.reason });
@@ -130,7 +146,13 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
 }
 
 type Outcome =
-  | { kind: 'compiled'; compile_id: string; items_measured: number; positions: number }
+  | {
+      kind: 'compiled';
+      compile_id: string;
+      items_measured: number;
+      positions: number;
+      revisions: number;
+    }
   | { kind: 'waiting'; reason: string }
   | { kind: 'rejected'; reason: string }
   | { kind: 'failed'; reason: string };
@@ -225,12 +247,60 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     // publish the Compile — but the failure is legible rather than a Persona missing a
     // limb for reasons nobody can reconstruct.
     const grouped = await compilePositions(notes, deps.synthesiser);
-    await writePositions(deps.db, compileId, grouped.positions);
+    const positionIds = await writePositions(deps.db, compileId, grouped.positions);
 
     if (grouped.dropped_uncitable > 0) {
       log(
         `braintrust: dropped ${grouped.dropped_uncitable} position(s) of ${person.slug} that ` +
           'resolved to no claim braintrust issued. A position it cannot cite is one it does not have.',
+      );
+    }
+
+    // Revisions last, because they are about the Positions that were just written and
+    // because they are the only part of a Compile that can take a view off the record.
+    let revisions = 0;
+    if (deps.embedder) {
+      const found = await compileRevisions(grouped.positions, grouped.claims, {
+        embedder: deps.embedder,
+        synthesiser: deps.synthesiser,
+      });
+
+      const written = await writeRelations(deps.db, compileId, found.revisions, positionIds);
+      revisions = written.written;
+
+      if (found.dropped_unknown > 0 || written.dropped > 0) {
+        log(
+          `braintrust: dropped ${found.dropped_unknown + written.dropped} judgement(s) of ` +
+            `${person.slug} that named a pair or a position braintrust never issued.`,
+        );
+      }
+
+      if (found.bounded_out > 0) {
+        log(
+          `braintrust: ${found.candidates} pair(s) of ${person.slug} were judged and ` +
+            `${found.bounded_out} more above the floor were not reached. The nearest are judged ` +
+            'first; the rest wait for a compile with fewer of them.',
+        );
+      }
+
+      // Distinct positions rather than relations: one position superseded by three later
+      // ones is one view off the record, and counting rows would read as three.
+      const superseded = new Set(
+        found.revisions.filter((one) => one.relation === 'revised').map((one) => one.from),
+      ).size;
+
+      if (superseded > 0) {
+        log(
+          `braintrust: ${superseded} position(s) of ${person.slug} were superseded and are kept, ` +
+            'flagged, alongside what replaced them.',
+        );
+      }
+    } else {
+      // Said out loud, because the silent version of this is a Persona that looks like it
+      // found no revisions when it never looked for any.
+      log(
+        `braintrust: no embeddings endpoint is configured, so no positions of ${person.slug} were ` +
+          'compared for revisions. Every position is returned as current.',
       );
     }
 
@@ -256,6 +326,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       compile_id: compileId,
       items_measured: items.length,
       positions: grouped.positions.length,
+      revisions,
     };
   } catch (error) {
     // The rows stay for inspection and the previous Persona is untouched — it was never
@@ -272,6 +343,7 @@ export * from './coverage.js';
 export * from './gate.js';
 export * from './infer.js';
 export * from './positions.js';
+export * from './revisions.js';
 export * from './store.js';
 export * from './synthesis.js';
 export * from './voice.js';

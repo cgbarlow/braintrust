@@ -178,8 +178,14 @@ since a filtered result that does not say it was filtered reads as a whole one.
 **`direction` is read as "this Position *direction* the other".** `supersedes` and `superseded_by` for the two
 sides of a `revised`; `later` and `earlier` for `unsettled` and `drifting`, which leave both Positions current
 and therefore have no winner to name. `current` is nothing more than *not the earlier side of a `revised`* —
-computed from the relation rows at read time, so [#35](https://github.com/cgbarlow/braintrust/issues/35) lands
-as rows to write rather than as a change to what this tool means.
+computed from the relation rows at read time rather than stored, so a Position is never marked retired in a
+row that a later Compile could forget to unmark.
+
+**A superseded Position keeps its citations.** It is served exactly as a current one is — statement, dates,
+`item_count`, the Person's own words — with `current: false` and the relation beside it. Both states survive
+whole, because the interesting thing about someone changing their mind is what they used to think and why
+they thought it. `gap_days` is the distance between the two `held_since` dates already in the answer, so a
+reader can check it rather than take it.
 
 **An empty answer says how close it came.** Nearest-neighbour search always returns neighbours, so retrieval
 needs a floor or *"what do they think about the moon landing"* comes back with their best Position on evals,

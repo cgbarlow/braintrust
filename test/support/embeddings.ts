@@ -8,6 +8,7 @@
 
 import type { EmbeddingsConfig } from '../../src/config.js';
 import type { FetchResponse, Fetcher } from '../../src/net/fetch.js';
+import type { Embedder } from '../../src/retrieval/embed.js';
 
 export const TEST_DIMENSION = 1024;
 
@@ -88,6 +89,25 @@ export function vectorFor(text: string, dimension = TEST_DIMENSION): number[] {
   // a real thing to hand an endpoint.
   if (!vector.some((value) => value !== 0)) vector[0] = 1;
   return vector;
+}
+
+/**
+ * The same fake, as an `Embedder` rather than a fetcher — what the compiler takes when it
+ * looks for revision neighbourhoods. Same vectors, so a similarity a retrieval test relies
+ * on is the similarity a revision test sees.
+ */
+export function fakeEmbedder(dimension = TEST_DIMENSION): Embedder & { batches: string[][] } {
+  const batches: string[][] = [];
+
+  return {
+    model: 'test-embeddings',
+    url: 'https://example.test/v1/embeddings',
+    batches,
+    async embed(inputs: string[]): Promise<number[][]> {
+      batches.push(inputs);
+      return inputs.map((text) => vectorFor(text, dimension));
+    },
+  };
 }
 
 export const testEmbeddingsConfig: EmbeddingsConfig = {

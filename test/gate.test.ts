@@ -14,7 +14,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
-import { checkCompile, CORE_LAYERS, POSITION_COLLAPSE_FLOOR, type GateFacts } from '../src/compile/gate.js';
+import {
+  checkCompile,
+  CORE_LAYERS,
+  POSITION_COLLAPSE_FLOOR,
+  REVISION_SWEEP_CEILING,
+  type GateFacts,
+} from '../src/compile/gate.js';
 import { inferredMarker } from '../src/compile/infer.js';
 
 const ITEMS = { retrieved: 4, skipped_paywall: 1, skipped_short: 1, failed: 0, pending: 0 };
@@ -55,6 +61,7 @@ function facts(overrides: Partial<GateFacts> = {}): GateFacts {
     items: { ...ITEMS },
     positions: [],
     previous_positions: 0,
+    superseded_positions: 0,
     ...overrides,
   };
 }
@@ -64,12 +71,12 @@ function check(verdict: ReturnType<typeof checkCompile>, name: string) {
 }
 
 describe('a compile that earns promotion', () => {
-  it('passes every check, and there are six of them', () => {
+  it('passes every check, and there are seven of them', () => {
     const verdict = checkCompile(facts());
 
     assert.equal(verdict.passed, true);
     assert.equal(verdict.reason, null);
-    assert.equal(verdict.checks.length, 6);
+    assert.equal(verdict.checks.length, 7);
     assert.ok(verdict.checks.every((one) => one.passed));
   });
 
@@ -252,6 +259,32 @@ describe('positions', () => {
     );
 
     assert.equal(POSITION_COLLAPSE_FLOOR, 0.5);
+    assert.equal(verdict.passed, true);
+  });
+
+  it('may not be swept off current in one rebuild by a judge having a bad afternoon', () => {
+    const verdict = checkCompile(
+      facts({
+        positions: Array.from({ length: 10 }, (_, index) => ({ slug: `p${index}`, citations: 1 })),
+        superseded_positions: 8,
+      }),
+    );
+
+    // Found live: every row was well-formed — dated, cited, ordered — and the persona was
+    // quietly two thirds retired. Nothing else here would have noticed.
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /8 of 10 position\(s\) were superseded on one rebuild/);
+  });
+
+  it('lets a person change their mind about some of it, because that is the product', () => {
+    const verdict = checkCompile(
+      facts({
+        positions: Array.from({ length: 10 }, (_, index) => ({ slug: `p${index}`, citations: 1 })),
+        superseded_positions: 5,
+      }),
+    );
+
+    assert.equal(REVISION_SWEEP_CEILING, 0.5);
     assert.equal(verdict.passed, true);
   });
 
