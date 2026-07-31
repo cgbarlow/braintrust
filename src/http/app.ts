@@ -16,6 +16,7 @@ import type { TransactionalDb } from '../db.js';
 import { createConfirmTokenStore, type ConfirmTokenStore } from '../follow/tokens.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from '../mcp.js';
 import { createFetcher, type Fetcher } from '../net/fetch.js';
+import type { QueryGate } from '../retrieval/index.js';
 import {
   AUTH_ERROR_CODE,
   AUTH_FAILURE_MESSAGE,
@@ -38,9 +39,14 @@ export type AppDeps = {
    */
   tokens?: ConfirmTokenStore;
   fetcher?: Fetcher;
+  /**
+   * Startup check 2, asked per request. Absent means no retrieval tool is registered
+   * yet — which is true until #34, and is why this is optional rather than assumed.
+   */
+  retrieval?: QueryGate;
 };
 
-export function createApp({ db, mcpKey, tokens, fetcher }: AppDeps): Express {
+export function createApp({ db, mcpKey, tokens, fetcher, retrieval }: AppDeps): Express {
   const confirmTokens = tokens ?? createConfirmTokenStore();
   const sourceFetcher = fetcher ?? createFetcher();
 
@@ -50,8 +56,18 @@ export function createApp({ db, mcpKey, tokens, fetcher }: AppDeps): Express {
 
   // Unauthenticated on purpose: it reveals nothing, and a container platform has
   // to be able to ask whether the process is up without holding the secret.
-  app.get(HEALTH_PATH, (_req: Request, res: Response) => {
-    res.status(200).json({ ok: true, name: SERVER_NAME, version: SERVER_VERSION });
+  //
+  // It reports whether the index is answerable, because "braintrust is up but cannot
+  // search" is exactly the state an operator needs to see without opening an AI client.
+  app.get(HEALTH_PATH, async (_req: Request, res: Response) => {
+    const readiness = retrieval ? await retrieval.check().catch(unreachable) : undefined;
+
+    res.status(200).json({
+      ok: true,
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
+      ...(readiness ? { retrieval: { model: retrieval!.model, ...readiness } } : {}),
+    });
   });
 
   app.all(MCP_PATH, async (req: Request, res: Response) => {
@@ -87,4 +103,14 @@ export function createApp({ db, mcpKey, tokens, fetcher }: AppDeps): Express {
   });
 
   return app;
+}
+
+/** The health check answers even when the database does not. That is its job. */
+function unreachable(error: unknown): { ready: false; reason: string } {
+  return {
+    ready: false,
+    reason: `braintrust could not ask the database: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+  };
 }

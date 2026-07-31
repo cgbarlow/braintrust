@@ -23,7 +23,9 @@ import { followPerson, type PlanResponse } from '../src/follow/index.js';
 import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { runCycle, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 import { recordCatalogued, type SourceRow } from '../src/ingest/items.js';
+import { createEmbedder } from '../src/retrieval/index.js';
 import { RETRIEVAL_SPACING_MS } from '../src/sources/types.js';
+import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import {
   NOW,
   SUBSTACK_BODY_TEXT,
@@ -95,7 +97,13 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     await followPerson({ confirm_token: plan.confirm_token, display_name: 'Nate B. Jones' }, deps);
   }
 
-  type RunOptions = { stopping?: () => boolean; now?: Date; fetcher?: FakeFetcher };
+  type RunOptions = {
+    stopping?: () => boolean;
+    now?: Date;
+    fetcher?: FakeFetcher;
+    /** Off by default: most of these tests are about what was fetched, not indexed. */
+    embed?: boolean;
+  };
 
   async function run(options: RunOptions = {}): Promise<{ report: CycleReport; fetcher: FakeFetcher }> {
     const fetcher = options.fetcher ?? fakeFetcher(natesRoutes());
@@ -105,6 +113,7 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
       now: () => options.now ?? NOW,
       pause: async () => {},
       log: () => {},
+      ...(options.embed ? { embedder: createEmbedder(testEmbeddingsConfig, fakeEmbeddings().fetcher) } : {}),
       ...(options.stopping ? { stopping: options.stopping } : {}),
     });
     return { report, fetcher };
@@ -607,4 +616,63 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     // Nothing left over: one run drains the Backlog it opened.
     assert.equal(report.corpus.pending, 0);
   });
+
+  it('leaves the corpus chunked and embedded, both platforms, in one run', async () => {
+    await follow();
+    const { report } = await run({ embed: true });
+
+    // The whole point of running the index inside the cycle: a day's new content is
+    // searchable when the job exits, not when someone remembers to index it.
+    assert.equal(report.index.items_chunked, SUBSTACK_FREE + YT_RETRIEVED);
+    assert.equal(report.index.chunks_embedded, report.index.chunks_written);
+    assert.equal(report.index.model, testEmbeddingsConfig.model);
+
+    const { rows } = await db.query<{ platform: string; items: string; chunks: string; embedded: string }>(
+      `select s.platform,
+              count(distinct i.id) as items,
+              count(c.id) as chunks,
+              count(e.chunk_id) as embedded
+         from braintrust_items i
+         join braintrust_sources s on s.id = i.source_id
+         join braintrust_chunks c on c.item_id = i.id
+         left join braintrust_embeddings e on e.chunk_id = c.id
+        group by s.platform order by s.platform`,
+    );
+
+    assert.deepEqual(
+      rows.map((row) => [row.platform, Number(row.items)]),
+      [
+        ['substack', SUBSTACK_FREE],
+        ['youtube', YT_RETRIEVED],
+      ],
+    );
+    for (const row of rows) assert.equal(row.chunks, row.embedded);
+
+    // A transcript chunk knows where in the recording it came from; prose has no
+    // moment to point at.
+    const { rows: timings } = await db.query<{ platform: string; timed: string }>(
+      `select s.platform, count(*) filter (where c.start_ms is not null) as timed
+         from braintrust_chunks c
+         join braintrust_items i on i.id = c.item_id
+         join braintrust_sources s on s.id = i.source_id
+        group by s.platform order by s.platform`,
+    );
+    assert.equal(Number(timings.find((row) => row.platform === 'substack')!.timed), 0);
+    assert.ok(Number(timings.find((row) => row.platform === 'youtube')!.timed) > 0);
+  });
+
+  it('indexes nothing when the run was told to stop, and picks it up next time', async () => {
+    await follow();
+    await run({ embed: true, stopping: () => true });
+    assert.equal(await scalar('select count(*) from braintrust_chunks'), 0);
+
+    const { report } = await run({ embed: true });
+    assert.ok(report.index.items_chunked > 0);
+    assert.equal(report.index.chunks_embedded, report.index.chunks_written);
+  });
+
+  async function scalar(sql: string): Promise<number> {
+    const { rows } = await db.query<{ count: string }>(sql);
+    return Number(rows[0]!.count);
+  }
 });

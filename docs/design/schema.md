@@ -226,8 +226,10 @@ different model** fails not at all — cosine similarity across model families i
 dimensions match, so every search would return confidently-ranked nonsense. Refusing to serve is the only
 honest response.
 
-Chunk sizing: target ~1,000–1,500 characters with modest overlap, never spanning items. **Boundaries are the
-platform's, never a model's** — caption events for transcripts, paragraphs for prose. A model pass to
+Chunk sizing: ~1,000–1,500 characters, overlapping by at least one whole unit, never spanning items.
+**Boundaries are the platform's, never a model's** — caption events for transcripts, paragraphs for prose.
+`char_start` and `char_end` are offsets into `braintrust_items.body_text` and `text` is exactly what is at
+them, which is what makes a quote checkable against the stored body rather than against the chunker. A model pass to
 restore punctuation was rejected outright: `text` here is what a citation's `quote` is drawn from, so a
 punctuated chunk would make every quote a rendering of what someone said rather than what they said.
 Accepted cost: passages read like unpunctuated speech, because that is what they are. Re-chunking drops

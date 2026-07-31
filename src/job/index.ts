@@ -14,11 +14,12 @@
  * See docs/design/deployment.md §2.
  */
 
-import { ConfigError, loadConfig } from '../config.js';
-import { createDb } from '../db.js';
+import { ConfigError, loadConfig, type Config } from '../config.js';
+import { createDb, type PostgresDb } from '../db.js';
 import { runCycle, summarise } from '../ingest/cycle.js';
-import { createFetcher } from '../net/fetch.js';
+import { createFetcher, type Fetcher } from '../net/fetch.js';
 import { SERVER_NAME, SERVER_VERSION } from '../mcp.js';
+import { checkDimension, createEmbedder, type Embedder } from '../retrieval/index.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -39,9 +40,11 @@ async function main(): Promise<void> {
   console.log(`${SERVER_NAME} ${SERVER_VERSION}: ingest run starting.`);
 
   try {
+    const fetcher = createFetcher();
     const report = await runCycle({
       db,
-      fetcher: createFetcher(),
+      fetcher,
+      embedder: await usableEmbedder(db, fetcher, config.embeddings),
       stopping: () => stopping,
     });
 
@@ -52,6 +55,40 @@ async function main(): Promise<void> {
     );
   } finally {
     await db.close();
+  }
+}
+
+/**
+ * The same dimension probe the server runs, one deployment earlier — the job is what
+ * *writes* vectors, so an endpoint the column cannot hold is worth one clear message
+ * here rather than the same insert failing once per chunk for half an hour.
+ *
+ * **Failing it stops the embedding, not the ingest.** Items and bodies are tier 1: they
+ * are expensive to reacquire and the whole terms posture exists to avoid asking a source
+ * twice. An embeddings endpoint that is switched off is not a reason to stop collecting
+ * them, and chunking is local and free, so the run does everything except the one step
+ * it cannot do honestly. The next run finishes it.
+ */
+async function usableEmbedder(
+  db: PostgresDb,
+  fetcher: Fetcher,
+  embeddings: Config['embeddings'],
+): Promise<Embedder | undefined> {
+  const embedder = createEmbedder(embeddings, fetcher);
+
+  try {
+    const dimension = await checkDimension(db, embedder);
+    console.log(
+      `${SERVER_NAME}: embedding as ${embedder.model} (${dimension} dimensions) via ${embedder.url}.`,
+    );
+    return embedder;
+  } catch (error) {
+    console.error(
+      `${SERVER_NAME}: not embedding on this run — ${
+        error instanceof Error ? error.message : String(error)
+      }\n  Ingestion continues; the chunks wait for an endpoint braintrust can trust.`,
+    );
+    return undefined;
   }
 }
 

@@ -200,6 +200,27 @@ than to the video.
 **One chunking path, parameterised — not two.** Two code paths for boundary detection, one for everything
 after: both fill the same window size and write the same rows, with `start_ms` null for prose.
 
+**Built with 1,500 characters as the ceiling and one whole unit as the minimum overlap**, extended backwards
+while the repeated text stays under 200 characters. Two shapes fall out of that and both are wanted: a
+transcript repeats four or five caption events, because the boundary between two of them is arbitrary and a
+sentence spanning the join has to survive somewhere; prose repeats one paragraph, because a paragraph is
+already longer than 200 characters and repeating a second would pay for the same words three times. Overlap
+costs about a third more Chunks — three cents against the measured Corpus, which is not a number any decision
+here should turn on.
+
+Three details the build settled:
+
+- **A prose boundary is any newline the markup declared, not only a blank line.** `htmlToText` writes one
+  newline for a `<br>` and two for a closed block, and both are boundaries the author's own markup put there.
+  Taking the smaller one keeps units small enough that a window is filled by several rather than truncated by
+  one.
+- **A caption event ends where the next one starts**, because the format carries no durations; the last event
+  ends at the length of the video.
+- **`chunk.text === item.body_text.slice(char_start, char_end)`, exactly.** That invariant is what makes a
+  quote checkable against the stored body without trusting the chunker, and it is asserted in SQL rather than
+  in the chunker's own terms. A unit longer than one window is cut at the last space before the limit — a
+  measurement, not a judgement about where a thought ends.
+
 **No model is in this path, and that is the point.** `braintrust_chunks.text` is what a citation's `quote` is
 drawn from, so a punctuated Chunk would make every quote a model's rendering of what someone said rather than
 what they said. A punctuation-restoration pass was rejected outright; a pass returning only sentence
@@ -227,6 +248,16 @@ What matters to the compiler:
 
 - **Chunks are embedded at ingest; queries are embedded at serve time with the same model.** Swapping models
   means re-embedding tier 2 before any query works again.
+- **Chunking and embedding are the fourth step of the daily cycle**, corpus-wide rather than per-Source,
+  because a Chunk belongs to an Item and neither step cares which platform the words came from. They are
+  ordinary Backlog work: an Item with a body and no Chunks, and a Chunk with no vector under the configured
+  model, are both queries over rows that already exist. No job table, no checkpointing — a run killed at
+  minute 12 has written twelve minutes of real rows.
+- **Chunking survives an endpoint being switched off.** It is local and free; the vectors are the part that
+  waits. A run with no reachable endpoint chunks everything and embeds nothing, and the next run finishes.
+- **Batched 32 Chunks to a request.** ~11K tokens, comfortable for a small local model, and one round trip
+  instead of thirty-two. A batch returned short or reordered is refused rather than guessed at: pairing a
+  Chunk with another Chunk's vector is undetectable forever after.
 - **`model` is in the primary key of `braintrust_embeddings`**, so a better model is a new set of rows rather
   than a migration. Old and new coexist while you compare them, and Chunks and Items are never touched — which
   is exactly the README's promise that raw content and embeddings stay separate.
@@ -267,9 +298,11 @@ embedding cost.
 
 - The Note-taking prompt itself, and which model writes it.
 - The similarity threshold for revision candidates.
-- Exact chunk window size and overlap — a starting point to tune against real retrieval results.
+- Exact chunk window size and overlap. Built at 1,500 characters with one unit of overlap, and still a
+  starting point to tune against real retrieval results rather than a finding.
 - Whether a reranker is ever added. Retrieval quality should be measured before anything is added to fix it.
-- Batching and concurrency against the embeddings endpoint.
+- Concurrency against the embeddings endpoint. Batching is 32 to a request and sequential; nothing has been
+  measured that would justify more.
 - Whether a persistently rejected Compile is ever surfaced to a human. Still no in v1.
 - **How much thinness to surface.** Both prototypes keep it visible; `item_count` and `confidence` travel with
   every Position and the client decides what one mention is worth.

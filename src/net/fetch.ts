@@ -26,12 +26,14 @@ export type FetchResponse = {
 };
 
 /**
- * A POST, and there is exactly one reason braintrust needs one: YouTube's player
- * endpoint takes its request as a JSON body. `json` rather than a raw body string,
- * because that keeps the seam small enough that a fake is still a few lines.
+ * A POST. Two things need one: YouTube's player endpoint, which takes its request as a
+ * JSON body, and the operator's embeddings endpoint, which takes a bearer token when it
+ * is a hosted one. `json` rather than a raw body string, because that keeps the seam
+ * small enough that a fake is still a few lines.
  */
 export type FetchInit = {
   json: unknown;
+  headers?: Record<string, string> | undefined;
 };
 
 export type Fetcher = (url: string, init?: FetchInit) => Promise<FetchResponse>;
@@ -55,7 +57,7 @@ export function createFetcher({ timeoutMs = 20_000 }: FetcherOptions = {}): Fetc
       headers: {
         'user-agent': USER_AGENT,
         accept: '*/*',
-        ...(init ? { 'content-type': 'application/json' } : {}),
+        ...(init ? { 'content-type': 'application/json', ...init.headers } : {}),
       },
       ...(init ? { method: 'POST', body: JSON.stringify(init.json) } : {}),
       redirect: 'follow',

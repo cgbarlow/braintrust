@@ -12,9 +12,10 @@
  * See docs/design/ingestion.md §3.
  */
 
-import type { Db } from '../db.js';
+import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
+import { indexCorpus, type Embedder, type IndexReport } from '../retrieval/index.js';
 import {
   RETRIEVAL_SPACING_MS,
   SHORT_MAX_SECONDS,
@@ -56,8 +57,13 @@ const DISCOVERED_AUDIENCE: Record<Platform, Audience> = {
 };
 
 export type CycleDeps = {
-  db: Db;
+  db: TransactionalDb;
   fetcher: Fetcher;
+  /**
+   * The configured embeddings endpoint. Absent chunks the new Items and leaves them
+   * unembedded — which is a real state the next run finishes, not a failure.
+   */
+  embedder?: Embedder | undefined;
   now?: (() => Date) | undefined;
   pause?: Pause | undefined;
   /**
@@ -97,6 +103,8 @@ export type CycleReport = {
   rebuild_pending: string[];
   stopped_early: boolean;
   corpus: CorpusCounts;
+  /** The retrieval index, brought up to date with what this run fetched. */
+  index: IndexReport;
 };
 
 export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
@@ -133,6 +141,25 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     if (report.error) log(`braintrust: ${source.platform} ${source.handle} — ${report.error}`);
   }
 
+  // 4. Index what was fetched. Corpus-wide and outside the per-source loop, because a
+  // Chunk belongs to an Item and neither chunking nor embedding cares which platform
+  // the words came from. A run asked to stop does none of it and says so: an Item with
+  // a body and no Chunks is already the Backlog, so the next run picks it up unprompted.
+  const index = await indexCorpus({
+    db: deps.db,
+    embedder: deps.embedder,
+    stopping,
+    log,
+  });
+  if (index.items_chunked > 0) {
+    log(
+      `braintrust: indexed ${index.items_chunked} item${index.items_chunked === 1 ? '' : 's'} ` +
+        `into ${index.chunks_written} chunk${index.chunks_written === 1 ? '' : 's'}` +
+        `${index.model ? `, ${index.chunks_embedded} embedded as ${index.model}` : ''}.`,
+    );
+  }
+  if (index.error) log(`braintrust: the index is behind — ${index.error}`);
+
   const report: CycleReport = {
     started: started.toISOString(),
     finished: now().toISOString(),
@@ -142,6 +169,7 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     rebuild_pending: [...changed].sort(),
     stopped_early: stoppedEarly,
     corpus: await corpusCounts(deps.db),
+    index,
   };
 
   // The rebuild is the fourth step of the cycle and it does not exist yet. Saying so is
@@ -450,8 +478,13 @@ async function allSourceCount(db: Db): Promise<number> {
 
 /** One line per source, for a job nobody is watching. */
 export function summarise(report: CycleReport): string {
-  if (report.sources.length === 0) return 'braintrust: nothing was due.';
+  const index = report.index;
+  const idleIndex = index.items_chunked === 0 && index.chunks_embedded === 0 && !index.error;
+  if (report.sources.length === 0 && idleIndex) return 'braintrust: nothing was due.';
 
+  // A run where no Source was due can still have real work to report: an endpoint that
+  // was switched off yesterday leaves chunks waiting, and "nothing was due" would be a
+  // summary of the wrong half of the run.
   const lines = report.sources.map((source) => {
     const parts = [`+${source.discovered} discovered`, `${source.retrieved} retrieved`];
     if (source.skipped_paywall > 0) parts.push(`${source.skipped_paywall} skipped (paywall)`);
@@ -468,6 +501,12 @@ export function summarise(report: CycleReport): string {
     `  corpus: ${retrieved} retrieved, ${skipped_paywall} skipped (paywall), ` +
       `${skipped_short} skipped (short), ${pending} pending, ${failed} failed`,
   );
+
+  const indexed = [`${index.items_chunked} items chunked`, `${index.chunks_written} chunks`];
+  if (index.model) indexed.push(`${index.chunks_embedded} embedded as ${index.model}`);
+  if (index.error) indexed.push(`error: ${index.error}`);
+  lines.push(`  index: ${indexed.join(', ')}`);
+
   if (report.stopped_early) lines.push('  stopped early; the next run continues from these rows');
 
   return lines.join('\n');

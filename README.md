@@ -68,11 +68,13 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for both sources**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, and stores the text of the free posts and the transcript of every long-form video.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for both sources, through to a searchable index**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
 
-A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again.
+A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again. Chunking and embedding resume the same way, and an embeddings endpoint that is switched off delays the vectors rather than the collecting.
 
-What does not work yet: nothing is distilled, so a person's persona is still `compiled: false` however much of their corpus is on disk.
+braintrust refuses to start against an endpoint whose vectors do not fit the column, and refuses to answer questions if you swap in a different model without re-embedding — a same-sized model from another family fails no other way, and every search would come back confidently ranked and meaningless.
+
+What does not work yet: nothing is distilled, so a person's persona is still `compiled: false` however much of their corpus is on disk, and nothing reads the index yet.
 
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 
