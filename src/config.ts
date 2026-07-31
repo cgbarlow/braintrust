@@ -12,12 +12,25 @@ export type EmbeddingsConfig = {
   apiKey?: string | undefined;
 };
 
+/**
+ * The Note extractor: the one genuinely expensive job in braintrust. Standing a
+ * Persona up from nothing costs a few dollars here and about three cents everywhere
+ * else, which is why the model is the operator's to choose rather than braintrust's.
+ */
+export type ExtractorConfig = {
+  /** An OpenAI-compatible `/v1/chat/completions` endpoint. */
+  baseUrl: string;
+  model: string;
+  apiKey?: string | undefined;
+};
+
 export type Config = {
   /** Supabase session pooler, port 5432. Not PostgREST. */
   databaseUrl: string;
   /** The shared secret clients present as `?key=`. Guards the read path only. */
   mcpKey: string;
   embeddings: EmbeddingsConfig;
+  extractor: ExtractorConfig;
   port: number;
 };
 
@@ -49,6 +62,17 @@ const REQUIRED: Record<string, string> = {
     'The model name to send to that endpoint. Must be the model whose vectors are already ' +
     'in braintrust_embeddings — cosine similarity across model families is meaningless ' +
     'even when the dimensions match.',
+  BRAINTRUST_EXTRACTOR_BASE_URL:
+    'An OpenAI-compatible /v1/chat/completions endpoint for the Note extractor — the one ' +
+    'genuinely expensive job in braintrust. No default, for the same reason as the ' +
+    'embeddings endpoint: it is handed whole published items, and where they go is the ' +
+    "operator's decision to make rather than braintrust's to assume.",
+  BRAINTRUST_EXTRACTOR_MODEL:
+    'The model that reads each item once and writes down what it said. Part of the ' +
+    'extractor generation, so changing it re-reads the corpus alongside the old notes ' +
+    'rather than migrating them. Required because a braintrust that cannot write notes ' +
+    'cannot compile a persona, and a daily job that silently never distils is exactly ' +
+    'the invisible failure the schedule exists to prevent.',
 };
 
 /** Supabase's transaction pooler, built for the serverless case braintrust declined. */
@@ -95,6 +119,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadOp
       baseUrl: env.BRAINTRUST_EMBEDDINGS_BASE_URL!.trim(),
       model: env.BRAINTRUST_EMBEDDINGS_MODEL!.trim(),
       apiKey: env.BRAINTRUST_EMBEDDINGS_API_KEY?.trim() || undefined,
+    },
+    extractor: {
+      baseUrl: env.BRAINTRUST_EXTRACTOR_BASE_URL!.trim(),
+      model: env.BRAINTRUST_EXTRACTOR_MODEL!.trim(),
+      apiKey: env.BRAINTRUST_EXTRACTOR_API_KEY?.trim() || undefined,
     },
     port,
   };

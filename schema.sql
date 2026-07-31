@@ -171,6 +171,7 @@ create table if not exists braintrust_compiles (
   id                uuid primary key default gen_random_uuid(),
   person_id         uuid not null references braintrust_people(id) on delete cascade,
   compiler_version  text not null,
+  extractor         text,                 -- which generation of notes this compile read
   status            text not null default 'running'
                       check (status in ('running', 'current', 'failed', 'rejected')),
   rejected_reason   text,
@@ -178,6 +179,17 @@ create table if not exists braintrust_compiles (
   started_at        timestamptz not null default now(),
   finished_at       timestamptz
 );
+
+-- `create table if not exists` leaves an existing table alone, so a database created
+-- before this column existed would not have it. Two generations of notes coexist
+-- while a prompt upgrade re-reads the corpus, which makes "which notes is this
+-- persona built from" a fact that has to live on the row rather than in whatever
+-- happens to be configured now.
+alter table braintrust_compiles add column if not exists extractor text;
+
+comment on column braintrust_compiles.extractor is
+  'The braintrust_item_notes.extractor generation this compile read. Nullable only '
+  'because the column was added after the table; every compile writes it.';
 
 -- These two partial unique indexes are the whole regeneration mechanism: at
 -- most one current compile per person, and at most one running compile per

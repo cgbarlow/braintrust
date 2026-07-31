@@ -45,6 +45,32 @@ live for its duration.
 rebuilt from evidence on every Compile and still cannot drift. It now rebuilds from Notes *about* the Corpus
 rather than from the Corpus.
 
+### The claim is only as good as its quote
+
+**braintrust asks the model for a quote and for nothing else that a Position depends on.** It does not ask
+which Chunk the quote came from, and it does not ask for a timestamp — a model asked for an id will supply
+one, and nothing downstream could ever check it. The quote is the single locator that *is* checkable, so it is
+the only one accepted; the Chunk and the `start_ms` are then read off the rows the quote lands in.
+
+**The quote braintrust stores is the body's characters, not the model's.** A model asked to quote a transcript
+will sometimes tidy one — fix a mis-heard name, close a dropped bracket, join two sentences it read as one
+thought. Every such repair makes the quote a rendering of what was said. So the quote is *located* in the
+stored body and the body's own span is what is kept. Whitespace may differ, because a paragraph break is not
+something a model can reasonably preserve inside a JSON string. Nothing else may.
+
+**A claim whose quote is not in the body is dropped and counted.** Not stored unverified, and not silently:
+the drop count is on every run summary, because it is how a model that has started paraphrasing shows up as a
+number rather than as a Persona that cites itself.
+
+**A Note is written even when every quote failed.** The argument and the assumptions are the model's own words
+*about* the Item rather than the author's, so quote verification has nothing to say about them, and leaving
+the Item unread would mean paying full price for the same answer every day. An Item the *endpoint* refused is
+different: no Note is written, so it stays in the Backlog and the next run tries again rather than recording a
+permanent verdict on the strength of one bad afternoon.
+
+**Chunks are a precondition, not a coincidence.** A claim carries the Chunk its quote came from, so the read
+pass runs after the index and an Item that has not been chunked is not yet readable.
+
 ---
 
 ## 2. Six layers: a bounded core and an indexed growing layer
@@ -296,7 +322,11 @@ embedding cost.
 
 ## Deliberately not decided
 
-- The Note-taking prompt itself, and which model writes it.
+- Which model writes the Note. Configured, never defaulted — the endpoint is handed whole published Items, and
+  where those go is the operator's decision rather than braintrust's assumption.
+- The Note-taking prompt itself. Version `notes-1` exists and is a **starting point, not a finding**: it asks
+  for claims with verbatim quotes, the argument, and the assumptions, and it is versioned precisely so that
+  improving it costs a re-read rather than a migration.
 - The similarity threshold for revision candidates.
 - Exact chunk window size and overlap. Built at 1,500 characters with one unit of overlap, and still a
   starting point to tune against real retrieval results rather than a finding.

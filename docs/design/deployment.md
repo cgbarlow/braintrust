@@ -73,9 +73,16 @@ braintrust is configured by environment, and **nothing here has a default that c
 | **Postgres connection string** | Supabase's **session pooler**, port 5432 — see §5. |
 | **MCP shared secret** | Guards the read path only — see §4. |
 | **Embeddings endpoint** | Base URL, model name, optional key. **No default, ever** — see below. |
-| **Note-extractor model** | Provider, model id and key for the one genuinely expensive job. |
+| **Note-extractor model** | Base URL, model id, optional key, for the one genuinely expensive job. **No default**, and required. |
 
 Exact variable names are a build detail.
+
+**The extractor is required for a different reason than the embeddings endpoint.** A defaulted embeddings
+endpoint would ship a corpus to a third party on the first run; nothing is shipped by accident here, because
+there is nowhere to send it. What a missing extractor buys instead is a daily job that runs green forever and
+never distils anything — the invisible failure the daily clock exists to prevent, reintroduced by an empty
+variable. Both deployments read the same file, so the web service demands it too; it is one line and it means
+a misconfigured braintrust says so at the point where somebody is looking.
 
 ### The embeddings endpoint
 

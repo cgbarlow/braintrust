@@ -24,6 +24,7 @@ Open Brain's core bet is that your memory should be yours: one database, one ope
 - A working Open Brain (OB1) setup: Supabase/Postgres with pgvector and the Open Brain MCP server
 - Node.js 20+
 - An OpenAI-compatible embeddings endpoint. Local (Ollama, LM Studio, vLLM) or hosted — braintrust has no preference and no default, so you tell it which to use.
+- An OpenAI-compatible chat endpoint for the note extractor — the one job worth spending real money on. It reads each item exactly once, so following someone costs a few dollars up front and close to nothing thereafter. Again no default: it is handed whole published items, and where those go is yours to decide.
 - Somewhere to run a small always-on server and a daily scheduled job
 
 ## Getting started
@@ -68,13 +69,15 @@ Some things braintrust does to keep that honest rather than just say it:
 
 ## Status and roadmap
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for both sources, through to a searchable index**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
+Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, **following someone**, and **the daily job, for both sources, through to a searchable index and a note on every item**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
 
 A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again. Chunking and embedding resume the same way, and an embeddings endpoint that is switched off delays the vectors rather than the collecting.
 
 braintrust refuses to start against an endpoint whose vectors do not fit the column, and refuses to answer questions if you swap in a different model without re-embedding — a same-sized model from another family fails no other way, and every search would come back confidently ranked and meaningless.
 
-What does not work yet: nothing is distilled, so a person's persona is still `compiled: false` however much of their corpus is on disk, and nothing reads the index yet.
+Each item is then read exactly once and what was read is kept — the claims it makes, each with a quote braintrust checked against the item itself, the argument, and the assumptions. **A claim braintrust cannot quote is dropped rather than stored**, and the run says how many were. That is what makes every later rebuild cheap: following someone costs a few dollars once, and a rebuild reads notes rather than a million words.
+
+What does not work yet: nothing is compiled from those notes, so a person's persona is still `compiled: false` however much of their corpus is on disk, and nothing reads the index yet.
 
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 

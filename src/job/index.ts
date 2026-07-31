@@ -19,6 +19,7 @@ import { createDb, type PostgresDb } from '../db.js';
 import { runCycle, summarise } from '../ingest/cycle.js';
 import { createFetcher, type Fetcher } from '../net/fetch.js';
 import { SERVER_NAME, SERVER_VERSION } from '../mcp.js';
+import { createExtractor, EXTRACTOR_TIMEOUT_MS } from '../notes/index.js';
 import { checkDimension, createEmbedder, type Embedder } from '../retrieval/index.js';
 
 async function main(): Promise<void> {
@@ -41,10 +42,14 @@ async function main(): Promise<void> {
 
   try {
     const fetcher = createFetcher();
+    const extractor = createExtractor(config.extractor, createFetcher({ timeoutMs: EXTRACTOR_TIMEOUT_MS }));
+    console.log(`${SERVER_NAME}: reading items as ${extractor.generation} via ${extractor.url}.`);
+
     const report = await runCycle({
       db,
       fetcher,
       embedder: await usableEmbedder(db, fetcher, config.embeddings),
+      extractor,
       stopping: () => stopping,
     });
 
