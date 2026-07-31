@@ -25,6 +25,12 @@ export type CompilablePerson = {
   compiled_at: string | null;
   /** Whether anything the compiler reads is newer than the Persona currently answering. */
   has_unseen: boolean;
+  /**
+   * Whether the Persona currently answering was built by a different compiler than this
+   * run is. The second half of staleness: a Persona can be perfectly current with what
+   * someone published and out of date with what braintrust can now do with it.
+   */
+  stale_compiler: boolean;
 };
 
 /**
@@ -48,9 +54,15 @@ export type CompilablePerson = {
  *   at any point after the last one must have been created after it too;
  * - a Note written since, which is the case a fetch count cannot see.
  */
-export async function compilablePeople(db: Db, person?: string | undefined): Promise<CompilablePerson[]> {
+export async function compilablePeople(
+  db: Db,
+  compilerVersion: string,
+  person?: string | undefined,
+): Promise<CompilablePerson[]> {
   const { rows } = await db.query<CompilablePerson>(
     `select p.id, p.slug, p.display_name, c.finished_at::text as compiled_at,
+            (c.finished_at is not null and c.compiler_version is distinct from $2)
+              as stale_compiler,
             (
               c.finished_at is null
               or exists (
@@ -71,7 +83,7 @@ export async function compilablePeople(db: Db, person?: string | undefined): Pro
       where p.paused_at is null
         and ($1::text is null or p.slug = $1)
       order by p.slug`,
-    [person ?? null],
+    [person ?? null, compilerVersion],
   );
   return rows;
 }
