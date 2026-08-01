@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BraintrustError } from '../src/errors.js';
-import type { Fetcher } from '../src/net/fetch.js';
+import { TRANSPORT_RETRY_MS, type Fetcher } from '../src/net/fetch.js';
 import {
   chatUrl,
   createExtractor,
@@ -314,6 +314,57 @@ describe('the extractor', () => {
     assert.equal(attempts, 2, 'the same item is asked again rather than dropped for the run');
     assert.deepEqual(waited, [2000], 'it waits exactly as long as it was asked to');
     assert.equal(note.argument, 'nothing asserted');
+  });
+
+  /**
+   * **A dropped connection is not an answer**, so it must not be read as one. Found live:
+   * a synthesiser connection dropped mid-compile and cost a whole Persona its rebuild —
+   * twice in one day, at two different stages — while the notes it would have been built
+   * from sat already written in the database.
+   *
+   * The same reasoning as a video with no captions: neither refusing nor serving is a
+   * verdict, and only a verdict should be acted on.
+   */
+  it('retries a connection that never completed, rather than losing the item to it', async () => {
+    const waited: number[] = [];
+    let attempts = 0;
+
+    const flaky: Fetcher = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new TypeError('fetch failed');
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [
+              { message: { content: JSON.stringify({ claims: [], argument: 'held', assumptions: [] }) } },
+            ],
+          }),
+      };
+    };
+
+    const note = await createExtractor(testExtractorConfig, flaky, async (ms) => {
+      waited.push(ms);
+    }).read({ text: BODY });
+
+    assert.equal(attempts, 2);
+    assert.deepEqual(waited, [TRANSPORT_RETRY_MS]);
+    assert.equal(note.argument, 'held');
+  });
+
+  it('gives up after a second dropped connection, and says it is this run only', async () => {
+    let attempts = 0;
+    const dead: Fetcher = async () => {
+      attempts += 1;
+      throw new TypeError('fetch failed');
+    };
+
+    await assert.rejects(
+      createExtractor(testExtractorConfig, dead, async () => {}).read({ text: BODY }),
+      /the next run reads it/,
+    );
+    assert.equal(attempts, 2, 'once each, not repeatedly');
   });
 
   it('reports an unreachable endpoint as this run only', async () => {
