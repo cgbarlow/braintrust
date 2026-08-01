@@ -92,11 +92,46 @@ export const SITEMAP_BLOG_XML = `<?xml version="1.0" encoding="UTF-8"?>
   }).join('\n  ')}
 </urlset>`;
 
+/**
+ * The sitemap's 15 URLs, sorted into what fetching each of them actually proves.
+ *
+ * A sitemap enumerates URLs and says nothing about which are posts, so the fixture has to
+ * carry all three answers: the homepage, which is dated by nothing and is a page; the
+ * ordinary posts; and one real post of twenty words, which is dated and tiny and is
+ * therefore the other half of the test.
+ */
+export const SITEMAP_BLOG_HOMEPAGE_URL = `https://${SITEMAP_BLOG_HOST}/`;
+export const SITEMAP_BLOG_SHORT_URL = `https://${SITEMAP_BLOG_HOST}/post-13/`;
+
+/** 14 URLs are posts, of which 13 clear the body floor. The 15th is the homepage. */
+export const SITEMAP_BLOG_POSTS = 13;
+export const SITEMAP_BLOG_SHORTS = 1;
+export const SITEMAP_BLOG_NOT_POSTS = 1;
+
+/** `article:published_time` — the signal that survived every custom theme measured. */
+export function sitemapBlogPost(index: number, options: { short?: boolean } = {}): string {
+  const published = new Date(NOW.getTime() - (2 + index * 9) * 86_400_000).toISOString();
+  const body = options.short
+    ? '<p>A note to self about the thing I read this morning, which I will expand later.</p>'
+    : `<p>${'Something worth saying about the way software is actually built, at length. '.repeat(6)}</p>`;
+
+  return `<!DOCTYPE html><html><head><title>Post ${index}</title>
+<meta property="article:published_time" content="${published}">
+</head><body><article>${body}</article></body></html>`;
+}
+
 export function sitemapBlogRoutes(): Route[] {
   return [
     // Bear Blog serves one sitemap and it is not the Ghost-shaped posts-only one.
     { match: (url) => url === `https://${SITEMAP_BLOG_HOST}/sitemap-posts.xml`, status: 404, body: 'not found' },
     { match: (url) => url === `https://${SITEMAP_BLOG_HOST}/sitemap.xml`, body: SITEMAP_BLOG_XML },
+    { match: (url) => url === SITEMAP_BLOG_SHORT_URL, body: sitemapBlogPost(13, { short: true }) },
+    {
+      match: (url) => url.startsWith(`https://${SITEMAP_BLOG_HOST}/post-`),
+      body: (url: string) => sitemapBlogPost(Number(/post-(\d+)/.exec(url)![1])),
+    },
+    // The homepage is in the sitemap and carries no publish date. This is the URL the
+    // whole `skipped_not_a_post` state exists for.
     { match: (url) => url.startsWith(`https://${SITEMAP_BLOG_HOST}`), body: SITEMAP_BLOG_HOME },
   ];
 }

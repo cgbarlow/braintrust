@@ -28,6 +28,7 @@ const ITEMS = {
   skipped_paywall: 1,
   skipped_short: 1,
   skipped_window: 2,
+  skipped_not_a_post: 0,
   failed: 0,
   pending: 0,
 };

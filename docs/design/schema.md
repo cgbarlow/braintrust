@@ -133,9 +133,11 @@ create table braintrust_items (
                   check (audience in ('everyone', 'paid', 'unknown')),
   retrieval     text not null default 'pending'
                   check (retrieval in ('pending', 'retrieved', 'skipped_paywall',
-                                       'skipped_short', 'skipped_window', 'failed')),
+                                       'skipped_short', 'skipped_window',
+                                       'skipped_not_a_post', 'failed')),
   body_text     text,                 -- null until retrieved; null forever if skipped
   body_raw      jsonb,                -- caption events, feed entry — whatever the platform actually gave
+  lastmod       timestamptz,          -- the sitemap's, at the moment braintrust decided. never a publish date
   retrieved_at  timestamptz,
   created_at    timestamptz not null default now(),
   unique (source_id, external_id)
@@ -390,6 +392,8 @@ alter table braintrust_sources add constraint braintrust_sources_platform_check
   check (platform in ('substack', 'youtube', 'blog'));
 
 -- One more skip, and it is braintrust's own decision like the other two policy skips.
+-- Landed in schema.sql with the archive walk; the alter is what a database that already
+-- exists needs.
 alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
 alter table braintrust_items add constraint braintrust_items_retrieval_check
   check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'skipped_short',
@@ -398,7 +402,7 @@ alter table braintrust_items add constraint braintrust_items_retrieval_check
 -- The sitemap's <lastmod> as it stood when braintrust decided this URL was not a post.
 -- Never a publish date: it is a modification date, and misdating an item makes
 -- revisions point backwards. Its one honest use is "this URL changed", which is
--- exactly what reopens a skipped_not_a_post row.
+-- exactly what reopens a skipped_not_a_post row. Landed with the same walk.
 alter table braintrust_items add column if not exists lastmod timestamptz;
 
 -- Provenance only. /members/api/site/ answers unauthenticated with an exact Ghost

@@ -77,9 +77,11 @@ create table if not exists braintrust_items (
                   check (audience in ('everyone', 'paid', 'unknown')),
   retrieval     text not null default 'pending'
                   check (retrieval in ('pending', 'retrieved', 'skipped_paywall',
-                                       'skipped_short', 'skipped_window', 'failed')),
+                                       'skipped_short', 'skipped_window',
+                                       'skipped_not_a_post', 'failed')),
   body_text     text,                 -- null until retrieved; null forever if skipped
   body_raw      jsonb,                -- caption events, feed entry — whatever the platform actually gave
+  lastmod       timestamptz,          -- the sitemap's, at the moment braintrust decided. never a publish date
   retrieved_at  timestamptz,
   created_at    timestamptz not null default now(),
   unique (source_id, external_id)
@@ -95,7 +97,13 @@ comment on column braintrust_items.retrieval is
   'changes. skipped_paywall is a row rather than an absence so a persona can state its own '
   'blind spots; skipped_short is undone by turning exclude_shorts off; skipped_window is '
   'undone by widening window_months, which is what makes the backfill window a setting '
-  'rather than a one-way door.';
+  'rather than a one-way door; skipped_not_a_post is undone by the sitemap''s lastmod moving.';
+
+comment on column braintrust_items.lastmod is
+  'The sitemap''s <lastmod> as it stood when braintrust decided this URL was not a post. '
+  'Never read as a publish date — it is a modification date, and misdating an item makes '
+  'revisions point backwards. Its one honest use is "this URL changed", which is exactly '
+  'the question of whether a stub has become a post.';
 
 -- `create table if not exists` leaves an existing table alone, so a database created
 -- before skipped_short existed would reject the value. Re-stating the constraint is
@@ -104,7 +112,10 @@ comment on column braintrust_items.retrieval is
 alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
 alter table braintrust_items add constraint braintrust_items_retrieval_check
   check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'skipped_short',
-                       'skipped_window', 'failed'));
+                       'skipped_window', 'skipped_not_a_post', 'failed'));
+
+-- And the column that state's reopen trigger reads, for the same reason.
+alter table braintrust_items add column if not exists lastmod timestamptz;
 
 create index if not exists braintrust_items_source_published_idx
   on braintrust_items (source_id, published_at desc);

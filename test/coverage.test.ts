@@ -22,6 +22,7 @@ function source(overrides: Partial<SourceCoverage> = {}): SourceCoverage {
     skipped_paywall: 0,
     skipped_short: 9,
     skipped_window: 0,
+    skipped_not_a_post: 0,
     failed: 0,
     pending: 0,
     words_retrieved: 118_402,
@@ -41,6 +42,7 @@ function evidence(overrides: Partial<CoverageEvidence> = {}): CoverageEvidence {
     skipped_paywall: totals.reduce((n, one) => n + one.skipped_paywall, 0),
     skipped_short: totals.reduce((n, one) => n + one.skipped_short, 0),
     skipped_window: totals.reduce((n, one) => n + one.skipped_window, 0),
+    skipped_not_a_post: totals.reduce((n, one) => n + one.skipped_not_a_post, 0),
     failed: totals.reduce((n, one) => n + one.failed, 0),
     pending: totals.reduce((n, one) => n + one.pending, 0),
     words_retrieved: totals.reduce((n, one) => n + one.words_retrieved, 0),
@@ -85,9 +87,25 @@ describe('the coverage layer', () => {
   it("distinguishes braintrust's own skip rule from the platform's", () => {
     const { descriptive_md } = coverageLayer(evidence());
 
-    assert.match(descriptive_md, /9 short videos were skipped as promotional/);
+    assert.match(descriptive_md, /9 items were skipped as too brief/);
     assert.match(descriptive_md, /braintrust's own rule rather than the platform's/);
     assert.match(descriptive_md, /exclude_shorts off brings them back/);
+  });
+
+  /**
+   * A source that answered perfectly and a source that could not answer read alike in a
+   * count and are not alike at all. `skipped_not_a_post` is the sharpest case: a sitemap
+   * enumerates URLs, so braintrust fetching an about page and finding no date is the
+   * whole mechanism working, not a retrieval that failed.
+   */
+  it('reports a URL that turned out not to be a post as work done, not work missed', () => {
+    const { descriptive_md } = coverageLayer(
+      evidence({ by_source: { 'blog:notes.example.com': source({ platform: 'blog', skipped_not_a_post: 3 }) } }),
+    );
+
+    assert.match(descriptive_md, /3 URLs in the archive turned out not to be posts/);
+    assert.match(descriptive_md, /nothing failed/);
+    assert.doesNotMatch(descriptive_md, /could not be retrieved/);
   });
 
   it('names the window as braintrust choosing not to look, never as a retrieval that failed', () => {

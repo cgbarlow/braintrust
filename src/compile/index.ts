@@ -369,6 +369,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       items_skipped_paywall: coverage.evidence.skipped_paywall,
       items_skipped_short: coverage.evidence.skipped_short,
       items_skipped_window: coverage.evidence.skipped_window,
+      items_skipped_not_a_post: coverage.evidence.skipped_not_a_post,
       items_failed: coverage.evidence.failed,
       words_retrieved: coverage.evidence.words_retrieved,
       ...(coverage.evidence.window ? { window: coverage.evidence.window } : {}),

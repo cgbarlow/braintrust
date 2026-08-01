@@ -61,6 +61,7 @@ export type ItemCounts = {
   skipped_paywall: number;
   skipped_short: number;
   skipped_window: number;
+  skipped_not_a_post: number;
   failed: number;
   pending: number;
 };

@@ -946,6 +946,43 @@ a feed like any blog does, so asking the other way round resolves it as a blog a
 paywall split, and the only `measured` item count braintrust has. The order is the guard; the wasted request is
 the price, paid once at registration.
 
+### What the build settled about walking a blog archive
+
+**The walk judges nothing.** It finds the sitemap, hands over every URL in it as a candidate, and filters by
+neither URL shape nor `<lastmod>` nor the window — because it has no evidence to filter on. Every judgement
+happens on the page, which is the fetch the Plan already quoted as *at most N*.
+
+**A blog followed through its feed looks for a sitemap on every run, and that is two requests rather than
+one.** `backfill_complete` staying false already drives the repair walk, so this needed no new machinery — but
+there are two paths braintrust knows to try, so the honest number for a blog that has neither is **two requests
+a day, forever**. The accepted cost below says one; two is what the build measured it at.
+
+**The archive walk is the only walk that writes rows.** Nothing on a Substack archive page could revive a
+decision braintrust made, so that walk takes no database. A sitemap can, and this walk is the only moment where
+the `<lastmod>` a `skipped_not_a_post` row was decided on and the `<lastmod>` the site serves today are both in
+hand. Splitting them across two callers would have left the reopen to whoever remembered to pull it.
+
+**The recorded `lastmod` freezes when the row leaves `pending`**, in the same `case` expression that freezes
+`retrieval` itself. Letting a re-catalogue overwrite it would move the value the next walk compares against, and
+no change would ever look like a change — the trigger would be silently dead rather than visibly absent.
+
+**The publish date is asked of the page describing itself before anything else in the markup.**
+`article:published_time` first, then JSON-LD `datePublished`, and `<time datetime>` last — because the first two
+are statements *about this page* and a `<time>` element may belong to the recent-posts widget listing three
+other posts' dates. A blog carrying only the third still gets read, which is the reason it is asked at all.
+
+**A blog is the one Source with no catalogue that could ever describe its audience**, so the pre-fetch
+allow-list is not applied to it. `unknown` on a blog means *nobody has been asked yet* rather than *the answer
+was withheld*, and refusing it would refuse every blog post there is. The hard line does not move — it is
+enforced one step later, on the fetch that was going to happen anyway, which is the whole cost of a blog having
+no `audience` field.
+
+**The short-item floor for text is 40 words**, and the measurements bound it rather than fix it. The shortest
+unambiguously real post measured is 59 words and the longest unambiguously non-post is the 30-word Bear Blog
+homepage; 40 sits between them. Like the consecutive-failure threshold it is left to tuning against real
+behaviour, and like the video line it is governed by `exclude_shorts` — so an operator who wants the brief ones
+gets them back through the reopen that already exists, and nothing loops.
+
 ---
 
 ## Accepted costs
@@ -962,6 +999,7 @@ the price, paid once at registration.
 | **A Position may quote a Bluesky post that has since been deleted.** The citation resolves to a URL that 404s — visible rather than hidden. | §7 |
 | **A blog with no feed costs roughly a megabyte a day to poll, forever**, and a 2,213-URL one is a ~2.5-hour first backfill. | §8 |
 | **One wasted fetch per non-post and per gated Ghost post.** The price of not guessing from URL shape, and of Ghost having no `audience` field. | §8 |
+| **A blog with a feed and no sitemap spends two requests a day looking for one, forever.** One per path braintrust knows to try. The alternative is refusing to follow a real blog over a missing XML file. | §8 |
 | **A rewritten members CTA on a long free intro escapes all three gating markers**, and braintrust stores public words as a whole post. Not a consent breach; bounded to blogs that both sell subscriptions and run a custom theme. | §8 |
 | **A blog carrying no date metadata leaves its Items undated**, which costs it revision detection entirely. | §8 |
 | **Every blog pays one wasted request at registration**, asking whether it is a Substack on a custom domain. The order is what stops a Substack resolving as a blog. | §8 |

@@ -124,6 +124,11 @@ export type SourceReport = {
   skipped_short: number;
   /** Items the feed carries that are older than the window this Source was given. */
   skipped_window: number;
+  /**
+   * URLs a blog's sitemap listed that turned out to be pages rather than posts. Counted
+   * apart from `failed` because the source answered — this is braintrust checking.
+   */
+  skipped_not_a_post: number;
   failed: number;
   backfill_complete: boolean;
   gap_detected: boolean;
@@ -133,6 +138,11 @@ export type SourceReport = {
   reopened_shorts?: number;
   /** Set when an operator widened `window_months` and past skips came back. */
   reopened_window?: number;
+  /**
+   * Set when a blog's sitemap showed a newer `<lastmod>` for a URL braintrust had
+   * decided was not a post. Nobody performed this reopen; the sitemap did.
+   */
+  reopened_not_posts?: number;
   /**
    * The Source stopped answering, measured across distinct Items. Never the user's
    * choice to stop, which is a Person being paused and is reported as `paused`.
@@ -230,7 +240,8 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
         report.retrieved +
         report.skipped_paywall +
         report.skipped_short +
-        report.skipped_window >
+        report.skipped_window +
+        report.skipped_not_a_post >
       0
     ) {
       changed.add(source.person);
@@ -341,6 +352,7 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
     skipped_paywall: 0,
     skipped_short: 0,
     skipped_window: 0,
+    skipped_not_a_post: 0,
     failed: 0,
     backfill_complete: source.backfill_complete,
     gap_detected: false,
@@ -762,7 +774,7 @@ async function skipShort(
   deps: SourceDeps,
   report: SourceReport,
 ): Promise<void> {
-  await markSkippedShort(deps.db, item.id, seconds);
+  await markSkippedShort(deps.db, item.id, { platform: 'youtube', durationSeconds: seconds });
   report.skipped_short += 1;
   deps.log(
     `braintrust: ${item.external_id} is ${seconds}s, under the ${SHORT_MAX_SECONDS}s line. ` +
@@ -821,7 +833,9 @@ export function summarise(report: CycleReport): string {
     if (source.skipped_paywall > 0) parts.push(`${source.skipped_paywall} skipped (paywall)`);
     if (source.skipped_short > 0) parts.push(`${source.skipped_short} skipped (short)`);
     if (source.skipped_window > 0) parts.push(`${source.skipped_window} skipped (outside window)`);
+    if (source.skipped_not_a_post > 0) parts.push(`${source.skipped_not_a_post} not posts`);
     if (source.reopened_window) parts.push(`${source.reopened_window} reopened (window widened)`);
+    if (source.reopened_not_posts) parts.push(`${source.reopened_not_posts} reopened (lastmod moved)`);
     if (source.dated > 0) parts.push(`${source.dated} dated`);
     if (source.failed > 0) parts.push(`${source.failed} failed`);
     if (!source.backfill_complete) parts.push('backfill incomplete');
@@ -834,11 +848,12 @@ export function summarise(report: CycleReport): string {
     return `  ${source.person} / ${source.platform} ${source.handle}: ${parts.join(', ')}`;
   });
 
-  const { pending, retrieved, skipped_paywall, skipped_short, skipped_window, failed } = report.corpus;
+  const { pending, retrieved, skipped_paywall, skipped_short, skipped_window, skipped_not_a_post, failed } =
+    report.corpus;
   lines.push(
     `  corpus: ${retrieved} retrieved, ${skipped_paywall} skipped (paywall), ` +
       `${skipped_short} skipped (short), ${skipped_window} skipped (outside window), ` +
-      `${pending} pending, ${failed} failed`,
+      `${skipped_not_a_post} not posts, ${pending} pending, ${failed} failed`,
   );
 
   const indexed = [`${index.items_chunked} items chunked`, `${index.chunks_written} chunks`];

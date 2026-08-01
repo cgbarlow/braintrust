@@ -34,6 +34,7 @@ export type SourceCoverage = {
   skipped_paywall: number;
   skipped_short: number;
   skipped_window: number;
+  skipped_not_a_post: number;
   failed: number;
   pending: number;
   words_retrieved: number;
@@ -50,9 +51,11 @@ export type SourceCoverage = {
 /**
  * The six fields the spec fixes — `window`, `retrieved`, `skipped_paywall`, `failed`,
  * `words_retrieved`, `by_source` — plus the skips that would otherwise vanish.
- * `skipped_short` and `skipped_window` are braintrust's own policy rather than a
- * Source's, and `pending` is work not yet done rather than work declined; folding any of
- * them into `failed` would make the Persona claim a blind spot it does not have.
+ * `skipped_short`, `skipped_window` and `skipped_not_a_post` are braintrust's own policy
+ * rather than a Source's, and `pending` is work not yet done rather than work declined;
+ * folding any of them into `failed` would make the Persona claim a blind spot it does not
+ * have. `skipped_not_a_post` is the sharpest case of that: it counts URLs a source served
+ * perfectly and braintrust found were not articles.
  */
 export type CoverageEvidence = {
   window: [string, string] | null;
@@ -60,6 +63,7 @@ export type CoverageEvidence = {
   skipped_paywall: number;
   skipped_short: number;
   skipped_window: number;
+  skipped_not_a_post: number;
   failed: number;
   pending: number;
   words_retrieved: number;
@@ -130,9 +134,10 @@ function describe(evidence: CoverageEvidence): string {
   }
   if (evidence.skipped_short > 0) {
     gaps.push(
-      `${evidence.skipped_short} short video${evidence.skipped_short === 1 ? ' was' : 's were'} skipped ` +
-        "as promotional. That is braintrust's own rule rather than the platform's, and turning " +
-        'exclude_shorts off brings them back.',
+      `${evidence.skipped_short} item${evidence.skipped_short === 1 ? ' was' : 's were'} skipped ` +
+        'as too brief to be worth reading — a promotional video, or a page of a few dozen words. ' +
+        "That is braintrust's own rule rather than the platform's, and turning exclude_shorts off " +
+        'brings them back.',
     );
   }
   if (evidence.skipped_window > 0) {
@@ -140,6 +145,18 @@ function describe(evidence: CoverageEvidence): string {
       `${evidence.skipped_window} item${evidence.skipped_window === 1 ? ' is' : 's are'} older than ` +
         'the window braintrust was asked to read. Nothing about them failed — braintrust chose ' +
         'not to look, and widening window_months brings them back.',
+    );
+  }
+  // Deliberately worded as work done rather than work missed. A sitemap enumerates URLs
+  // and not everything on a blog is an article, so this number is braintrust checking —
+  // and it sits beside `failed`, which is the opposite fact, so the two read as the
+  // different things they are.
+  if (evidence.skipped_not_a_post > 0) {
+    gaps.push(
+      `${evidence.skipped_not_a_post} URL${evidence.skipped_not_a_post === 1 ? '' : 's'} in the ` +
+        `archive turned out not to be post${evidence.skipped_not_a_post === 1 ? '' : 's'} — an ` +
+        'about page, a tag index, a homepage. braintrust fetched them, found no publish date and ' +
+        'left them out; nothing failed.',
     );
   }
   if (evidence.failed > 0) {
@@ -182,6 +199,7 @@ function describe(evidence: CoverageEvidence): string {
       if (source.skipped_paywall > 0) parts.push(`${source.skipped_paywall} paywalled`);
       if (source.skipped_short > 0) parts.push(`${source.skipped_short} short`);
       if (source.skipped_window > 0) parts.push(`${source.skipped_window} outside the window`);
+      if (source.skipped_not_a_post > 0) parts.push(`${source.skipped_not_a_post} not posts`);
       if (source.failed > 0) parts.push(`${source.failed} failed`);
       if (source.pending > 0) parts.push(`${source.pending} pending`);
       lines.push(`- \`${source.platform}:${source.handle}\` — ${parts.join(', ')}.`);
