@@ -18,6 +18,15 @@
  * See docs/design/compiler.md §2 and docs/design/mcp-surface.md §2.
  */
 
+import type { VoicePopulation } from './voice.js';
+
+/**
+ * What shape the Corpus is, which is the question a mixed one makes urgent. `by_source`
+ * answers *who*; this answers *what* — and the boundary is Voice's own floor, so the two
+ * layers cannot disagree about which items are long-form.
+ */
+export type FormCoverage = { items: number; words: number };
+
 export type SourceCoverage = {
   platform: string;
   handle: string;
@@ -61,6 +70,22 @@ export type CoverageEvidence = {
    * parse the key.
    */
   by_source: Record<string, SourceCoverage>;
+  /**
+   * Split at Voice's floor. An item count across four orders of magnitude is not a size —
+   * *"read 963 items"* flatters a Corpus that is mostly one-liners, and *"read 89,000
+   * words: 63 long-form items and 900 short posts"* does not.
+   */
+  by_form: { long_form: FormCoverage; short_form: FormCoverage };
+  /**
+   * Voice's population, restated here because **a reader is entitled to know Voice was
+   * measured on a fraction of the Corpus**. Naming braintrust's blind spots is what this
+   * layer is for, and a layer that selects a population is one of them.
+   *
+   * It is duplicated rather than referenced because of this module's own rule: no number
+   * in the prose that is not also a field of `evidence`. Coverage states the Voice
+   * population, so Coverage has to carry it.
+   */
+  voice_measured_over: VoicePopulation;
 };
 
 export type CoverageLayer = {
@@ -72,12 +97,25 @@ export function coverageLayer(evidence: CoverageEvidence): CoverageLayer {
   return { descriptive_md: describe(evidence), evidence };
 }
 
+/** The measured coverage plus the one number only the Voice step can supply. */
+export function withVoicePopulation(
+  measured: Omit<CoverageEvidence, 'voice_measured_over'>,
+  voice: VoicePopulation,
+): CoverageEvidence {
+  return { ...measured, voice_measured_over: voice };
+}
+
 function describe(evidence: CoverageEvidence): string {
   const lines: string[] = [];
 
+  // Words lead, because they are the one measure comparable across forms. An item count
+  // spanning a thirty-word post and a forty-thousand-word lecture is not a size.
+  const { long_form: long, short_form: short } = evidence.by_form;
   lines.push(
-    `braintrust has read ${evidence.retrieved} item${evidence.retrieved === 1 ? '' : 's'} from this ` +
-      `person — ${evidence.words_retrieved} words` +
+    `braintrust has read ${evidence.words_retrieved} words from this person — ` +
+      `${long.items} long-form item${long.items === 1 ? '' : 's'} carrying ${long.words} words, and ` +
+      `${short.items} shorter one${short.items === 1 ? '' : 's'} carrying ${short.words}; ` +
+      `${evidence.retrieved} in all` +
       `${evidence.window ? `, published between ${evidence.window[0]} and ${evidence.window[1]}` : ''}. ` +
       'Everything this persona knows comes from those items and nothing else.',
   );
@@ -116,6 +154,25 @@ function describe(evidence: CoverageEvidence): string {
     );
   }
   if (gaps.length > 0) lines.push('', '**Not read.**', ...gaps.map((gap) => `- ${gap}`));
+
+  // Not a gap in the corpus — a gap in one layer's population, which is a different fact
+  // and belongs in the layer whose job is naming what braintrust cannot see.
+  const voice = evidence.voice_measured_over;
+  lines.push(
+    '',
+    '**How voice was measured.** ' +
+      (voice.min_words === 0
+        ? `No item here is long enough for the usual long-form floor, so voice was measured over ` +
+          `all ${voice.items} item${voice.items === 1 ? '' : 's'}, median ${voice.median_words} ` +
+          'words. It is labelled rather than withheld: a persona that refuses to describe a voice ' +
+          'is worse than one that says which voice it measured.'
+        : `Voice was measured from ${voice.items} item${voice.items === 1 ? '' : 's'} of ` +
+          `${voice.min_words} words or more.` +
+          (voice.items_excluded > 0
+            ? ` ${voice.items_excluded} shorter item${voice.items_excluded === 1 ? ' was' : 's were'} ` +
+              'read for what they say, not for how they say it.'
+            : '')),
+  );
 
   const sources = Object.values(evidence.by_source);
   if (sources.length > 0) {

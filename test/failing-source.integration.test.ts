@@ -17,7 +17,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { compileCorpus, coverageLayer, measureCoverage } from '../src/compile/index.js';
+import {
+  compileCorpus,
+  coverageLayer,
+  measureCoverage,
+  withVoicePopulation,
+} from '../src/compile/index.js';
 import { createDb, type PostgresDb } from '../src/db.js';
 import { followPerson, type PlanResponse } from '../src/follow/index.js';
 import { createConfirmTokenStore } from '../src/follow/tokens.js';
@@ -463,7 +468,14 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
       // closing — the persona says its corpus is part of the archive rather than all of it.
       await db.query(`update braintrust_sources set backfill_complete = false`);
       const { rows } = await db.query<{ id: string }>('select id from braintrust_people');
-      const coverage = coverageLayer(await measureCoverage(db, rows[0]!.id));
+      const coverage = coverageLayer(
+        withVoicePopulation(await measureCoverage(db, rows[0]!.id), {
+          min_words: 300,
+          items: 0,
+          median_words: 0,
+          items_excluded: 0,
+        }),
+      );
 
       assert.match(coverage.descriptive_md, /Incomplete/);
       assert.match(coverage.descriptive_md, /part of the archive rather than all of it/);
