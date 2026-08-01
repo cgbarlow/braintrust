@@ -6,6 +6,12 @@
 and
 [Choose braintrust's embedding model and chunking strategy](https://github.com/cgbarlow/braintrust/issues/14).
 
+**Three decisions from [the Bluesky and personal-blogs map](https://github.com/cgbarlow/braintrust/issues/52)
+amend it**, because a Corpus whose Items span four orders of magnitude breaks assumptions that were safe while
+every Item was an essay or a lecture. Two of them **correct** what this document previously asserted — Voice's
+population (§2) and what retrieval ranks (§7) — and each is named as a correction rather than quietly
+rewritten.
+
 Vocabulary is in [`CONTEXT.md`](../../CONTEXT.md); the tables are in [`schema.md`](./schema.md); what the
 compiler's output looks like at the boundary is in [`mcp-surface.md`](./mcp-surface.md). The reasoning behind
 each choice is in the resolution comment linked at the head of each section — **this document is what the
@@ -80,8 +86,8 @@ pass runs after the index and an Item that has not been chunked is not yet reada
 
 | Layer | `basis` | How it is computed | Model? | Scaling |
 |---|---|---|---|---|
-| **Voice** | measured | frequency, spread and exemplars counted directly over raw Item text | **no** | converges |
-| **Coverage** | measured | counts over `braintrust_items` and their `retrieval` status | **no** | fixed size |
+| **Voice** | measured | frequency, spread and exemplars counted directly over the raw text of Items long enough to argue in | **no** | converges |
+| **Coverage** | measured | counts over `braintrust_items`, their `retrieval` status and their form | **no** | fixed size |
 | **Reasoning** | inferred | LLM synthesis across Notes | yes | converges |
 | **Beliefs** | inferred | LLM synthesis across Notes | yes | converges |
 | **Positions** | measured, cited, dated | clustered from Note `claims`; every Position keeps its citations | yes | **grows** |
@@ -114,8 +120,9 @@ Beliefs are never asserted in one place, so the layer requires a cross-item synt
 Note carries the argument and the assumptions, not just the claims.
 
 **Coverage `evidence` has a fixed shape**, because it is returned as structured counts rather than prose:
-`window`, `retrieved`, `skipped_paywall`, `failed`, `words_retrieved`, `by_source`. It is a query over tier 1
-written into the layer's `evidence` at Compile time, so it needs no table of its own.
+`window`, `retrieved`, every `skipped_*` state, `pending`, `failed`, `words_retrieved`, `by_source` and
+`by_form`. It is a query over tier 1 written into the layer's `evidence` at Compile time, so it needs no table
+of its own.
 
 **`held_since` is recomputed every Compile.** A backfill that finds older evidence moves it earlier. Less
 stable across Compiles, more honest.
@@ -144,14 +151,93 @@ displayed as a fact — which is only true if the sentence never becomes the onl
 are no percentages and no derived totals in either measured layer, and a test extracts every numeric token
 from the prose and fails if it is not in the structure.
 
-**Coverage's fixed shape gained three fields**, because folding any of them into an existing one would make a
-Persona claim a blind spot it does not have: `skipped_short` and `skipped_window` are braintrust's own policy
-rather than a Source's, and `pending` is work not yet done rather than work declined. The window one is the
-clearest case for why the prose matters as much as the count — *"4 items are older than the window braintrust
-was asked to read"* is true and actionable, and *"4 items could not be retrieved at all"*, which `failed`
-rendered, is a lie about a source that answered perfectly. `by_source` is keyed `platform:handle` rather than
-by platform, since one Person may follow two publications on the same platform and merging them silently
-would produce a count nobody could check.
+**Coverage's fixed shape gained four fields**, because folding any of them into an existing one would make a
+Persona claim a blind spot it does not have: `skipped_short`, `skipped_window` and `skipped_not_a_post` are
+braintrust's own policy rather than a Source's, and `pending` is work not yet done rather than work declined.
+The window one is the clearest case for why the prose matters as much as the count — *"4 items are older than
+the window braintrust was asked to read"* is true and actionable, and *"4 items could not be retrieved at
+all"*, which `failed` rendered, is a lie about a source that answered perfectly. `skipped_not_a_post` is the
+same shape one platform further out: *"3 URLs in the archive turned out not to be posts"* is braintrust doing
+its job. `by_source` is keyed `platform:handle` rather than by platform, since one Person may follow two
+publications on the same platform and merging them silently would produce a count nobody could check.
+
+**The gate recounts whatever fields the rows carry rather than a list written down here**, which is what stops
+a state existing in the schema and silently in no layer — so a fifth `skipped_*` reason needs no change to
+`coverage_reconciles` at all.
+
+### What a mixed Corpus changed about Voice and Coverage
+
+[#57](https://github.com/cgbarlow/braintrust/issues/57)
+
+Item length across every corpus measured, in words:
+
+```
+Bluesky skeet                                    ~34      3,359 words / 100 posts
+Bluesky day, batched                            ~198      3,359 words / 17 days
+Ghost event announcement                       59–162     after boilerplate removal
+Karpathy blog post                            492–12,550  median ~2,500
+Substack essay                                 ~1,596     36,700 words / 23 items
+Karpathy YouTube lecture                      35–40,000   one item
+```
+
+**Four orders of magnitude between the smallest Item and the largest**, and it is a live Corpus rather than a
+hypothetical — Karpathy is already followed, and his three- and four-hour lectures are a whole Substack in one
+Item.
+
+**Corrected: Voice measures one population, chosen by length, and always names it.** This document described
+Voice as counted over the whole Corpus, and that was safe only while every Item was an essay or a transcript.
+The spread thresholds are fractions of `items_measured`, so on a Corpus of 900 skeets and 23 essays the essays
+contribute 2.5% of the denominator and **cannot reach either threshold no matter how consistent they are**.
+The arithmetic is one-directional too: a 34-word skeet can hold at most one hedge, so short-form drags
+frequency up while making spread unreachable. And `words_per_item`, a field printed in the descriptive prose,
+becomes an average of 34 and 40,000 — a number describing nothing that exists.
+
+So the population is **Items of `VOICE_MIN_WORDS` or more**, and `VoiceEvidence` gains
+`measured_over: { min_words, items, median_words, items_excluded }` so the Persona can state it and a reader
+can check it. Nothing about how anything is *counted* changes: the population was always an argument to the
+Voice step, so this is a change to what is passed in.
+
+**`VOICE_MIN_WORDS = 300`.** A judgement, and it travels in the evidence for the same reason the patterns do —
+so it can be argued with rather than trusted. The measured case: a batched Bluesky day lands at ~198 and the
+shortest real essay in any corpus measured is 492, so 300 separates the two populations with roughly 1.6×
+clearance on each side, sits above every Ghost event announcement and below every blog post.
+
+**Spread stays a fraction of Items, not of words.** Word-weighting is the obvious alternative and it
+reintroduces exactly what the floor exists to prevent — *one loud Item becoming a personality trait*. A single
+four-hour lecture is 35–40,000 words, **the majority of a Corpus containing it**, and its verbal tics would
+become the person. Item-spread was always the right statistic; it only ever needed comparable items, and now
+it has them.
+
+**Short-form is read, not ignored — it is excluded from Voice alone.** Skeets, event announcements and Shorts
+still feed Beliefs, Reasoning, Positions and Coverage. The line: **short-form tells you what someone thinks;
+long-form tells you how they argue.** The moves Voice counts — hedging, direct address, concession — are
+argumentative moves, and the extractor is already licensed to answer *"no argument"* for a day of posts.
+Measuring argumentative moves over writing that contains no arguments was never going to produce an
+instruction worth performing in someone's name.
+
+**A person with no long-form at all is labelled, not withheld.** The floor drops to whatever the Corpus
+offers, Voice is measured over that, and `measured_over` records it truthfully — so the Persona says it
+measured voice from 200-word batched days and a reader can weigh that. The same posture the gate already
+applies to inferred layers, and refusing to publish them would make the largest new Source unbuildable.
+
+**Coverage stops leading with a single item total, and gains `by_form`.** `by_source` answers *who* and stays;
+`by_form` answers *what shape*, which is the question a mixed Corpus makes urgent. The headline sentence leads
+with **words**, which are comparable across forms: *"read 963 items"* flatters a Corpus that is mostly
+one-liners, and *"read 89,000 words — 63 long-form items and 900 short posts"* does not.
+
+**And Coverage names the Voice population as a blind spot**, which is what Coverage is for:
+*"Voice was measured from 63 items of 300 words or more. 900 shorter items were read for what they say, not
+for how they say it."*
+
+Three costs, named. **Voice exemplars will never be a skeet**, even for someone who is 95% skeets — intended,
+and stated in Coverage. **`VOICE_MIN_WORDS` is a chosen number**, in evidence and in `compiler_version`, so
+changing it rebuilds every Persona visibly. And **a long-form-heavy Corpus gains nothing from this** and pays
+a filter it does not need — one comparison per Item, no model call.
+
+*Rejected: Voice per Source.* Two Substacks by one person are the same form. *Rejected: Voice per form,
+published as two Voices* — braintrust serves one Persona and nothing at answer time knows whether the asker
+wants an essay or a line, so it pushes an unanswerable choice downstream. *Rejected: selecting the population
+from the Notes* — elegant, needs no threshold, and puts a model in the one path that has none.
 
 ### What the build settled about the growing layer
 
@@ -180,10 +266,51 @@ the same signal whether they have published thirty or three hundred: 5+ Items is
 `low`. Starting points to tune, not findings — and the grade never filters anything. It travels beside
 `item_count` so that **a client** can decide what one mention is worth.
 
-**`held_since` and `item_count` are derived from the citations at every Compile**, never carried forward, which
-is what makes a backfill that reaches further back move `held_since` earlier by itself. Two claims quoting the
-same words in the same Item collapse to one citation, because a Position that cited a sentence twice would
-inflate the only number a reader has to judge it on.
+**`item_count` stays the denominator and the thresholds stay 5 and 2, even for short-form.**
+[#65](https://github.com/cgbarlow/braintrust/issues/65) asked whether five skeets should earn what five essays
+earn, and half the question had already been answered elsewhere: a day is the Item, so five posts in an
+afternoon are **one** Item, and one Item grades `low` automatically. The sentence this document rests on —
+*saying it in five separate pieces of work is the same signal* — survives contact with short-form, because a
+batched day **is** a separate piece of work. *Rejected: counting distinct Sources*, since most people have one
+or two and every grade would collapse. *Rejected: counting words*, for the reason Voice rejects it — one
+four-hour lecture would outweigh everything else a person ever wrote.
+
+**Confidence is capped at `moderate` when every citation falls inside a single 7-day window.** What survived
+#65 was the burst, and **it was never short-form-specific**: five essays published in one week about one event
+grade `high` too. That is one occasion wearing five dates, and long-form has always been able to do it —
+short-form only made it common. The principle: **a Position genuinely held gets said again later; one that is
+a reaction does not.** Form-neutral, computed from the `published_at` the citations already carry, needing no
+new population and no stored field.
+
+**A Position reports its span, not only its beginning.** `held_until` and `days_spanned` sit alongside
+`held_since`, derived from the citations the same way. This is what the grade exists for: the grade *never
+filters anything, it only travels alongside `item_count` so a client can* — and a client currently cannot tell
+`high` across three years from `high` across five days. Now it can, from three fields the Position already
+serves.
+
+**A mixed-form Position is graded on the whole set — deliberately not Voice's move.** Voice filters by length
+because Voice is about **how** someone argues, so form *is* its subject matter. A Position is about **what**
+someone holds, and holding it is holding it. Dropping the short-form citations would make a Position look
+thinner than the evidence actually is, and `item_count` would become a count of something other than what
+braintrust found.
+
+**A Position whose citations are all undated cannot be capped** and keeps its item-count grade, by the same
+logic that has revisions refuse to judge a pair they cannot place in time. braintrust does not penalise what
+it cannot measure; it declines to claim it. `held_since` is already null in that case and `days_spanned` is
+null with it.
+
+Three costs. **7 days is a chosen number**, exactly like 5 and 2 — and unlike those two it travels in the
+served data as `days_spanned`, so a reader can disagree with it using the same numbers braintrust used. **A
+genuinely intense week of real work grades `moderate`** until the person returns to the subject, which is the
+definition of *not yet shown to persist*, and the Position is not hidden — it is served with its span visible.
+And **the cap can be reached by a backfill**: a Position that was `high` on a single week and gains no later
+citation drops to `moderate` on the next Compile.
+
+**`held_since`, `held_until`, `days_spanned` and `item_count` are derived from the citations at every
+Compile**, never carried forward, which is what makes a backfill that reaches further back move `held_since`
+earlier by itself. Less stable across Compiles, more honest. Two claims quoting the same words in the same
+Item collapse to one citation, because a Position that cited a sentence twice would inflate the only number a
+reader has to judge it on.
 
 **Slug collisions get `-2`.** The spec left the suffix open; a reader seeing `evals-precede-the-harness-2` can
 tell it is a second Position on the same ground rather than a different one.
@@ -426,6 +553,27 @@ was said. A client is free to tidy it for display; braintrust stores and cites t
 
 **Re-chunking drops tier 2 and rebuilds it**, for about three cents.
 
+### What a mixed Corpus did not change
+
+[#68](https://github.com/cgbarlow/braintrust/issues/68)
+
+**The chunker does not change, and that is the surprising part.** Batching Bluesky into a day puts an Item at
+~200 words ≈ **1,200 characters** — inside the 1,000–1,500 band this section was built for. *The batching that
+created the mixed Corpus is the same decision that made its short end fit the existing chunker.* A passage
+that is a whole Item needs no different treatment; the overlap does nothing for it, and that is correct, since
+overlap exists so a sentence spanning an *arbitrary* boundary survives somewhere and a single-chunk Item has
+no arbitrary boundary.
+
+**Chunks never spanning an Item is now load-bearing rather than incidental.** The minimum window is 1,000
+characters and a one-post day is ~200, which could be read as licence to glue two days together. It is not:
+chunking runs per Item, so a short day becomes a short chunk of its own. **A citation resolves to an Item, so
+a chunk spanning two Items would be uncitable** — and a Position braintrust cannot cite is dropped. Recorded
+here because it was a free property when every Item was an essay and is a constraint now.
+
+*Rejected: chunking short Items differently*, merging days into week-sized passages to match essay-sized
+chunks. It would make citations resolve to something that is not an Item, which is settled the other way: a
+Position cites the individual post, resolved from where the verified quote falls.
+
 ---
 
 ## 7. Embedding: one model, one space, everywhere
@@ -458,6 +606,44 @@ What matters to the compiler:
   dimensions match*, so a same-size model swap without a re-embed returns confidently-ranked nonsense.
   braintrust also never compares its vectors to `thoughts.embedding` and never calls `match_thoughts`.
 
+### Retrieval ranks Items, not passages
+
+[#68](https://github.com/cgbarlow/braintrust/issues/68)
+
+**Corrected.** Retrieval was described here and at
+[the tool surface](./mcp-surface.md#3-braintrust_find_positions) as finding matching Chunks and mapping their
+Items to Positions. It already collapsed Chunks to Items and judged each Item on its **best** passage — that
+part was right — but the candidate limit was applied **before** the collapse, so an Item's chance of surviving
+to the collapse was proportional to **how many Chunks it has**, which is a proportion of its length and
+nothing to do with relevance.
+
+Against a Corpus of 40 lectures (~7,200 chunks) and a year of batched Bluesky days (~365 chunks), long-form
+holds **95% of the tickets in a 60-ticket lottery**: a four-hour lecture enters with 180 entries, a day enters
+with one. This is a live bug rather than a new-source concern — the lectures are already in the Corpus.
+
+**So the truncation moves to after the collapse, where it always belonged.** Each Item competes once, on its
+single best passage, and a lecture and a skeet-day are equals at the point of ranking. Nothing about relevance
+changes: the retrieval floor still refuses anything too distant, and a lecture that genuinely is the best
+answer still wins on its best passage. What it loses is the advantage of simply being long.
+
+**The chunk pool is over-fetched by a bounded factor to feed the collapse.** pgvector returns approximate
+top-k over Chunks, so a Chunk-level candidate pool is still how the Items are found; it just has to be wider
+than the number of Items wanted. The factor is a tuning constant with the same status as every other number
+here — *a starting point to tune against real retrieval results rather than a decided value* — and it is
+bounded, so the query stays a single indexed top-k rather than a scan.
+
+**Re-embedding is not required**, and this does not move `compiler_version` or rebuild any Persona. Nothing
+about the Chunks or the vectors changes, only which candidates the query keeps.
+
+*Rejected: raising the candidate limit.* It scales both sides of a 20:1 ratio and fixes nothing. *Rejected:
+capping Chunks per Item inside the hit stage.* Equivalent in effect, expressed less directly, and it needs a
+window function and a second constant. *Rejected: weighting short-form up to compensate.* It puts a thumb on
+relevance to fix a population artefact, and braintrust would then be choosing what someone is likely to have
+meant.
+
+**Accepted cost:** a long Item can no longer surface twice on two strong passages. It never could — the
+collapse already made it one row — so what this stops is it *crowding out* other Items on the way there.
+
 ### What it costs
 
 Priced against the real Corpus. **The expense is entirely the compiler reading; the embedding rounds to
@@ -489,6 +675,8 @@ embedding cost.
 | **A Compile that fails the gate spends the synthesis anyway.** The model calls happen before the check, because most of what the gate checks does not exist until they have. A persistently rejected compiler pays full price every day for a Persona nobody receives. | §5 |
 | **A Position's statement is a model's sentence.** The claims under it are verified and the grouping is checked against refs braintrust issued, but the one line a client is most likely to quote was written by a model summarising them. It is why the statement is never served without its citations. | §2 |
 | **Two passes may name the same Position differently and the merge may miss it.** Deduplication across a folded Corpus is a model's judgement, and a near-duplicate that survives shows up as two thin Positions rather than one supported one — which understates `item_count` on both. | §2 |
+| **Voice exemplars will never be short-form**, even for someone who is 95% short-form. Coverage states the population it was measured over, so the omission is named rather than hidden. | §2 |
+| **A genuinely intense week of real work grades `moderate`** until the person returns to the subject. The Position is served with its span visible rather than hidden. | §2 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
 
@@ -520,7 +708,13 @@ embedding cost.
   every Position and the client decides what one mention is worth.
 - **The clustering prompt, the per-call bound, and the confidence thresholds.** Version `positions-1` asks for
   at most 24 Positions per call and grades at 5 and 2 Items — **starting points, not findings**, with the same
-  status as `notes-1`, `measured-1` and `core-1`. Tuning any of them is a free rebuild.
+  status as `notes-1`, `measured-1` and `core-1`. Tuning any of them is a free rebuild. **The 7-day burst
+  window has the same status**, and unlike the other two it is visible in the served data as `days_spanned`.
+- **`VOICE_MIN_WORDS`, built at 300.** A judgement rather than a finding, chosen to separate a batched
+  short-form day (~198 words) from the shortest real essay measured (492). It travels in `measured_over` and
+  in `compiler_version`, so changing it rebuilds every Persona and the change is visible.
+- **The over-fetch factor retrieval uses to feed its Item collapse.** Same status and same honesty as the
+  chunk window and the retrieval floor: a starting point to tune against real retrieval results.
 - **The retrieval floor a question has to clear**, built at 0.35 cosine similarity. It is the one threshold
   here that **cannot** be measured against the real Corpus, because it is a property of the embeddings model
   an operator configures and braintrust declares none. What v1 does instead is make it visible: an empty

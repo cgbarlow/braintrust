@@ -16,13 +16,23 @@ Someone braintrust models. Independent of any platform they publish on.
 _Avoid_: creator, author, subject, user
 
 **Source**:
-One publishing channel belonging to a Person — their Substack, their YouTube channel. A Person has many.
+One publishing channel belonging to a Person — their Substack, their YouTube channel, their blog, their
+Bluesky account. A Person has many.
 _Avoid_: feed, platform, account, channel
 
 **Item**:
-A single published thing from a Source: one post, one video. Identified by the identifier its platform
-already assigns it.
+A single published thing from a Source: one post, one video, one blog article — or, where a Source publishes
+in short bursts, **one closed day of them**. Identified by the identifier its platform already assigns it, or
+by the day it closed. An Item is what braintrust reads once, so it is the unit that has to be worth a reading
+and has to have stopped changing.
 _Avoid_: post, video, document, entry, thought
+
+**Form**:
+Whether an Item is long enough to argue in. Not a platform and not a Source: a Corpus can span four orders of
+magnitude — a thirty-word post and a forty-thousand-word lecture — and some measurements only mean anything
+across comparable Items. Voice is measured over long-form alone and says so; everything else reads both,
+because short-form tells you what someone thinks and long-form tells you how they argue.
+_Avoid_: length, type, kind, size
 
 **Corpus**:
 Every Item braintrust holds for one Person.
@@ -63,10 +73,12 @@ day — the same request, unchanged. Never the user's choice, and never a reason
 _Avoid_: banned, rate-limited, failed, paused
 
 **Skipped**:
-An Item braintrust deliberately did not retrieve. Two reasons, kept apart because they are different
-facts: paywalled content, which braintrust never ingests, and a Short, which braintrust's own settings
-exclude. A Skipped Item is still recorded, so Coverage can name what was not read — and because the
-second reason is braintrust's own, only that one can be undone by changing the setting.
+An Item braintrust deliberately did not retrieve. The reasons are kept apart because they are different facts:
+paywalled content, which braintrust never ingests; a Short, which braintrust's own settings exclude; an Item
+older than the window braintrust was asked to read; and a URL in an archive that turned out not to be a post
+at all. A Skipped Item is still recorded, so Coverage can name what was not read. **The line the word draws is
+whose decision it was** — everything braintrust decided is Skipped, carrying what would have to change and
+reopened when it changes, while a Source declining or failing to answer is Failed and stays that way.
 _Avoid_: excluded, filtered, ignored
 
 ### The persona

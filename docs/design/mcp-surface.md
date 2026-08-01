@@ -4,6 +4,10 @@
 [Define the v1 MCP tool surface](https://github.com/cgbarlow/braintrust/issues/11), plus the sixth tool from
 [Define how a person and their sources are registered](https://github.com/cgbarlow/braintrust/issues/17).
 
+**What [the Bluesky and personal-blogs map](https://github.com/cgbarlow/braintrust/issues/52) changed here is
+payload, not surface: no tool was added, renamed or removed.** Two new Sources, three more Plan shapes, and
+four more fields — and one correction, to what retrieval ranks (§3).
+
 Vocabulary is in [`CONTEXT.md`](../../CONTEXT.md). Transport, auth and hosting are in
 [`deployment.md`](./deployment.md); what produces these payloads is in [`compiler.md`](./compiler.md). The
 reasoning behind each choice is in the resolution comments linked above — **this document is the surface.**
@@ -84,15 +88,28 @@ four `braintrust_persona_layers` rows; there is no assembly step.
     "voice":     { "basis": "measured",
                    "generative":  "Hedge before committing…",
                    "descriptive": "Hedges in 32 of 34 measured items…",
-                   "evidence": { "items_measured": 34, … } },
+                   // `measured_over` names the population, because voice is measured
+                   // over items long enough to argue in rather than over the corpus
+                   "evidence": { "items_measured": 34,
+                                 "measured_over": { "min_words": 300, "items": 63,
+                                                    "median_words": 3200,
+                                                    "items_excluded": 349 }, … } },
     "reasoning": { "basis": "inferred",
                    "descriptive": "**Inferred across 412 items — no single item asserts this.**\n\n…",
                    "evidence": { … } },
     "beliefs":   { "basis": "inferred", "descriptive": "**Inferred…**\n\n…", "evidence": { … } },
     "coverage":  { "basis": "measured", "descriptive": "…",
                    "evidence": { "window": ["2025-08-01","2026-07-29"],
-                                 "retrieved": 412, "skipped_paywall": 304, "failed": 3,
+                                 "retrieved": 412, "skipped_paywall": 304,
+                                 "skipped_short": 18, "skipped_window": 4,
+                                 "skipped_not_a_post": 3, "pending": 0, "failed": 3,
                                  "words_retrieved": 1170000,
+                                 // what shape the corpus is, which one item total hides
+                                 "by_form": { "long_form": { "items": 63, "words": 1148000 },
+                                              "short_form": { "items": 349, "words": 22000 } },
+                                 "voice_measured_over": { "min_words": 300, "items": 63,
+                                                          "median_words": 3200,
+                                                          "items_excluded": 349 },
                                  "by_source": {
                                    // `blocked_since` present only while a source is refusing;
                                    // `backfill_complete: false` is the separate fact that
@@ -147,6 +164,17 @@ checked, filtered or displayed as a fact. The fields are fixed
 ([compiler](./compiler.md#2-six-layers-a-bounded-core-and-an-indexed-growing-layer)), and Coverage is where a
 Blocked Source is named — when it stopped, and how much of that Source went unread.
 
+**Coverage leads with words rather than one item total, and `by_form` is why.** *"Read 963 items"* flatters a
+Corpus that is mostly one-liners; *"read 89,000 words — 63 long-form items and 900 short posts"* does not.
+`by_source` answers *who* and stays; `by_form` answers *what shape*, which is the question a Corpus spanning a
+34-word post and a 40,000-word lecture makes urgent.
+
+**Coverage names the Voice population as a blind spot**, which is what Coverage is for: *"Voice was measured
+from 63 items of 300 words or more. 900 shorter items were read for what they say, not for how they say
+it."* Those numbers appear in `voice_measured_over` for the same reason every other number does — the rule is
+that no figure lives only in the prose. See
+[`compiler.md` §2](./compiler.md#what-a-mixed-corpus-changed-about-voice-and-coverage).
+
 **Not compiled → this errors**, and the two ways of having no persona are two different sentences. *braintrust
 has never heard of them* sends the caller to `braintrust_follow_person`, which only a human can complete;
 *braintrust follows them and has not built one yet* sends them nowhere, because the scheduled job resolves it
@@ -164,12 +192,22 @@ re-reads the corpus.
 **`(person, query, since?, until?, limit?, full?)`**
 
 The growing layer. Retrieval is **vector search over `braintrust_embeddings`** — embed the query with the
-configured model, find matching Chunks, map their Items to the Positions citing them.
+configured model, find candidate Chunks, collapse them to the Items behind them, and **rank the Items**.
+
+**Corrected by [#68](https://github.com/cgbarlow/braintrust/issues/68).** This said *find matching Chunks, map
+their Items to the Positions citing them*, and the truncation sat on the Chunk side of that sentence — so an
+Item's chance of surviving was proportional to its length rather than its relevance, and a four-hour lecture
+entered a 60-ticket lottery holding 180 of them while a batched day held one. Each Item now competes once, on
+its single best passage. Nothing about relevance changes and no re-embedding is needed; see
+[`compiler.md` §7](./compiler.md#retrieval-ranks-items-not-passages).
 
 ```jsonc
 { "positions": [{
     "slug": "evals-precede-the-harness",
-    "statement": "…", "held_since": "2025-11-03",
+    "statement": "…",
+    // the span, not only the beginning: `high` across three years reads
+    // differently from `high` across five days, and now a client can tell
+    "held_since": "2025-11-03", "held_until": "2026-06-18", "days_spanned": 228,
     "basis": "measured", "confidence": "high", "item_count": 9,
     "current": true,
     "relations": [{ "relation": "revised", "direction": "supersedes",
@@ -190,6 +228,14 @@ invents a shape no table backs, and an `unsettled` pair has no single current st
 **Thin Positions are returned, never hidden.** `item_count` and `confidence` travel with every Position and
 the client decides what one mention is worth. Filtering by threshold would mean braintrust quietly choosing
 what you may see.
+
+**A Position that lived one week says so, and `confidence` is capped at `moderate` for it.** The grade is
+absolute rather than proportional, so five separate pieces of work grade `high` however much someone
+publishes — but five of them inside one week are one occasion wearing five dates, and long-form has always
+been able to do that. `days_spanned` is what makes the cap arguable rather than merely applied: it is computed
+from the `published_at` dates already in the citations, so a reader can check it against the answer they were
+given, and a Position whose citations are all undated is never capped. See
+[`compiler.md` §2](./compiler.md#what-the-build-settled-about-the-growing-layer).
 
 **`passages` is the fallback when the compiler produced no Position on a topic.** Without it, 1.2M indexed
 words would be unreachable by any tool and the compiler would be tier 2's only reader. A passage is raw
@@ -256,11 +302,25 @@ that is not there.
 **Only a human may cause a new Person to be ingested. An AI may never complete the act.**
 
 A two-call handshake. Call 1 takes the links the human already has — a Substack post URL, a hostname, a
-YouTube channel page, an `@handle`, a link to one video — resolves them, and **ingests nothing**: no Item row,
-no body, no Note, no embedding. It returns a
+YouTube channel page, an `@handle`, a link to one video, a blog URL, a Bluesky handle — resolves them, and
+**ingests nothing**: no Item row, no body, no Note, no embedding. It returns a
 [Plan](./ingestion.md#what-a-plan-contains) and a `confirm_token`. Call 2 carries that token and the confirmed
 display name, and starts
 [the ordinary ingest cycle](./ingestion.md#3-one-daily-job-and-everything-expensive-is-a-backlog).
+
+**A Plan has three more shapes, because there are three more offers.** A Bluesky account is `measured` in days
+with its post count as a labelled rate projection; a sitemap-bearing blog quotes *at most N* rather than
+*about N*, because the direction of the error is known and an upper bound braintrust can defend beats a
+midpoint it cannot; a feed-only blog says in the Plan the thing the Persona will say — the archive cannot be
+enumerated and completeness is never claimed. The offers differ enough that flattening them would mean picking
+one lie to tell twice. See
+[`ingestion.md` §2](./ingestion.md#three-more-plan-shapes-because-there-are-three-genuinely-different-offers).
+
+**Call 1 can refuse.** Two ways, both of which are answers rather than errors: a blog that declares no feed
+and publishes no sitemap is refused with the routes braintrust tried, and **a bridged Bluesky account is
+refused with the blog it mirrors** — a bridge is a third party's copy, and it says so in its own display name.
+The refusal is a redirect, which is what makes it useful rather than merely correct. See
+[`ingestion.md` §2](./ingestion.md#2-registration-you-paste-links-braintrust-resolves-them-a-human-confirms).
 
 ```
 call 1 → { "plan": { … }, "confirm_token": "…", "ingested": false }

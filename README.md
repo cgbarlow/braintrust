@@ -47,7 +47,7 @@ The first run after following someone is the backfill, and for a prolific channe
 
 braintrust is specified before it is built. These five documents are the spec — everything v1 does, and every cost it accepts:
 
-- [**Ingestion**](docs/design/ingestion.md) — the two sources, registration, the daily cycle, the backlog, and what happens when a source blocks us
+- [**Ingestion**](docs/design/ingestion.md) — the sources, registration, the daily cycle, the backlog, and what happens when a source blocks us
 - [**The compiler**](docs/design/compiler.md) — read-once notes, the six persona layers, revision detection, chunking and embedding, and the publish gate
 - [**The MCP surface**](docs/design/mcp-surface.md) — the six tools, their return shapes, and the three rules that hold across all of them
 - [**Deployment**](docs/design/deployment.md) — server plus scheduled job, auth, configuration, and how to stand it up

@@ -6,6 +6,12 @@
 Vocabulary is in [`CONTEXT.md`](../../CONTEXT.md). The reasoning behind the three load-bearing choices is in
 [`docs/adr/`](../adr/). This document is the shape.
 
+**The DDL below is what `schema.sql` contains today.** What
+[the Bluesky and personal-blogs map](https://github.com/cgbarlow/braintrust/issues/52) adds is specified
+separately, in [What the new Sources add](#what-the-new-sources-add), as the `alter` statements that get it —
+because braintrust has no migration framework and a user applies `schema.sql` by hand, so a document that
+merged the two would leave nobody able to tell what is deployed from what is specified.
+
 ---
 
 ## The central idea: three tiers, and only one of them is precious
@@ -85,6 +91,9 @@ create table braintrust_sources (
 **The cursor is columns on the source, not a table.** There is exactly one cursor per source and it has no
 history worth keeping — a table would be a table of one row per source forever.
 
+**`platform` and `discovery_url` are both widened by the new Sources** — two more values, and a `discovery_url`
+that may be a sitemap where a blog publishes no feed. See [What the new Sources add](#what-the-new-sources-add).
+
 **braintrust's defaults live in the DDL, and a human may override them per source.** `backfill_floor`,
 `exclude_shorts` and `poll_interval_hours` are the three settings registration exposes; omitting them takes
 the default, so the ordinary path asks for nothing. Keeping the defaults as column defaults means "what
@@ -154,8 +163,10 @@ Four things this shape is deliberately doing:
   declined or could not answer, and everything braintrust *decided* is `skipped_<reason>` — a row of its
   own, carrying what would have to change, reopened when it changes. `skipped_paywall` is a source's
   decision braintrust is respecting and nothing undoes it; `skipped_short` is undone by turning
-  `exclude_shorts` off; `skipped_window` is undone by widening `window_months`. Both reopen without a
-  second crawl, and both exist so a setting stays a setting rather than becoming a one-way door.
+  `exclude_shorts` off; `skipped_window` is undone by widening `window_months`;
+  [`skipped_not_a_post`](#what-the-new-sources-add) is undone by the page's `<lastmod>` moving. All three
+  reopen without a second crawl, and they exist so a setting stays a setting rather than becoming a one-way
+  door — and so that a reader is told which of them was braintrust's own policy and which was the source's.
 
 **No separate transcript-segment table.** `body_raw` holds the caption lines with one start time each, so a
 citation can name a moment rather than gesture at a 20-minute video; timestamps reach a citation via chunks.
@@ -356,6 +367,68 @@ reads the relations, because that is the product.
 
 **Coverage needs no table.** It is a query over tier 1 — items by `retrieval` status, date range, word
 counts — written into the coverage layer's `evidence` at compile time.
+
+---
+
+## What the new Sources add
+
+Specified by [the Bluesky and personal-blogs map](https://github.com/cgbarlow/braintrust/issues/52). **Not yet
+in `schema.sql`** — each arrives with the build ticket that first needs it, and each is written the way
+everything else here is written: `if not exists`, and a constraint dropped and restated rather than altered,
+because `create table if not exists` leaves an existing table alone and a user's already-deployed database has
+to be able to accept a value added later.
+
+```sql
+-- Two more platforms. Discovery is generic where the platform has a feed; Bluesky
+-- is read through the public AppView, so 'bluesky' is a platform rather than a feed.
+alter table braintrust_sources drop constraint if exists braintrust_sources_platform_check;
+alter table braintrust_sources add constraint braintrust_sources_platform_check
+  check (platform in ('substack', 'youtube', 'bluesky', 'blog'));
+
+-- One more skip, and it is braintrust's own decision like the other two policy skips.
+alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
+alter table braintrust_items add constraint braintrust_items_retrieval_check
+  check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'skipped_short',
+                       'skipped_window', 'skipped_not_a_post', 'failed'));
+
+-- The sitemap's <lastmod> as it stood when braintrust decided this URL was not a post.
+-- Never a publish date: it is a modification date, and misdating an item makes
+-- revisions point backwards. Its one honest use is "this URL changed", which is
+-- exactly what reopens a skipped_not_a_post row.
+alter table braintrust_items add column if not exists lastmod timestamptz;
+
+-- Provenance only. /members/api/site/ answers unauthenticated with an exact Ghost
+-- version; it earns a line a human can read on a persona's basis and changes nothing
+-- about the ingest path, because braintrust does not branch on Ghost.
+alter table braintrust_sources add column if not exists generator text;
+
+-- A position reports its span, not only its beginning. Derived from the citations at
+-- every compile exactly as held_since is, so nothing here is carried forward.
+alter table braintrust_positions add column if not exists held_until date;
+alter table braintrust_positions add column if not exists days_spanned int;
+```
+
+**`external_id` needs no column and no change**, which is the point of it. A Bluesky Item is a closed UTC day,
+and its id is `<did>:<YYYY-MM-DD>` — deterministic, derived from data both the backfill and the daily poll
+already hold, so they reach the same day, compute the same key, and `unique (source_id, external_id)` makes
+them write **one row**. The same property Substack gets from its slug and YouTube from its video id, obtained
+here by construction rather than by luck. The `did` rather than the handle, because Bluesky handles are
+rebindable domains and a person who changes theirs must not acquire a second copy of their own archive. A blog
+post's id is its URL.
+
+**`discovery_url` stays one column and stays a feed.** For a blog it is the feed the homepage *declares* —
+`<link rel="alternate">`, never a guessed path, which was measured wrong on three of four blogs. For a blog
+that genuinely publishes no feed, the **sitemap becomes the discovery URL**: every URL carries `<lastmod>`,
+the document is ordered newest-first by it, and a walk that stops at the first unchanged URL is precisely what
+reading a feed does. See [`ingestion.md` §8](./ingestion.md#8-blogs-any-feed-best-effort).
+
+**`body_raw` absorbs what each new platform actually gives**, with no new column: the day's posts with their
+character spans for Bluesky — which is what lets a citation resolve to the individual post rather than to the
+day — and the feed entry for a blog. Same reason there is no transcript-segment table.
+
+**Nothing here is a new table.** Coverage's `by_form` is computed from Items at compile time and written into
+the layer's `evidence`, exactly as `by_source` already is, so the mixed-corpus reporting costs no schema at
+all.
 
 ---
 
