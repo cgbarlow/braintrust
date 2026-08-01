@@ -137,6 +137,102 @@ export function sitemapBlogRoutes(): Route[] {
 }
 
 // ---------------------------------------------------------------------------
+// A Ghost blog: chrome on every page, a container on some of them, a members gate
+// ---------------------------------------------------------------------------
+
+export const GHOST_HOST = 'ghosted.example.com';
+
+/**
+ * The nav, the footer and the recent-posts widget — the same lines on every page.
+ *
+ * The recent-posts widget is the detail that matters rather than decoration: on the real
+ * Ghost site it repeats *real post headings* on every page, boilerplate removal strips
+ * them out of the post they belong to, and that is exactly why the feed came back longer
+ * than the extraction on all four posts measured.
+ */
+const GHOST_CHROME = `<header class="gh-head"><nav>
+<a href="/">Home</a><a href="/about/">About</a><a href="/tags/">Topics</a>
+<a href="/members/">Become a member</a></nav></header>`;
+
+const GHOST_WIDGET = `<aside class="gh-recent"><h3>Recent posts</h3>
+<p>The shape of an agentic organisation</p>
+<p>What a small team owes its tools</p>
+<p>Notes from a fortnight of pairing</p></aside>`;
+
+const GHOST_FOOTER = `<footer class="gh-foot"><p>Agentics, published with Ghost.</p>
+<p>Subscribe to get the next one in your inbox.</p></footer>`;
+
+/** Ghost's upgrade widget lives in every theme's stylesheet, free post or paid. */
+const GHOST_STYLE = `<style>.gh-post-upgrade-cta{display:block;margin:2rem 0}</style>`;
+
+export type GhostPageOptions = {
+  /** The default-family theme wraps the post; the customised one does not. */
+  container?: boolean;
+  /** Which gate, where the post is gated at the page. */
+  gate?: 'widget' | 'copy';
+};
+
+/**
+ * A Ghost post page, in the two shapes that were measured.
+ *
+ * `container` is not just a wrapper: it pairs the theme with the post length, because
+ * that pairing is what the measurement found. Selection succeeded on the **two long
+ * posts**, whose chrome was a small fraction of the page, and fell through to the whole
+ * page chrome on the **four short ones**. A container around a post no longer than its
+ * own nav does not save it, and it is the boilerplate pass that does.
+ */
+export function ghostPost(index: number, options: GhostPageOptions = {}): string {
+  const published = new Date(NOW.getTime() - (3 + index * 11) * 86_400_000).toISOString();
+  const prose = `<p>${`Post ${index} argues that the interesting part of a system is where two teams disagree about it. `.repeat(
+    options.container ? 20 : 5,
+  )}</p>`;
+
+  const gate =
+    options.gate === 'widget'
+      ? `<div class="gh-post-upgrade-cta"><h2>Upgrade</h2><a href="/#/portal/signup">Pick a plan</a></div>`
+      : options.gate === 'copy'
+        ? `<div class="gate"><h2>This post is for paying subscribers only</h2><a href="/#/portal/signin">Sign in</a></div>`
+        : '';
+
+  // The default theme's `<article>` holds a post header as well as the content section,
+  // so the tightest fit on the prose really is the inner element rather than the outer.
+  const body = options.container
+    ? `<header class="gh-article-header"><h1>Post ${index}</h1>
+       <p class="gh-article-meta">Ada Whitfield, ${published.slice(0, 10)}</p></header>
+       <section class="gh-content">${prose}${gate}</section>`
+    : `${prose}${gate}`;
+
+  return `<!DOCTYPE html><html><head><title>Post ${index}</title>${GHOST_STYLE}
+<meta property="article:published_time" content="${published}">
+</head><body><div class="gh-viewport">
+${GHOST_CHROME}<main><article>${body}</article></main>${GHOST_WIDGET}${GHOST_FOOTER}
+</div></body></html>`;
+}
+
+/** The Atom feed a Ghost blog serves, with `content:encoded` as the declared body. */
+export function ghostFeed(entries: { index: number; empty?: boolean }[]): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel><title>Ghosted</title>
+  ${entries
+    .map(({ index, empty }) => {
+      const published = new Date(NOW.getTime() - (3 + index * 11) * 86_400_000);
+      const prose = `<p>${`Post ${index} argues that the interesting part of a system is where two teams disagree about it. `.repeat(
+        5,
+      )}</p>`;
+      return `<item>
+    <title>Post ${index}</title>
+    <link>https://${GHOST_HOST}/post-${index}/</link>
+    <pubDate>${published.toUTCString()}</pubDate>
+    <content:encoded><![CDATA[${empty ? '' : prose}]]></content:encoded>
+  </item>`;
+    })
+    .join('\n  ')}
+  </channel>
+</rss>`;
+}
+
+// ---------------------------------------------------------------------------
 // A sitemap index, which is the site declaring where its sitemaps are
 // ---------------------------------------------------------------------------
 

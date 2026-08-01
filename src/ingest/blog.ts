@@ -28,14 +28,27 @@
  * that becomes an essay next month becomes a post next month with no polling loop and no
  * re-examination interval anybody had to invent.
  *
+ * The words themselves are `./blog-body.js`, which is where the measurements that shaped
+ * the extraction are recorded. This module is where the two meet: a candidate is judged
+ * here, and the cheap answer — a feed that already carries the whole post — is reached
+ * before a request is spent.
+ *
  * See docs/design/ingestion.md §8.
  */
 
 import { parseDate } from '../dates.js';
 import type { Db } from '../db.js';
-import { htmlToText } from '../net/html.js';
 import type { Fetcher } from '../net/fetch.js';
 import { blocks, decodeEntities, firstTag } from '../net/xml.js';
+import {
+  agreement,
+  blogBodyText,
+  countWords,
+  gatedBy,
+  gatedByFeed,
+  type FeedBody,
+  type GateMarker,
+} from './blog-body.js';
 import { documentKind, resolveSitemap, SITEMAP_PATHS } from '../sources/blog.js';
 import { PAGE_SPACING_MS, SHORT_MAX_WORDS } from '../sources/types.js';
 import { reopenChangedNotPosts, type ArchiveItem, type SourceRow } from './items.js';
@@ -215,34 +228,71 @@ export function sitemapEntries(document: string): SitemapEntry[] {
   return entries;
 }
 
-/** What one fetched candidate turned out to be. */
+/** What one candidate turned out to be. */
 export type BlogVerdict =
   | { kind: 'post'; publishedAt: Date; text: string; raw: BlogRaw }
   /** No publish date on the page: the homepage, an about page, a tag index. */
   | { kind: 'not_a_post'; why: string }
   /** A real post, and a very brief one. `exclude_shorts` is what decides its fate. */
-  | { kind: 'short'; publishedAt: Date; words: number };
+  | { kind: 'short'; publishedAt: Date; words: number }
+  /** The publisher is withholding it. Never stored, and never stored in part. */
+  | { kind: 'paywalled'; marker: GateMarker; why: string };
 
 export type BlogRaw = {
   platform: 'blog';
   url: string;
+  /** Where the body came from, which is the fact a thin post is diagnosed from. */
+  body_from: BodySource;
   /** Where the date came from, so a wrong one can be traced without a refetch. */
   dated_by: DateSource;
   published_at: string;
   words: number;
+  /** Which feed element supplied the body, where one did. */
+  feed_element?: string;
+  /**
+   * Share of the page's words also present in the feed body, where both were in hand.
+   * Reported, never acted on — see `agreement`.
+   */
+  feed_agreement?: number;
   /** The markup as served, so a better extractor never means a second fetch. */
-  html: string;
+  html?: string;
 };
 
 /**
- * One candidate URL, fetched and judged.
+ * Which of the two the stored words are. `feed_element` alongside it says whether the
+ * other was in hand and lost, so a thin post can be diagnosed without a refetch.
+ */
+export type BodySource = 'feed' | 'page';
+
+export type BlogRetrieveOptions = {
+  excludeShorts: boolean;
+  /**
+   * The body this URL's feed entry carried, where the poll read a feed. A declared whole
+   * body ends the matter here and no request is spent.
+   */
+  feed?: FeedBody | undefined;
+  /** The publish date the feed already gave, so a feed-bodied post needs no page at all. */
+  publishedAt?: Date | undefined;
+  /** Lines that repeat across this blog's other pages — see `repeatedLines`. */
+  boilerplate?: ReadonlySet<string> | undefined;
+};
+
+/**
+ * One candidate, judged — from the feed where the feed is enough, from the page where it
+ * is not.
  *
- * **The two halves of the post test land in different states, and the split is not
+ * **The cheap path is the common one.** A feed that declares a whole body has already
+ * paid for the post: braintrust stores it and fetches nothing, which is why a whole blog
+ * backfill can be one request. A feed that declares a body of *nothing* for a listed,
+ * dated item has told braintrust the post is gated, and that costs nothing either.
+ *
+ * **The three halves of the post test land in different states, and the split is not
  * cosmetic.** No date means braintrust looked and this is not an article — Coverage says
  * *"3 URLs in the archive turned out not to be posts"*, which is braintrust doing its
- * job. Dated but tiny means a real post that is very brief, which is `skipped_short`, the
- * state that already exists and that `exclude_shorts` already undoes. Rendering either as
- * `failed` would be a lie about a source that answered perfectly.
+ * job. Dated but tiny means a real post that is very brief, which is `skipped_short`.
+ * A gating marker means the publisher is withholding it, which is `skipped_paywall`.
+ * Rendering any of the three as `failed` would be a lie about a source that answered
+ * perfectly.
  *
  * The window is deliberately not applied here. A blog's date arrives only with the body,
  * exactly as an undated YouTube video's does, and neither is re-skipped for being old
@@ -252,8 +302,11 @@ export async function retrieveBlogPost(
   source: SourceRow,
   url: string,
   deps: BlogIngestDeps,
-  options: { excludeShorts: boolean },
+  options: BlogRetrieveOptions,
 ): Promise<BlogVerdict> {
+  const fromFeed = feedOnly(url, options);
+  if (fromFeed) return fromFeed;
+
   const html = await fetchPolitely(deps.fetcher, url, `the post ${url}`, {
     ...(deps.pause ? { pause: deps.pause } : {}),
   });
@@ -266,8 +319,22 @@ export async function retrieveBlogPost(
     };
   }
 
-  const text = blogBodyText(html);
-  const words = countWords(text);
+  // After the date and before the body. Before the body because the whole point of the
+  // state is that what a gated page carries is never stored; after the date because a
+  // gated post is dated and a *listing* page is not, and a homepage teasing three
+  // members-only posts would otherwise be filed as a paywall rather than as a page.
+  const marker = gatedBy(html);
+  if (marker) {
+    return {
+      kind: 'paywalled',
+      marker,
+      why: `${url} carries the ${marker} marker, so braintrust read it as a members-only post and stored none of it`,
+    };
+  }
+
+  const page = blogBodyText(html, options.boilerplate);
+  const chosen = longerOf(page, options.feed);
+  const words = countWords(chosen.text);
 
   if (options.excludeShorts && words < SHORT_MAX_WORDS) {
     return { kind: 'short', publishedAt: dated.at, words };
@@ -276,19 +343,86 @@ export async function retrieveBlogPost(
   return {
     kind: 'post',
     publishedAt: dated.at,
-    text,
+    text: chosen.text,
     raw: {
       platform: 'blog',
       url,
+      body_from: chosen.from,
       dated_by: dated.from,
       published_at: dated.at.toISOString(),
       words,
+      ...(options.feed ? { feed_element: options.feed.element } : {}),
+      ...(options.feed ? { feed_agreement: agreement(page, options.feed.text) } : {}),
       html,
     },
   };
 }
 
-export type DateSource = 'article:published_time' | 'json-ld' | 'time';
+/**
+ * The answer the feed alone can give, where it can give one.
+ *
+ * A **declared** whole body — `content:encoded` or Atom `<content>` — is the post, and a
+ * declared body of nothing on a listed, dated item is a gate. A `<description>` or
+ * `<summary>` gets no answer here: measured, the element name does not separate a body
+ * from a preview (Bear Blog's `<summary>` is 36 characters beside a 44,699-character
+ * `<content>`, while the Jekyll blog's `<description>` *is* the whole post at 135,277),
+ * so a synopsis element has to beat the page before braintrust will store it.
+ */
+function feedOnly(url: string, options: BlogRetrieveOptions): BlogVerdict | undefined {
+  const feed = options.feed;
+  if (!feed?.whole) return undefined;
+
+  if (gatedByFeed(feed)) {
+    return {
+      kind: 'paywalled',
+      marker: 'empty-feed-body',
+      why: `${url} is listed in the feed with an empty ${feed.element}, which is how a members-only post is published`,
+    };
+  }
+
+  // The feed carries the body but not always the date, and a post braintrust cannot
+  // place in time is one the compiler declines to judge. Let the page answer that.
+  if (!options.publishedAt) return undefined;
+
+  if (options.excludeShorts && feed.words < SHORT_MAX_WORDS) {
+    return { kind: 'short', publishedAt: options.publishedAt, words: feed.words };
+  }
+
+  return {
+    kind: 'post',
+    publishedAt: options.publishedAt,
+    text: feed.text,
+    raw: {
+      platform: 'blog',
+      url,
+      body_from: 'feed',
+      dated_by: 'feed',
+      published_at: options.publishedAt.toISOString(),
+      words: feed.words,
+      feed_element: feed.element,
+    },
+  };
+}
+
+/**
+ * The longer of the feed body and the page extraction.
+ *
+ * **The two failure modes are opposite and each covers the other:** a truncated feed
+ * loses to the page, an over-capturing extraction loses to the feed. Both are in hand for
+ * nothing here, since the page was fetched for its date regardless.
+ *
+ * The safeguard was validated by the site it was measured on. The reference Ghost blog's
+ * feed came back longer than the extraction on all four posts (111 words against 59, 207
+ * against 162, 88 against 64, 125 against 93), because its recent-posts widget repeats
+ * real post headings on every page and boilerplate removal over-stripped them.
+ */
+function longerOf(page: string, feed: FeedBody | undefined): { text: string; from: BodySource } {
+  if (!feed || feed.words === 0) return { text: page, from: 'page' };
+  return feed.words > countWords(page) ? { text: feed.text, from: 'feed' } : { text: page, from: 'page' };
+}
+
+/** `feed` is the entry's own `pubDate`/`published`, on the path that fetches no page. */
+export type DateSource = 'feed' | 'article:published_time' | 'json-ld' | 'time';
 
 /**
  * The publish date, from the page's own metadata.
@@ -330,22 +464,14 @@ function metaContent(html: string, property: string): string | undefined {
   return undefined;
 }
 
-/**
- * The words on the page.
- *
- * **This is the fallback extraction and it is currently the whole page.** Container
- * selection and cross-page boilerplate removal are the measured algorithm and they are
- * [their own ticket](https://github.com/cgbarlow/braintrust/issues/80); this function is
- * the seam they land in, so nothing above it has to change when they do. Until then the
- * chrome is included, which over-captures rather than under-captures — the direction that
- * loses no prose.
- */
-export function blogBodyText(html: string): string {
-  return htmlToText(html);
-}
-
-/** The same count Voice and Coverage use: whitespace-separated tokens of the stored body. */
-export function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed === '' ? 0 : trimmed.split(/\s+/).length;
-}
+// The extraction itself lives in `./blog-body.js`, which is where the measurements that
+// shaped it are recorded. Re-exported so a caller reads one module rather than two.
+export {
+  blogBodyText,
+  countWords,
+  feedBodies,
+  normaliseUrl,
+  repeatedLines,
+  type FeedBody,
+  type GateMarker,
+} from './blog-body.js';
