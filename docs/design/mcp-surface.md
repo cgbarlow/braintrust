@@ -213,13 +213,22 @@ its single best passage. Nothing about relevance changes and no re-embedding is 
     "current": true,
     "relations": [{ "relation": "revised", "direction": "supersedes",
                     "other": "agents-are-prompt-chains", "gap_days": 187, "rationale": "…" }],
+    // `url` is the individual post where the item is a batch of them, and `posted_at`
+    // is where inside the day it sat — the same question `start_ms` answers for a
+    // transcript. Both are absent on an item that is one thing.
     "citations": [{ "item_title": "…", "url": "…", "published_at": "2026-03-11",
-                    "start_ms": 743000, "quote": "…" }]
+                    "start_ms": 743000, "posted_at": "2026-03-11T18:42:07Z", "quote": "…" }]
   }],
   "passages": [{ "item_title": "…", "url": "…", "published_at": "2026-03-11",
                  "start_ms": 743000, "text": "…" }],
   "more_available": { "passages": 4 } }
 ```
+
+**A citation points at the individual post, never at the batch it was read in.** A Bluesky Item is a whole UTC
+day because 2,100 skeets a year would be 2,100 model calls for fewer words than a 23-essay Substack — but the
+batch is a unit of *reading*, and a citation that resolved to "that day" would be unfalsifiable in exactly the
+way the whole product exists not to be. The day stores each post's character span, the verified quote is
+matched to the span it fell inside when the Item was read, and this tool serves what was resolved then.
 
 **Superseded Positions are returned, flagged `current: false`, with the relation inline.** Current means *not
 the `from` side of a `revised` relation*; `unsettled` and `drifting` leave both sides current. A flat
@@ -309,8 +318,10 @@ YouTube channel page, an `@handle`, a link to one video, a blog URL, a Bluesky h
 display name, and starts
 [the ordinary ingest cycle](./ingestion.md#3-one-daily-job-and-everything-expensive-is-a-backlog).
 
-**A Plan has three more shapes, because there are three more offers.** A Bluesky account is `measured` in days
-with its post count as a labelled rate projection; a sitemap-bearing blog quotes *at most N* rather than
+**A Plan has three more shapes, because there are three more offers.** A Bluesky account is quoted in *days
+they posted on*, projected from their recent posting with the calendar-day ceiling named beside it — the build
+downgraded this from `measured` in days, because that promised 365 items against a run that wrote 303, and a
+day with no posts is no Item; a sitemap-bearing blog quotes *at most N* rather than
 *about N*, because the direction of the error is known and an upper bound braintrust can defend beats a
 midpoint it cannot; a feed-only blog says in the Plan the thing the Persona will say — the archive cannot be
 enumerated and completeness is never claimed. The offers differ enough that flattening them would mean picking

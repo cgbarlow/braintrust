@@ -20,6 +20,7 @@ import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
 import { readCorpus, type Extractor, type ReadReport } from '../notes/index.js';
 import { indexCorpus, type Embedder, type IndexReport } from '../retrieval/index.js';
+import { readAuthorFeed } from '../sources/bluesky.js';
 import { documentKind } from '../sources/blog.js';
 import {
   audienceKnownBeforeFetch,
@@ -30,6 +31,7 @@ import {
   type Audience,
   type Platform,
 } from '../sources/types.js';
+import { walkAuthorFeed } from './bluesky.js';
 import {
   BOILERPLATE_PAGES,
   boilerplateFrom,
@@ -49,6 +51,7 @@ import {
   corpusCounts,
   dueSources,
   insertDiscovered,
+  latestStoredDay,
   markFailed,
   markSkippedNotAPost,
   markSkippedPaywall,
@@ -63,6 +66,7 @@ import {
   reopenWindow,
   sourcesForPerson,
   storeBody,
+  storeDay,
   storedPages,
   type CorpusCounts,
   type PendingItem,
@@ -83,6 +87,9 @@ const DISCOVERED_AUDIENCE: Record<Platform, Audience> = {
   youtube: 'everyone',
   substack: 'unknown',
   blog: 'unknown',
+  // There is no paid tier on Bluesky, and no path here anyway: a day is written straight
+  // to `retrieved`, because the words arrived with the discovery that found it.
+  bluesky: 'everyone',
 };
 
 /** Who a scoped run is about. Both halves are needed: the rows key on one, the reports on the other. */
@@ -345,9 +352,9 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
  * naming the wrong one sends whoever reads it looking for a feed that never existed.
  */
 function discoveryName(source: SourceRow): string {
-  return source.platform === 'blog'
-    ? `the feed or sitemap for ${source.handle}`
-    : `the feed for ${source.handle}`;
+  if (source.platform === 'blog') return `the feed or sitemap for ${source.handle}`;
+  if (source.platform === 'bluesky') return `the Bluesky posts of ${source.handle}`;
+  return `the feed for ${source.handle}`;
 }
 
 type SourceDeps = CycleDeps & {
@@ -382,72 +389,12 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
       ...(deps.pause ? { pause: deps.pause } : {}),
     });
 
-    // **A blog's discovery document is a feed or a sitemap, and the document says which.**
-    // That is what lets `discovery_url` stay one column with no flag beside it — but it
-    // has to be asked, because reading a sitemap as a feed finds no entries and would
-    // quietly report a blog that publishes nothing rather than one whose archive is the
-    // thing to walk.
-    const feed =
-      source.platform === 'blog' && documentKind(polled) !== 'feed'
-        ? { entries: [] }
-        : readFeed(polled, source.platform);
-
-    const blog = source.platform === 'blog' ? await blogPoll(source, deps, polled, feed.entries) : undefined;
-
-    const discovered = await insertDiscovered(
-      deps.db,
-      source,
-      feed.entries,
-      DISCOVERED_AUDIENCE[source.platform],
-    );
-    report.discovered = discovered.length;
-
-    // 2. Check for a gap. One comparison, and the repair is the backfill it already has.
-    report.gap_detected = feedSkippedAhead(feed.entries, source.cursor_published_at);
-    await recordPoll(deps.db, source, {
-      cursor: newestPublished(feed.entries),
-      reopenBackfill: report.gap_detected,
-      now: deps.now(),
-    });
-    if (report.gap_detected) {
-      report.backfill_complete = false;
-      deps.log(
-        `braintrust: ${source.handle} published something braintrust never saw — reopening the backfill.`,
-      );
-    }
-
-    // An operator who turned the Shorts rule off is owed the videos braintrust
-    // declined to read, and the rows are already there — so this is an update, not a
-    // crawl. Before the Backlog is read, so those Items are in it on this run.
-    if (!source.exclude_shorts) {
-      const reopened = await reopenShorts(deps.db, source.id);
-      if (reopened > 0) {
-        report.reopened_shorts = reopened;
-        deps.log(
-          `braintrust: exclude_shorts is off for ${source.handle}, so ${reopened} short ` +
-            'item(s) braintrust skipped are pending again.',
-        );
-      }
-    }
-
-    // The same debt, owed for the same reason, to an operator who widened the window.
-    // Asked unconditionally because the floor is the question — a window that did not
-    // move reopens nothing, so there is no "was it widened" flag to keep in step with
-    // the setting it describes.
-    const reopenedWindow = await reopenWindow(deps.db, source.id, source.backfill_floor);
-    if (reopenedWindow > 0) {
-      report.reopened_window = reopenedWindow;
-      deps.log(
-        `braintrust: ${source.handle}'s window now reaches ${source.backfill_floor}, so ` +
-          `${reopenedWindow} item(s) braintrust had skipped as too old are pending again.`,
-      );
-    }
-
-    // 3. Drain the Backlog: the catalogue first, so every body fetch knows its audience.
-    const walked = { ...source, backfill_complete: report.backfill_complete };
-    if (blog) await catalogueBlog(walked, deps, report, blog, polled);
-    else await catalogue(walked, deps, report);
-    await retrieveBodies(source, deps, report, blog);
+    // **Bluesky's poll is its walk, so it is a different four steps rather than a branch
+    // inside these ones.** Everywhere else, discovery finds what is new and a second pass
+    // fetches it; here the same response carries both, and a Source with no per-Item
+    // request has no Backlog, no catalogue and no paywall to filter.
+    if (source.platform === 'bluesky') await pollBluesky(source, deps, report, polled);
+    else await pollFeedSource(source, deps, report, polled);
   } catch (error) {
     // One source's bad day is not another's. The two platforms share nothing but a
     // Person and they fail in opposite directions, so stopping the run would be a
@@ -456,6 +403,142 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
   }
 
   return report;
+}
+
+/**
+ * The poll every Source with a feed or a catalogue runs: discover, check for a gap, drain.
+ */
+async function pollFeedSource(
+  source: SourceRow,
+  deps: SourceDeps,
+  report: SourceReport,
+  polled: string,
+): Promise<void> {
+  // **A blog's discovery document is a feed or a sitemap, and the document says which.**
+  // That is what lets `discovery_url` stay one column with no flag beside it — but it
+  // has to be asked, because reading a sitemap as a feed finds no entries and would
+  // quietly report a blog that publishes nothing rather than one whose archive is the
+  // thing to walk.
+  const feed =
+    source.platform === 'blog' && documentKind(polled) !== 'feed'
+      ? { entries: [] }
+      : readFeed(polled, source.platform);
+
+  const blog = source.platform === 'blog' ? await blogPoll(source, deps, polled, feed.entries) : undefined;
+
+  const discovered = await insertDiscovered(
+    deps.db,
+    source,
+    feed.entries,
+    DISCOVERED_AUDIENCE[source.platform],
+  );
+  report.discovered = discovered.length;
+
+  // 2. Check for a gap. One comparison, and the repair is the backfill it already has.
+  report.gap_detected = feedSkippedAhead(feed.entries, source.cursor_published_at);
+  await recordPoll(deps.db, source, {
+    cursor: newestPublished(feed.entries),
+    reopenBackfill: report.gap_detected,
+    now: deps.now(),
+  });
+  if (report.gap_detected) {
+    report.backfill_complete = false;
+    deps.log(
+      `braintrust: ${source.handle} published something braintrust never saw — reopening the backfill.`,
+    );
+  }
+
+  // An operator who turned the Shorts rule off is owed the videos braintrust
+  // declined to read, and the rows are already there — so this is an update, not a
+  // crawl. Before the Backlog is read, so those Items are in it on this run.
+  if (!source.exclude_shorts) {
+    const reopened = await reopenShorts(deps.db, source.id);
+    if (reopened > 0) {
+      report.reopened_shorts = reopened;
+      deps.log(
+        `braintrust: exclude_shorts is off for ${source.handle}, so ${reopened} short ` +
+          'item(s) braintrust skipped are pending again.',
+      );
+    }
+  }
+
+  // The same debt, owed for the same reason, to an operator who widened the window.
+  // Asked unconditionally because the floor is the question — a window that did not
+  // move reopens nothing, so there is no "was it widened" flag to keep in step with
+  // the setting it describes.
+  const reopenedWindow = await reopenWindow(deps.db, source.id, source.backfill_floor);
+  if (reopenedWindow > 0) {
+    report.reopened_window = reopenedWindow;
+    deps.log(
+      `braintrust: ${source.handle}'s window now reaches ${source.backfill_floor}, so ` +
+        `${reopenedWindow} item(s) braintrust had skipped as too old are pending again.`,
+    );
+  }
+
+  // 3. Drain the Backlog: the catalogue first, so every body fetch knows its audience.
+  const walked = { ...source, backfill_complete: report.backfill_complete };
+  if (blog) await catalogueBlog(walked, deps, report, blog, polled);
+  else await catalogue(walked, deps, report);
+  await retrieveBodies(source, deps, report, blog);
+}
+
+/**
+ * Bluesky's whole run: one cursored walk, batching closed days into rows as it goes.
+ *
+ * **How far back to read is the only decision here, and it is read off the rows.** While
+ * the archive has not been reached the answer is the backfill floor, every run, because a
+ * Source that stopped short must keep trying. Once it has, the answer is the start of the
+ * newest day braintrust already stored — which makes the steady-state poll exactly one
+ * request, and makes a gap repair itself: the walk always covers everything between the
+ * last stored day and now, so there is nothing for gap detection to detect.
+ *
+ * The re-read of that newest stored day is deliberate. It is one day's posts re-collected
+ * into a key that already exists, `on conflict do nothing` declines it, and the alternative
+ * — stopping at the newest post seen — would truncate the day that post belongs to.
+ */
+async function pollBluesky(
+  source: SourceRow,
+  deps: SourceDeps,
+  report: SourceReport,
+  polled: string,
+): Promise<void> {
+  const now = deps.now();
+  const floor = new Date(`${source.backfill_floor}T00:00:00Z`);
+  const latest = source.backfill_complete ? await latestStoredDay(deps.db, source.id) : undefined;
+  const until = latest ? new Date(`${latest}T00:00:00Z`) : floor;
+
+  const outcome = await walkAuthorFeed(
+    source,
+    {
+      fetcher: deps.fetcher,
+      ...(deps.pause ? { pause: deps.pause } : {}),
+      now,
+      until,
+      polled,
+      stopping: deps.stopping,
+    },
+    async (day) => {
+      if (!(await storeDay(deps.db, source, day))) return;
+      report.discovered += 1;
+      report.retrieved += 1;
+    },
+  );
+
+  await recordPoll(deps.db, source, {
+    cursor: outcome.newest,
+    reopenBackfill: false,
+    now,
+  });
+
+  if (!source.backfill_complete && outcome.reachedEnd) {
+    await completeBackfill(deps.db, source);
+    report.backfill_complete = true;
+    deps.log(
+      `braintrust: ${source.handle} is backfilled to ${source.backfill_floor} — ` +
+        `${outcome.posts} post(s) read as ${outcome.days} day(s) across ${outcome.requests} ` +
+        'request(s).',
+    );
+  }
 }
 
 /**
@@ -508,6 +591,19 @@ async function probeSource(
       } else {
         await retrieveYoutubeItem(source, item, deps, report);
       }
+    } else if (source.platform === 'bluesky') {
+      // **braintrust's own measurement can never block a Bluesky Source**, because a block
+      // is counted across per-Item requests and Bluesky makes none — so this runs only for
+      // a row that says otherwise. The poll is the one request this Source ever makes, and
+      // therefore the only honest probe: it is read but not written, because a blocked
+      // Source's work stays suppressed until the block is gone.
+      readAuthorFeed(
+        await fetchPolitely(deps.fetcher, source.discovery_url, discoveryName(source), {
+          ...(deps.pause ? { pause: deps.pause } : {}),
+        }),
+        source.handle,
+      );
+      await recordPoll(deps.db, source, { reopenBackfill: false, now: deps.now() });
     } else {
       // Nothing owed, so the feed is the only ordinary request left. Anything it turns up
       // becomes a row and waits: discovery is free, and the Backlog stays suppressed until
@@ -1071,7 +1167,12 @@ export function summarise(report: CycleReport): string {
   // was switched off yesterday leaves chunks waiting, and "nothing was due" would be a
   // summary of the wrong half of the run.
   const lines = report.sources.map((source) => {
-    const parts = [`+${source.discovered} discovered`, `${source.retrieved} retrieved`];
+    // A Bluesky Item is a day, and "+12 discovered, 12 retrieved" would read as twelve
+    // posts. The number a reader is owed is the one the model calls are charged against.
+    const parts =
+      source.platform === 'bluesky'
+        ? [`+${source.discovered} day${source.discovered === 1 ? '' : 's'} batched`]
+        : [`+${source.discovered} discovered`, `${source.retrieved} retrieved`];
     if (source.skipped_paywall > 0) parts.push(`${source.skipped_paywall} skipped (paywall)`);
     if (source.skipped_short > 0) parts.push(`${source.skipped_short} skipped (short)`);
     if (source.skipped_window > 0) parts.push(`${source.skipped_window} skipped (outside window)`);

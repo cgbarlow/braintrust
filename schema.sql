@@ -45,8 +45,8 @@ comment on column braintrust_people.paused_at is
 create table if not exists braintrust_sources (
   id                   uuid primary key default gen_random_uuid(),
   person_id            uuid not null references braintrust_people(id) on delete cascade,
-  platform             text not null check (platform in ('substack', 'youtube', 'blog')),
-  handle               text not null,        -- publication host, or channel id
+  platform             text not null check (platform in ('substack', 'youtube', 'blog', 'bluesky')),
+  handle               text not null,        -- publication host, channel id, or DID
   discovery_url        text not null,        -- the RSS/Atom feed, or a blog's sitemap where it has none
   cursor_published_at  timestamptz,          -- newest publish date seen; "new since last check"
   backfill_floor       date not null,        -- how far back backfill reaches (12 months by default)
@@ -58,6 +58,19 @@ create table if not exists braintrust_sources (
   created_at           timestamptz not null default now(),
   unique (person_id, platform, handle)
 );
+
+-- `create table if not exists` leaves an existing table alone, so a database created
+-- before a platform existed would reject the value. Same drop-and-restate as the
+-- retrieval check below, and idempotent for the same reason.
+alter table braintrust_sources drop constraint if exists braintrust_sources_platform_check;
+alter table braintrust_sources add constraint braintrust_sources_platform_check
+  check (platform in ('substack', 'youtube', 'blog', 'bluesky'));
+
+comment on column braintrust_sources.handle is
+  'Whatever cannot be two people on that platform. A publication host, a UC… channel id, '
+  'a blog hostname — and on Bluesky the DID, never the handle, because Bluesky handles are '
+  'rebindable domains and somebody who changes theirs must not acquire a second copy of '
+  'their own archive.';
 
 comment on column braintrust_sources.blocked_at is
   'The source refused braintrust — measured as consecutive failures across distinct '
@@ -259,9 +272,24 @@ create table if not exists braintrust_position_citations (
   id           uuid primary key default gen_random_uuid(),
   position_id  uuid not null references braintrust_positions(id) on delete cascade,
   item_id      uuid not null references braintrust_items(id),
-  start_ms     int,
+  start_ms     int,                    -- transcripts: where in the video
+  post_url     text,                   -- batched days: which post
+  posted_at    timestamptz,
   quote        text not null
 );
+
+alter table braintrust_position_citations add column if not exists post_url text;
+alter table braintrust_position_citations add column if not exists posted_at timestamptz;
+
+comment on column braintrust_position_citations.post_url is
+  'A bluesky item is a whole UTC day, because 2,100 skeets a year would be 2,100 model '
+  'calls for fewer words than a 23-essay substack. The batch is a unit of reading and '
+  'never a unit of citation: the day records each post''s character span, and a verified '
+  'quote resolves to the post it fell inside. Null wherever the item is one thing.';
+
+comment on column braintrust_position_citations.start_ms is
+  'The same question as post_url in the unit a transcript has. Both are read off the rows '
+  'once the quote has been located; a model is never asked for either.';
 
 create table if not exists braintrust_position_relations (
   id                uuid primary key default gen_random_uuid(),

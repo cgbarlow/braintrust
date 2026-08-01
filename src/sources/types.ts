@@ -14,9 +14,9 @@
  * one value covers all of them.
  * See docs/design/ingestion.md §8.
  */
-export type Platform = 'substack' | 'youtube' | 'blog';
+export type Platform = 'substack' | 'youtube' | 'blog' | 'bluesky';
 
-export const PLATFORMS: Platform[] = ['substack', 'youtube', 'blog'];
+export const PLATFORMS: Platform[] = ['substack', 'youtube', 'blog', 'bluesky'];
 
 /**
  * A pasted link, normalised. `resolvedFrom` is the link exactly as the human gave
@@ -112,12 +112,13 @@ export function audienceOf(raw: string | null | undefined): Audience {
 }
 
 /**
- * Every kind of Source braintrust prices, including the two it does not yet read. The
- * spacing table has to be complete before the source tickets land, because each of them
- * prices its backfill against it — and a rate invented per source ticket is a rate nobody
- * compared to the others.
+ * Every kind of Source braintrust prices. This was `Platform | 'bluesky'` while the
+ * spacing table ran ahead of the readers — the rates had to be settled together, or each
+ * source ticket would have invented a number nobody compared to the others. Both readers
+ * have since landed, so the two unions have converged and the alias is kept only because
+ * a Plan reads better saying which rate it priced against.
  */
-export type SpacedSource = Platform | 'bluesky';
+export type SpacedSource = Platform;
 
 /**
  * **Seconds between one request and the next, per Source.**
@@ -211,7 +212,11 @@ export const SHORT_MAX_WORDS = 40;
  * treating `unknown` as a refusal would mean refusing to read any blog at all. The line
  * is not moved, it is enforced one step later — after the fetch and before the row —
  * which is the whole cost of a blog having no `audience` field.
- * See docs/design/ingestion.md §8.
+ *
+ * Bluesky answers trivially and never reaches here: there is no paid tier, the body
+ * arrives with discovery, and a Bluesky Item is written `retrieved` in one statement — so
+ * it has no pending row for a pre-fetch filter to be asked about.
+ * See docs/design/ingestion.md §7 and §8.
  */
 export function audienceKnownBeforeFetch(platform: Platform): boolean {
   return platform !== 'blog';
@@ -254,6 +259,16 @@ export type SourceSurvey = {
   how?: string | undefined;
   /** Substack only: known from the archive metadata, before anything is fetched. */
   willSkipPaywalled?: number | undefined;
+  /**
+   * Bluesky only: the posts those Items are made of.
+   *
+   * `itemsInWindow` counts **days**, because a day of posts is the Item — so the thing a
+   * human is actually agreeing to read travels alongside as the quantity being summarised.
+   * It is separate rather than folded in because it is a *rate projection* over the
+   * account's whole life and the day count is not: keeping them apart is what lets one be
+   * `measured` while the other says out loud that it is not.
+   */
+  postsInWindow?: { count: number; how: string } | undefined;
   /** Bodies or captions braintrust will retrieve — the expensive half. */
   bodyFetches: number;
   /**

@@ -117,10 +117,18 @@ export type FindDeps = {
 
 export type Citation = {
   item_title: string | null;
+  /**
+   * **The individual post, where the Item is a batch of them.** A Bluesky Item is a whole
+   * UTC day because 2,100 skeets a year would be 2,100 model calls — but the batch is a
+   * unit of reading and never a unit of citation, so this resolves to the post the verified
+   * quote actually fell inside rather than to the day it was read in.
+   */
   url: string;
   published_at: string | null;
   /** Transcripts only: where in the video the words are. */
   start_ms?: number;
+  /** Batched days only: the same question, answered in the unit that form has. */
+  posted_at?: string;
   quote: string;
 };
 
@@ -387,14 +395,19 @@ async function withEvidence(
     url: string;
     published_at: string | null;
     start_ms: number | null;
+    posted_at: Date | null;
     quote: string;
   }>(
-    `select pc.position_id, i.title as item_title, i.url, i.published_at::text as published_at,
-            pc.start_ms, pc.quote
+    // The post's URL where the Item was a batch of them, and the Item's otherwise. Resolved
+    // in the select rather than in the mapping, so nothing downstream has to know which
+    // platforms batch.
+    `select pc.position_id, i.title as item_title,
+            coalesce(pc.post_url, i.url) as url, i.published_at::text as published_at,
+            pc.start_ms, pc.posted_at, pc.quote
        from braintrust_position_citations pc
        join braintrust_items i on i.id = pc.item_id
       where pc.position_id = any($1::uuid[])
-      order by i.published_at desc nulls last, pc.start_ms nulls first`,
+      order by i.published_at desc nulls last, pc.posted_at nulls first, pc.start_ms nulls first`,
     [ids],
   );
 
@@ -465,6 +478,7 @@ function toCitation(row: {
   url: string;
   published_at: string | null;
   start_ms: number | null;
+  posted_at: Date | null;
   quote: string;
 }): Citation {
   return {
@@ -472,6 +486,7 @@ function toCitation(row: {
     url: row.url,
     published_at: row.published_at,
     ...(row.start_ms !== null ? { start_ms: row.start_ms } : {}),
+    ...(row.posted_at !== null ? { posted_at: row.posted_at.toISOString() } : {}),
     quote: row.quote,
   };
 }

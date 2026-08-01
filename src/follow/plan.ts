@@ -13,6 +13,7 @@
 import { monthsBefore, toDateOnly } from '../dates.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
+import { surveyBluesky } from '../sources/bluesky.js';
 import { surveyBlog } from '../sources/blog.js';
 import { nameSignals, proposeDisplayName } from '../sources/naming.js';
 import { resolveLinks } from '../sources/resolve.js';
@@ -56,6 +57,13 @@ export type PlanSource = {
   feed_author?: string;
   items: PlanNumber;
   will_skip_paywalled?: number;
+  /**
+   * Bluesky only. `items` counts days, because a day of posts is the Item — so this is the
+   * thing being summarised, and it is `estimated` beside a `measured` count on purpose:
+   * this is the Source where 1,530 posts become ~365 model calls, and a human agreeing to
+   * it should see both numbers with the right label on each.
+   */
+  posts_in_window?: PlanNumber;
   settings: PlanSourceSettings;
 };
 
@@ -155,6 +163,7 @@ function survey(
     return surveySubstack(source, settings, deps.pause ? { ...shared, pause: deps.pause } : shared);
   }
   if (source.platform === 'blog') return surveyBlog(source, settings, shared);
+  if (source.platform === 'bluesky') return surveyBluesky(source, settings, shared);
   return surveyYoutube(source, settings, shared);
 }
 
@@ -188,6 +197,13 @@ function toPlanSource(
   // Shown before anything is fetched, so a human sees that 142 of 156 posts will not
   // be read *before* agreeing rather than discovering it in Coverage afterwards.
   if (found.willSkipPaywalled !== undefined) planSource.will_skip_paywalled = found.willSkipPaywalled;
+  if (found.postsInWindow) {
+    planSource.posts_in_window = {
+      count: found.postsInWindow.count,
+      basis: 'estimated',
+      how: found.postsInWindow.how,
+    };
+  }
 
   return planSource;
 }

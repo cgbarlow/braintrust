@@ -58,6 +58,13 @@ which Chunk the quote came from, and it does not ask for a timestamp — a model
 one, and nothing downstream could ever check it. The quote is the single locator that *is* checkable, so it is
 the only one accepted; the Chunk and the `start_ms` are then read off the rows the quote lands in.
 
+**The individual post inside a batched day is read off the rows the same way.** A Bluesky Item is a whole UTC
+day, so the day carries each post's character span and the span the quote fell inside is what a citation
+resolves to. That is deliberately the *same* mechanism rather than a second one: *where inside this Item are
+these words* is one question, answered in milliseconds by a transcript and by a permalink by a day of posts,
+and asking a model which post a quote came from would invite exactly the invented locator this rule exists to
+refuse. See [`ingestion.md` §7](./ingestion.md#7-bluesky-a-day-of-posts-is-the-item).
+
 **The quote braintrust stores is the body's characters, not the model's.** A model asked to quote a transcript
 will sometimes tidy one — fix a mis-heard name, close a dropped bracket, join two sentences it read as one
 thought. Every such repair makes the quote a rendering of what was said. So the quote is *located* in the

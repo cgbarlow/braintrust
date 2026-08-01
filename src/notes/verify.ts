@@ -31,6 +31,22 @@ export type ChunkSpan = {
   start_ms: number | null;
 };
 
+/**
+ * One separately-published thing inside a batched Item, and where its words sit in the
+ * stored body.
+ *
+ * **A Bluesky Item is a whole UTC day**, because 2,100 skeets a year would be 2,100 model
+ * calls for fewer words than a 23-essay Substack. The batch is a unit of *reading*, never a
+ * unit of citation — so the day carries the spans of the posts it was made of, and a
+ * verified quote resolves to the one it fell inside.
+ */
+export type PostSpan = {
+  char_start: number;
+  char_end: number;
+  url: string;
+  created_at: string;
+};
+
 /** What a Note stores per claim. The shape `braintrust_item_notes.claims` holds. */
 export type VerifiedClaim = {
   statement: string;
@@ -38,6 +54,15 @@ export type VerifiedClaim = {
   quote: string;
   chunk_id: string | null;
   start_ms: number | null;
+  /**
+   * Batched Items only: the individual post this quote is actually from.
+   *
+   * The same idea as `start_ms` and read the same way — *where inside this Item the words
+   * are* — for the other form braintrust batches. A transcript answers it in milliseconds
+   * and a day of posts answers it with a permalink.
+   */
+  post_url?: string;
+  posted_at?: string;
 };
 
 export type Verification = {
@@ -46,7 +71,12 @@ export type Verification = {
   dropped: number;
 };
 
-export function verifyClaims(claims: RawClaim[], body: string, chunks: ChunkSpan[]): Verification {
+export function verifyClaims(
+  claims: RawClaim[],
+  body: string,
+  chunks: ChunkSpan[],
+  posts: PostSpan[] = [],
+): Verification {
   const verified: VerifiedClaim[] = [];
   let dropped = 0;
 
@@ -58,11 +88,13 @@ export function verifyClaims(claims: RawClaim[], body: string, chunks: ChunkSpan
     }
 
     const chunk = chunkAt(chunks, span.start);
+    const post = spanAt(posts, span.start);
     verified.push({
       statement: claim.statement,
       quote: body.slice(span.start, span.end),
       chunk_id: chunk?.id ?? null,
       start_ms: chunk?.start_ms ?? null,
+      ...(post ? { post_url: post.url, posted_at: post.created_at } : {}),
     });
   }
 
@@ -102,4 +134,13 @@ export function locate(quote: string, body: string): Span | undefined {
  */
 export function chunkAt(chunks: ChunkSpan[], at: number): ChunkSpan | undefined {
   return chunks.find((chunk) => chunk.char_start <= at && at < chunk.char_end);
+}
+
+/**
+ * The post a quote starts in. Unlike Chunks these do not overlap — a post's words are its
+ * own — so a quote that runs past the end of one and into the next is attributed to where
+ * it began, which is the post that actually said the thing being cited.
+ */
+export function spanAt(posts: PostSpan[], at: number): PostSpan | undefined {
+  return posts.find((post) => post.char_start <= at && at < post.char_end);
 }
