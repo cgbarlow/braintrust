@@ -12,25 +12,23 @@
  */
 
 import { BraintrustError } from '../errors.js';
-import { fetchText, type Fetcher, type FetchResponse } from '../net/fetch.js';
+import { fetchPatiently, fetchText, sleep, type Fetcher, type FetchResponse } from '../net/fetch.js';
 
 export type Pause = (ms: number) => Promise<void>;
 
-export const sleep: Pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Longest braintrust will wait on a `Retry-After` before treating it as a failure. */
-export const MAX_BACKOFF_MS = 60_000;
-
-const DEFAULT_BACKOFF_MS = 10_000;
+/** Both re-exported from the network seam, which is where the 429 rule now lives. */
+export { MAX_BACKOFF_MS, sleep } from '../net/fetch.js';
 
 /**
  * Fetches, and honours one 429.
  *
  * **A 429 is handled before any failure counter sees it.** Rate limiting is the source
  * asking braintrust to slow down, and slowing down is compliance — so it waits the
- * requested time and retries the same item once. Only if it keeps failing does it
- * become a failure worth counting, which is what
- * [#37](https://github.com/cgbarlow/braintrust/issues/37) will count.
+ * requested time and retries the same item once. Only if it keeps failing does it become
+ * a failure worth counting, which is what sets a block.
+ *
+ * The waiting itself is `fetchPatiently`, shared with the model endpoints: this function
+ * is the part that turns a response into a body or a sentence a human can read.
  */
 export async function fetchPolitely(
   fetcher: Fetcher,
@@ -38,32 +36,16 @@ export async function fetchPolitely(
   what: string,
   options: { pause?: Pause; post?: unknown } = {},
 ): Promise<string> {
-  const pause = options.pause ?? sleep;
   const init = options.post === undefined ? undefined : { json: options.post };
-  const first = await fetcher(url, init);
+  const response = await fetchPatiently(fetcher, url, init, options.pause ?? sleep);
 
-  if (first.status !== 429) return bodyOf(first, url, what);
-
-  await pause(backoffFor(first));
-  const second = await fetcher(url, init);
-  if (second.status === 429) {
+  if (response.status === 429) {
     throw new BraintrustError(
       `${what} (${url}) asked braintrust to slow down twice. Leaving it for the next run.`,
     );
   }
 
-  return bodyOf(second, url, what);
-}
-
-function backoffFor(response: FetchResponse): number {
-  const header = response.headers?.get('retry-after');
-  if (!header) return DEFAULT_BACKOFF_MS;
-
-  // Seconds, per the common form. A date is also legal; a source that sends one gets
-  // the default rather than a parse braintrust would have to be careful about.
-  const seconds = Number(header.trim());
-  if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_BACKOFF_MS;
-  return Math.min(seconds * 1000, MAX_BACKOFF_MS);
+  return bodyOf(response, url, what);
 }
 
 async function bodyOf(response: FetchResponse, url: string, what: string): Promise<string> {

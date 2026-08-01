@@ -19,7 +19,7 @@
 
 import type { ExtractorConfig } from '../config.js';
 import { BraintrustError } from '../errors.js';
-import type { Fetcher } from '../net/fetch.js';
+import { fetchPatiently, type Fetcher } from '../net/fetch.js';
 
 /**
  * Bumping this changes the prose a Persona is built from, so it is part of
@@ -286,7 +286,11 @@ export const REVISION_PROMPT = [
   'Do not judge whether either position is right, and do not resolve the tension yourself.',
 ].join('\n');
 
-export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Synthesiser {
+export function createSynthesiser(
+  config: ExtractorConfig,
+  fetcher: Fetcher,
+  pause?: (ms: number) => Promise<void>,
+): Synthesiser {
   const url = chatUrl(config.baseUrl);
 
   /**
@@ -297,7 +301,7 @@ export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Sy
   async function ask(system: string, digest: string, job: string): Promise<string> {
     let response;
     try {
-      response = await fetcher(url, {
+      response = await fetchPatiently(fetcher, url, {
         json: {
           model: config.model,
           // Two Compiles over an unchanged Corpus should not disagree about how
@@ -313,7 +317,7 @@ export function createSynthesiser(config: ExtractorConfig, fetcher: Fetcher): Sy
           ],
         },
         ...(config.apiKey ? { headers: { authorization: `Bearer ${config.apiKey}` } } : {}),
-      });
+      }, pause);
     } catch (error) {
       throw new BraintrustError(
         `braintrust could not reach the synthesiser at ${url} while compiling ${job}: ` +

@@ -624,9 +624,12 @@ async function probeSource(
       });
     }
   } catch (error) {
-    // A `PaywallChanged` reaches here as an answer, not a refusal — the Source served
-    // braintrust and said no. It falls through to the clear below, like any other reply.
-    if (!(error instanceof PaywallChanged)) {
+    // **Two errors reach here as answers rather than refusals**, and both fall through to
+    // the clear below. A `PaywallChanged` is the Source serving braintrust and saying no.
+    // A `NoCaptions` is the Source serving braintrust a video with no words in it — the
+    // player response it was read from arrived perfectly, which is the whole question a
+    // probe is asking.
+    if (!(error instanceof PaywallChanged) && !(error instanceof NoCaptions)) {
       report.error = error instanceof BraintrustError ? error.message : String(error);
       deps.log(
         `braintrust: ${source.platform} ${source.handle} has been blocked since ` +
@@ -635,8 +638,17 @@ async function probeSource(
       return report;
     }
     if (askable[0]) {
-      await markSkippedPaywall(deps.db, askable[0].id);
-      report.skipped_paywall += 1;
+      if (error instanceof PaywallChanged) {
+        await markSkippedPaywall(deps.db, askable[0].id);
+        report.skipped_paywall += 1;
+      } else {
+        // Recorded, so tomorrow reaches for a different Item rather than this one forever.
+        // A probe that leaves its Item pending asks the identical question every day, and
+        // a Source whose whole backlog answers this way could never clear — which is how a
+        // channel of uncaptioned videos stayed blocked permanently.
+        await markFailed(deps.db, askable[0].id);
+        report.failed += 1;
+      }
     }
   }
 
@@ -948,12 +960,26 @@ async function retrieveBodies(
       }
       await markFailed(deps.db, item.id);
       report.failed += 1;
-      inARow += 1;
       deps.log(
         `braintrust: ${item.external_id} failed — ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+
+      // **A video with no caption track is the source answering, not declining.** It is
+      // still `failed` — the words could not be retrieved and nothing an operator changes
+      // brings them back — but it is not evidence that the platform has stopped serving
+      // braintrust, because the player response it was read from arrived perfectly. The
+      // same reasoning that resets the counter on a paywall: a Source that says *there is
+      // nothing here* is a Source that answered.
+      //
+      // Found live. A channel of five uncaptioned videos in a row was blocked as though it
+      // had refused braintrust, and then probed once a day forever.
+      if (error instanceof NoCaptions) {
+        inARow = 0;
+        continue;
+      }
+      inARow += 1;
 
       // The measurement, and the only place a block is ever set. braintrust has not
       // classified a single response to get here — it has counted requests against
