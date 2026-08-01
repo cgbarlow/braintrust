@@ -13,7 +13,7 @@ It is a personal tool: one person, their own council, not a service.
 1. **Follow.** Paste the links you already have for someone. braintrust resolves them, prices the work, and shows you the plan before it fetches anything.
 2. **Ingest.** It reads their archive back twelve months, then checks daily. Raw text and embeddings stay separate, so a better model means re-indexing rather than re-fetching.
 3. **Distill.** Each item is read exactly once and what was read is kept. A persona is rebuilt whenever something new arrives — never on a timer — and each rebuild replaces the last one whole, so a persona cannot drift from its evidence.
-4. **Consult.** Any MCP client — Claude, ChatGPT, Cursor — loads a persona's voice and reasoning, or asks what they've said about something and gets it back with quotes and dates.
+4. **Consult.** Any MCP client — Claude, ChatGPT, Cursor — loads a persona's voice and reasoning, or asks what they've said about something and gets it back with quotes and dates. Or give each Person [their own Hermes agent](#talking-to-one-persona-a-hermes-agent-per-person) and talk to them one at a time.
 
 ## What it reads
 
@@ -72,6 +72,34 @@ Paste [`schema.sql`](schema.sql) into your Supabase SQL editor — it is idempot
 Add your first council member through your AI client, not the command line — `braintrust_follow_person`, with whatever links you have. **Only a human can add someone**, so an AI can refresh a persona but never introduce one.
 
 `npm test` runs the suite; the database tests skip without a Postgres.
+
+## Talking to one persona: a Hermes agent per Person
+
+Any MCP client can consult the whole council. [Hermes Agent](https://hermes-agent.nousresearch.com/docs/) can do something the others can't as neatly: it runs **profiles** — separate agents, each with its own home directory and identity — so a Person maps onto an agent one-to-one. You stop asking an assistant about someone and start talking to the braintrust model of them, with its own crons and its own history.
+
+It needs no code, because braintrust is already a remote HTTP MCP server. Three steps:
+
+```bash
+hermes profile create bt-nate-b-jones                                    # named as a model, never the bare name
+cp hermes/SOUL.md.template ~/.hermes/profiles/bt-nate-b-jones/SOUL.md    # then fill in the two placeholders
+```
+
+```yaml
+# ~/.hermes/profiles/bt-nate-b-jones/config.yaml
+mcp_servers:
+  braintrust:
+    url: "https://your-braintrust.example.com/mcp?key=YOUR_BRAINTRUST_MCP_KEY"
+    tools:
+      exclude: [braintrust_follow_person, braintrust_unfollow_person]
+```
+
+Then `bt-nate-b-jones chat`. The first reply should name what it is before it says anything else.
+
+**The soul file is deliberately thin, and that is the whole design.** Hermes reads `SOUL.md` from disk at session start, so a persona compiled into it would be frozen on the day you pasted it — the exact failure braintrust exists to fix. The file carries identity, the disclosure and one standing instruction: load the persona before answering. The persona itself arrives live, from the last Compile.
+
+The exclusions matter for the same reason: a Hermes agent runs unattended on crons, and following someone spends real money while unfollowing throws a corpus away. Refresh stays — an agent noticing its own persona is stale and rebuilding it is what that tool is for.
+
+[`hermes/README.md`](hermes/README.md) has the full walkthrough, what to check when it doesn't work, and the two things to know before sharing a profile with anyone.
 
 ## Choosing the model that reads
 
