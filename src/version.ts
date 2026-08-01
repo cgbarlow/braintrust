@@ -4,4 +4,4 @@
  * with it. See docs/research/source-terms-and-consent.md §7 — "documented, not
  * disguised" only means something if the string is real.
  */
-export const VERSION = '0.1.0';
+export const VERSION = '1.0.0';

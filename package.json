@@ -1,6 +1,6 @@
 {
   "name": "braintrust",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "A living council of the minds you follow. Nothing here ships on npm \u2014 braintrust is a repo you clone, configure and deploy.",
   "license": "MIT",
