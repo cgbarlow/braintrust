@@ -1,10 +1,15 @@
 /**
  * Discovery, and it is the one generic layer.
  *
- * One RSS/Atom reader serves both platforms, because at the discovery layer they are
- * structurally identical: a rolling window of items with a stable id and a publish
- * date, and **no body**. Substack's `/feed` holds 20; YouTube's `videos.xml` holds 15.
- * Adding a third RSS-publishing source is a config entry, and this file is why.
+ * One RSS/Atom reader serves every feed-bearing Source, because at the discovery layer
+ * they are structurally identical: a rolling window of items with a stable id and a
+ * publish date. Substack's `/feed` holds 20; YouTube's `videos.xml` holds 15; a blog's
+ * declared feed held 10 on both blogs measured. Adding a third RSS-publishing source is
+ * a config entry, and this file is why — a blog cost this module one line.
+ *
+ * **No body** was true of both platforms v1 shipped and is not true of a blog, where the
+ * feed carries the whole post. That belongs to retrieval rather than to identification,
+ * so it changes nothing here.
  *
  * See docs/design/ingestion.md §1 and docs/research/substack-source-facts.md §8.
  */
@@ -50,10 +55,14 @@ function identify(block: string, platform: Platform): FeedEntry | undefined {
   );
   const title = firstTag(block, 'title');
 
-  // Both platforms can produce a canonical URL from their own id, so an entry that omits
-  // `<link>` is still usable. Only an entry braintrust cannot *identify* is dropped.
+  // Substack and YouTube can produce a canonical URL from their own id, so an entry that
+  // omits `<link>` is still usable. Only an entry braintrust cannot *identify* is dropped.
   const externalId =
-    platform === 'youtube' ? youtubeId(block) : substackId(guid ?? link);
+    platform === 'youtube'
+      ? youtubeId(block)
+      : platform === 'blog'
+        ? blogId(link ?? guid)
+        : substackId(guid ?? link);
   if (!externalId) return undefined;
 
   const url = link ?? urlFor(platform, externalId, guid);
@@ -67,8 +76,20 @@ function youtubeId(block: string): string | undefined {
   return firstTag(block, 'yt:videoId') ?? firstTag(block, 'videoId');
 }
 
+/**
+ * **A blog post's id is its URL**, because a blog has no identity scheme to borrow and
+ * inventing one would be a key only braintrust could reproduce. The URL is what the feed
+ * and the sitemap both hand over, so discovery and the archive walk reach the same row
+ * without a reconciliation step — the property Substack gets from its slug.
+ */
+function blogId(from: string | undefined): string | undefined {
+  return from && /^https?:/i.test(from) ? from : undefined;
+}
+
 function urlFor(platform: Platform, externalId: string, guid: string | undefined): string | undefined {
   if (platform === 'youtube') return `https://www.youtube.com/watch?v=${externalId}`;
+  // The id already is the URL, so an entry that got this far is locatable.
+  if (platform === 'blog') return externalId;
   // Substack's guid is the canonical URL, whatever `isPermaLink` says about it.
   return guid && /^https?:/i.test(guid) ? guid : undefined;
 }

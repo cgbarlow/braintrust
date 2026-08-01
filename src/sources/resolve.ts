@@ -4,14 +4,22 @@
  * **braintrust cannot find a Person from their name** — neither platform offers a
  * search it can use — so a human always supplies pointers, in whatever form they
  * already have them: a Substack post URL, a hostname, a YouTube channel page, an
- * `@handle`, a link to one video. This module is the normalising step, and the link
- * as pasted travels onward as `resolvedFrom` so a wrong guess is visible.
+ * `@handle`, a link to one video, the address of a blog. This module is the normalising
+ * step, and the link as pasted travels onward as `resolvedFrom` so a wrong guess is
+ * visible.
+ *
+ * **The order of the questions is the design.** Each one is asked of a host only when
+ * the cheaper, more specific answer has already been ruled out, and the blog question is
+ * last because it is the one that accepts anything — it is *best effort*, not
+ * recognition, so anything reaching it has already failed to be something braintrust
+ * knows more about.
  *
  * See docs/design/ingestion.md §2.
  */
 
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
+import { resolveBlog } from './blog.js';
 import { isSubstackHost, looksLikeSubstack, substackSource } from './substack.js';
 import { isChannelId, resolveYoutubeChannelId, youtubeSource } from './youtube.js';
 import type { ResolvedSource } from './types.js';
@@ -66,7 +74,8 @@ export async function resolveLinks(links: string[], deps: ResolveDeps): Promise<
 }
 
 const ACCEPTED_FORMS =
-  'a Substack post URL or hostname, a YouTube channel page, an @handle, or a link to one video.';
+  'a Substack post URL or hostname, a YouTube channel page, an @handle, a link to one video, ' +
+  'or the address of any blog.';
 
 async function resolveOne(link: string, deps: ResolveDeps): Promise<ResolvedSource> {
   // An explicit prefix, for the case where a bare word is genuinely ambiguous.
@@ -96,12 +105,18 @@ async function resolveOne(link: string, deps: ResolveDeps): Promise<ResolvedSour
   // Not a host braintrust knows by name. A Substack on a custom domain is a real and
   // ordinary case, and the archive API answers the question in one cheap request, so
   // ask rather than refuse.
+  //
+  // **This has to be asked before the blog question, and every blog pays one wasted
+  // request for it.** A custom-domain Substack publishes a feed like any blog does, so
+  // asking the other way round would resolve it as a blog — and lose the archive API,
+  // the paywall split, and the only `measured` item count braintrust has.
   if (await looksLikeSubstack(host, deps.fetcher)) return substackSource(host, link);
 
-  throw new BraintrustError(
-    `braintrust does not know what ${host} is. It reads Substack and YouTube in v1; ` +
-      `${host} answered neither as a Substack publication nor as a YouTube channel.`,
-  );
+  // Anything else is somebody's own hosting, and braintrust does its best with it: it
+  // reads what the site declares and refuses only when the site declares nothing. There
+  // is no list of blog platforms to be on, which is why a blog needs no recognition step
+  // of its own — this branch *is* the recognition.
+  return resolveBlog(url, link, deps.fetcher);
 }
 
 async function resolveYoutube(target: string, pastedAs: string, { fetcher }: ResolveDeps): Promise<ResolvedSource> {

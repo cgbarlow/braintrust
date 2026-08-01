@@ -69,7 +69,7 @@ async function propose(args: FollowArgs, deps: FollowDeps): Promise<PlanResponse
     throw new BraintrustError(
       'braintrust_follow_person needs `links` — whatever you already have for this person: ' +
         'a Substack post URL or hostname, a YouTube channel page, an @handle, a link to one ' +
-        'video. braintrust cannot look someone up by name.',
+        'video, or the address of any blog. braintrust cannot look someone up by name.',
     );
   }
   if (links.length > MAX_LINKS) {

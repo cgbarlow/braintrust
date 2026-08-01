@@ -919,6 +919,33 @@ makes an about page an essay.
 **Accepted cost:** a page that gains a date without gaining a `lastmod` is never reopened. Not observed on any
 sitemap measured; a blog that updates a page without stamping it is not one braintrust can track.
 
+### What the build settled about finding a blog
+
+**The document says which of the two it is.** A feed opens `<rss>` or `<feed>` and a sitemap opens `<urlset>`
+or `<sitemapindex>`, so nothing has to remember which kind of thing `discovery_url` points at. That is what
+lets the column stay one column with no flag beside it, and it stays right when a blog that had no feed
+publishes one and the URL is repointed.
+
+**A link that is already the feed is used as the feed.** Fetching a URL is how discovery starts either way, so
+recognising what came back costs nothing — and it is what makes the refusal's advice honest, since the refusal
+ends by telling a human to paste the feed URL directly.
+
+**The page pasted is asked first, and the homepage only if it declares nothing.** Every page of a real blog
+carries the declaration, so the ordinary case is one request; the second is spent only on the path that is
+already failing.
+
+**A comments feed is never taken for a posts feed.** WordPress declares both, in the same shape, and a Persona
+built from the comments on someone's blog is not that person.
+
+**A `<sitemapindex>` is followed, because it is the site declaring where its sitemaps are** — to the child that
+names itself the posts sitemap, or to the only child where there is one. Anything else is refused rather than
+resolved by picking the tags sitemap and calling it an archive.
+
+**Substack is asked before blog, and every blog pays one request for it.** A custom-domain Substack publishes
+a feed like any blog does, so asking the other way round resolves it as a blog and loses the archive API, the
+paywall split, and the only `measured` item count braintrust has. The order is the guard; the wasted request is
+the price, paid once at registration.
+
 ---
 
 ## Accepted costs
@@ -937,6 +964,7 @@ sitemap measured; a blog that updates a page without stamping it is not one brai
 | **One wasted fetch per non-post and per gated Ghost post.** The price of not guessing from URL shape, and of Ghost having no `audience` field. | §8 |
 | **A rewritten members CTA on a long free intro escapes all three gating markers**, and braintrust stores public words as a whole post. Not a consent breach; bounded to blogs that both sell subscriptions and run a custom theme. | §8 |
 | **A blog carrying no date metadata leaves its Items undated**, which costs it revision detection entirely. | §8 |
+| **Every blog pays one wasted request at registration**, asking whether it is a Substack on a custom domain. The order is what stops a Substack resolving as a blog. | §8 |
 
 ## Deliberately not decided
 

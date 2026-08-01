@@ -248,7 +248,8 @@ export function buildServer({
       description:
         'Add someone to this braintrust. A two-call handshake, and only a human may complete it.\n\n' +
         'Call 1: pass `links` — whatever the person you are working for already has for them. A ' +
-        'Substack post URL or hostname, a YouTube channel page, an @handle, a link to one video. ' +
+        'Substack post URL or hostname, a YouTube channel page, an @handle, a link to one video, ' +
+        'or the address of any blog. ' +
         'braintrust resolves them, proposes a display name, and returns a plan saying what ' +
         'following this person will cost: how many items, how much of the corpus is paywalled and ' +
         'will therefore never be read, and roughly how long the first run takes. **Call 1 ingests ' +

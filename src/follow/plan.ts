@@ -13,6 +13,7 @@
 import { monthsBefore, toDateOnly } from '../dates.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
+import { surveyBlog } from '../sources/blog.js';
 import { nameSignals, proposeDisplayName } from '../sources/naming.js';
 import { resolveLinks } from '../sources/resolve.js';
 import { surveySubstack } from '../sources/substack.js';
@@ -150,9 +151,11 @@ function survey(
   deps: PlanDeps,
 ): Promise<SourceSurvey> {
   const shared = { fetcher: deps.fetcher, now: deps.now };
-  return source.platform === 'substack'
-    ? surveySubstack(source, settings, deps.pause ? { ...shared, pause: deps.pause } : shared)
-    : surveyYoutube(source, settings, shared);
+  if (source.platform === 'substack') {
+    return surveySubstack(source, settings, deps.pause ? { ...shared, pause: deps.pause } : shared);
+  }
+  if (source.platform === 'blog') return surveyBlog(source, settings, shared);
+  return surveyYoutube(source, settings, shared);
 }
 
 function toPlanSource(
@@ -224,6 +227,12 @@ export function estimateDuration(
       seconds += found.bodyFetches * spacing;
       parts.push(`${plural(found.bodyFetches, REQUEST_NOUN[source.platform])} at ${spacing}s each`);
     }
+    // Free is not the same offer as empty. A blog whose feed carries every body has a
+    // whole backfill in the one request that read the feed, and a Plan that said
+    // "nothing to retrieve" would be describing a different Source.
+    if (found.bodyFetches === 0 && found.bodiesFromDiscovery && found.itemsInWindow > 0) {
+      parts.push(`${plural(found.itemsInWindow, 'post body')} arriving with discovery`);
+    }
     if (found.dateFetches > 0) {
       parts.push(`${plural(found.dateFetches, 'publish-date fetch')} alongside`);
     }
@@ -291,9 +300,11 @@ export function applyOverrides(
 
 function plural(count: number, noun: string): string {
   if (count === 1) return `1 ${noun}`;
-  // "fetch" wants "es"; "post" and "video" want "s". A plan a human reads should not
-  // say "15 postes".
-  return `${count} ${noun}${/(?:ch|sh|s|x|z)$/.test(noun) ? 'es' : 's'}`;
+  // "fetch" wants "es", "body" wants "ies", "post" and "video" want "s". A plan a human
+  // reads should not say "15 postes" or "10 post bodys".
+  if (/(?:ch|sh|s|x|z)$/.test(noun)) return `${count} ${noun}es`;
+  if (/[^aeiou]y$/.test(noun)) return `${count} ${noun.slice(0, -1)}ies`;
+  return `${count} ${noun}s`;
 }
 
 function describeTarget(override: SourceOverride): string {

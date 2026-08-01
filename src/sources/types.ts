@@ -6,9 +6,17 @@
  * identity the database assigns. See docs/design/schema.md, tier 1.
  */
 
-export type Platform = 'substack' | 'youtube';
+/**
+ * **`blog` is not a platform, and that is the point of the name.** There is no blog
+ * API, no blog identity scheme and no blog operator — it is whatever a person publishes
+ * on their own hosting, read through the two things the web already standardised: a
+ * declared feed and a sitemap. braintrust does not branch on Ghost or on Bear Blog, so
+ * one value covers all of them.
+ * See docs/design/ingestion.md §8.
+ */
+export type Platform = 'substack' | 'youtube' | 'blog';
 
-export const PLATFORMS: Platform[] = ['substack', 'youtube'];
+export const PLATFORMS: Platform[] = ['substack', 'youtube', 'blog'];
 
 /**
  * A pasted link, normalised. `resolvedFrom` is the link exactly as the human gave
@@ -21,7 +29,15 @@ export type ResolvedSource = {
   platform: Platform;
   /** Publication host, or `UC…` channel id — matching `braintrust_sources.handle`. */
   handle: string;
-  /** The RSS/Atom feed. Discovery is generic across platforms; this is why. */
+  /**
+   * The RSS/Atom feed. Discovery is generic across platforms; this is why.
+   *
+   * **One column, and it stays a feed.** A blog that publishes none puts its sitemap
+   * here instead — not as a second mechanism beside the feed, but as the same one: every
+   * URL carries `<lastmod>`, the document is ordered newest-first by it, and a walk that
+   * stops at the first unchanged URL is what reading a feed already does. The document
+   * says which of the two it is, so nothing has to remember.
+   */
   discoveryUrl: string;
   resolvedFrom: string;
 };
@@ -94,7 +110,7 @@ export function audienceOf(raw: string | null | undefined): Audience {
  * prices its backfill against it — and a rate invented per source ticket is a rate nobody
  * compared to the others.
  */
-export type SpacedSource = Platform | 'bluesky' | 'blog';
+export type SpacedSource = Platform | 'bluesky';
 
 /**
  * **Seconds between one request and the next, per Source.**
@@ -194,6 +210,14 @@ export type SourceSurvey = {
   willSkipPaywalled?: number | undefined;
   /** Bodies or captions braintrust will retrieve — the expensive half. */
   bodyFetches: number;
+  /**
+   * True where discovery itself carries the bodies, so `bodyFetches` is 0 because the
+   * expensive half is already done rather than because there is nothing to do. A Plan
+   * has to tell those two apart: *"nothing to retrieve"* and *"10 post bodies arriving
+   * with the feed"* are different offers, and the second is the whole reason a
+   * feed-bearing blog costs one request.
+   */
+  bodiesFromDiscovery?: boolean | undefined;
   /**
    * Items whose publish date the feed does not carry, each costing an extra
    * ~1.3MB watch-page fetch. See docs/design/ingestion.md §1.

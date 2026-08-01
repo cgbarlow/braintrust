@@ -128,9 +128,17 @@ describe('Substack resolution', () => {
     assert.equal(fetcher.requests.length, 1);
   });
 
-  it('refuses a host that is neither, naming it', async () => {
+  /**
+   * A host that is neither is not refused for being unrecognised — it is tried as a
+   * blog, which is how braintrust does its best with any URL, and refused only when the
+   * site declares nothing braintrust can follow. See test/blog.test.ts.
+   */
+  it('tries an unrecognised host as a blog before refusing it', async () => {
     const fetcher = fakeFetcher([]);
-    await assert.rejects(() => resolveLinks(['https://example.com/blog'], { fetcher }), /example\.com/);
+    await assert.rejects(
+      () => resolveLinks(['https://example.com/blog'], { fetcher }),
+      /could not find a way to follow example\.com/,
+    );
   });
 });
 
