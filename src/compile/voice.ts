@@ -40,6 +40,32 @@ export const EXEMPLARS_PER_MOVE = 3;
 /** An exemplar is a fragment, cut at a space. Long enough to hear, short enough to scan. */
 export const EXEMPLAR_MAX_CHARS = 140;
 
+/**
+ * **How long an Item has to be before it can answer the question Voice asks.**
+ *
+ * An Item now spans four orders of magnitude — a 34-word skeet against a 40,000-word
+ * lecture transcript — and every statistic below assumed one population. The spread
+ * thresholds are fractions of `items_measured`, so on a Corpus of 900 skeets and 23
+ * essays the essays are 2.5% of the denominator and **cannot reach either threshold
+ * however consistent they are**. The arithmetic is one-directional too: a 34-word post
+ * can hold at most one hedge, so short-form drags frequency up while making spread
+ * unreachable. And `words_per_item` becomes an average of 34 and 40,000 — a number
+ * describing nothing that exists.
+ *
+ * 300 is a judgement, and it travels in `measured_over` for the same reason the patterns
+ * travel in the evidence: so it can be argued with rather than trusted. The measured case
+ * is that a batched Bluesky day lands at ~198 words and the shortest real essay in any
+ * Corpus measured is 492, so 300 separates the two populations with roughly 1.6×
+ * clearance on each side — above every Ghost event announcement, below every blog post.
+ *
+ * **Short-form is excluded from Voice alone.** It still feeds Beliefs, Reasoning,
+ * Positions and Coverage. *Short-form tells you what someone thinks; long-form tells you
+ * how they argue* — and the moves counted here are argumentative moves.
+ *
+ * See docs/design/compiler.md §2.
+ */
+export const VOICE_MIN_WORDS = 300;
+
 export type MeasuredItem = {
   external_id: string;
   url: string;
@@ -75,10 +101,29 @@ export type Register = {
   words_per_item: number;
 };
 
+/**
+ * Which Items Voice was measured over, and which it was not. Present on every Persona,
+ * because a layer that selects a population and does not say so is a layer describing a
+ * Corpus the reader thinks they are looking at.
+ */
+export type VoicePopulation = {
+  /**
+   * The floor actually applied. `VOICE_MIN_WORDS` normally — and **0 when no Item in the
+   * Corpus reaches it**, because a Persona that refuses to describe a voice is worse than
+   * one that says which voice it measured. The floor drops; the layer is not withheld.
+   */
+  min_words: number;
+  items: number;
+  median_words: number;
+  /** Read for what they say rather than for how they say it. Never simply discarded. */
+  items_excluded: number;
+};
+
 export type VoiceEvidence = {
   items_measured: number;
   words_measured: number;
   window: [string, string] | null;
+  measured_over: VoicePopulation;
   moves: MoveMeasurement[];
   register: Register;
 };
@@ -227,7 +272,51 @@ export function countWords(text: string): number {
  * for this and did not find it" is a different statement from silence — and it is the
  * statement the first prototype needed and did not have.
  */
-export function measureVoice(items: MeasuredItem[]): VoiceEvidence {
+/**
+ * The population, chosen by length.
+ *
+ * **The floor drops rather than the layer being withheld.** A Corpus with no long-form at
+ * all — someone who is only ever on Bluesky — is measured over whatever it does have, and
+ * `min_words: 0` records that truthfully. The same posture the gate already takes with the
+ * inferred layers, and refusing here would make an entire Source unbuildable.
+ *
+ * Nothing about how anything is *counted* changes. The population was always an argument
+ * to the Voice step; this is a change to what is passed in.
+ */
+/** The population a bare set of Items is, with no floor applied. */
+function describing(items: MeasuredItem[]): VoicePopulation {
+  return { min_words: 0, items: items.length, median_words: medianWords(items), items_excluded: 0 };
+}
+
+function medianWords(items: MeasuredItem[]): number {
+  const lengths = items.map((item) => countWords(item.body_text)).sort((a, b) => a - b);
+  return lengths.length === 0 ? 0 : lengths[Math.floor((lengths.length - 1) / 2)]!;
+}
+
+export function selectVoiceItems(items: MeasuredItem[]): {
+  measured: MeasuredItem[];
+  population: VoicePopulation;
+} {
+  const longForm = items.filter((item) => countWords(item.body_text) >= VOICE_MIN_WORDS);
+  const dropped = longForm.length === 0;
+  const measured = dropped ? items : longForm;
+
+  return {
+    measured,
+    population: {
+      min_words: dropped ? 0 : VOICE_MIN_WORDS,
+      items: measured.length,
+      median_words: medianWords(measured),
+      items_excluded: items.length - measured.length,
+    },
+  };
+}
+
+export function measureVoice(items: MeasuredItem[], population?: VoicePopulation): VoiceEvidence {
+  // Given no population, the measurement describes exactly the set it was handed: no
+  // floor applied, nothing excluded. Truthful rather than convenient — `voiceLayer` is
+  // where the selection happens, and this stays a pure count over whatever it is given.
+  const over = population ?? describing(items);
   const words = items.reduce((total, item) => total + countWords(item.body_text), 0);
   const per10k = (count: number): number =>
     words === 0 ? 0 : Math.round((count / words) * 10_000 * 10) / 10;
@@ -255,6 +344,7 @@ export function measureVoice(items: MeasuredItem[]): VoiceEvidence {
     items_measured: items.length,
     words_measured: words,
     window: dates.length > 0 ? [dates[0]!, dates[dates.length - 1]!] : null,
+    measured_over: over,
     moves,
     register: {
       second_person_per_10k: per10k(countMatches(items, REGISTER_PATTERNS.second_person)),
@@ -271,7 +361,8 @@ export function measureVoice(items: MeasuredItem[]): VoiceEvidence {
  * evidence can disagree — see docs/design/compiler.md §2.
  */
 export function voiceLayer(items: MeasuredItem[]): VoiceLayer {
-  const evidence = measureVoice(items);
+  const { measured, population } = selectVoiceItems(items);
+  const evidence = measureVoice(measured, population);
   return {
     descriptive_md: describe(evidence),
     generative_md: instruct(evidence),
@@ -287,11 +378,33 @@ function describe(evidence: VoiceEvidence): string {
   const { items_measured: items, words_measured: words, register } = evidence;
   const lines: string[] = [];
 
+  const over = evidence.measured_over;
+
   lines.push(
     `Measured over ${items} item${items === 1 ? '' : 's'} — ${words} words` +
       `${evidence.window ? `, ${evidence.window[0]} to ${evidence.window[1]}` : ''}. ` +
       'Counted directly over the published text, with no model in the path. Spread is how ' +
       'many items use the move at all.',
+  );
+
+  // The population, always, and in the layer's own prose rather than only in Coverage.
+  // Voice is what a client loads to sound like someone, and a layer that selected its
+  // population without saying so would describe a corpus the reader thinks they see.
+  lines.push(
+    '',
+    over.min_words === 0
+      ? `**Which items.** No item in this corpus is long enough for the usual long-form floor, so ` +
+          `the floor was dropped rather than the layer withheld: voice is measured over all ` +
+          `${over.items} item${over.items === 1 ? '' : 's'}, median ${over.median_words} words. ` +
+          'Read that for what it is — how this person writes at this length.'
+      : `**Which items.** Voice is measured over the ${over.items} item` +
+          `${over.items === 1 ? '' : 's'} of ${over.min_words} words or more, median ` +
+          `${over.median_words} words. ` +
+          (over.items_excluded > 0
+            ? `${over.items_excluded} shorter item${over.items_excluded === 1 ? ' was' : 's were'} ` +
+              'read for what they say rather than for how they say it — they feed beliefs, ' +
+              'reasoning and positions, and a thirty-word post cannot answer how someone argues.'
+            : 'Nothing was excluded.'),
   );
 
   lines.push('', '| Move | Occurrences | Spread | Per ten thousand words | What it counts |', '|---|---:|---:|---:|---|');

@@ -20,7 +20,7 @@ import type { TransactionalDb } from '../db.js';
 import { notesFor } from '../notes/store.js';
 import type { Embedder } from '../retrieval/embed.js';
 import { VERSION } from '../version.js';
-import { coverageLayer } from './coverage.js';
+import { coverageLayer, withVoicePopulation } from './coverage.js';
 import { checkCompile } from './gate.js';
 import { inferLayer, INFERRED_LAYERS } from './infer.js';
 import { compilePositions } from './positions.js';
@@ -55,8 +55,14 @@ import { voiceLayer } from './voice.js';
  * hypothesis is part of the compiler, so a Persona should say which version of it
  * produced the numbers. `compiler_version` is on the Compile row and travels out through
  * both read tools, alongside the synthesis prompt version that wrote the other half.
+ *
+ * **`measured-2` is the mixed-Corpus change**: Voice now selects a population by length
+ * and names it, and Coverage leads with words and carries `by_form`. The counts are the
+ * same counts; *which Items they are counted over* is not, and a Persona has to be able
+ * to say which rule measured it. `VOICE_MIN_WORDS` rides here too, so tuning the floor
+ * rebuilds every Persona and the change is visible rather than silent.
  */
-export const MEASUREMENT_VERSION = 'measured-1';
+export const MEASUREMENT_VERSION = 'measured-2';
 
 /**
  * What a Compile that could not compare revisions records instead of `revisions-1`.
@@ -255,7 +261,11 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
 
   try {
     const voice = voiceLayer(items);
-    const coverage = coverageLayer(await measureCoverage(deps.db, person.id));
+    // Coverage names the Voice population as a blind spot, so it has to be told what that
+    // population was — the only number in Coverage that no query over tier 1 can answer.
+    const coverage = coverageLayer(
+      withVoicePopulation(await measureCoverage(deps.db, person.id), voice.evidence.measured_over),
+    );
 
     await writeLayer(deps.db, compileId, {
       layer: 'voice',

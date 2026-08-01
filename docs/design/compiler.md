@@ -353,7 +353,7 @@ in the extractor's shape reached the gate as *"beliefs carried nothing to serve"
 looking at the Corpus instead of at the endpoint.
 
 **Synthesis is versioned separately from measurement.** `compiler_version` is
-`0.1.0+measured-1.core-1.positions-1.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
+`0.1.0+measured-2.core-1.positions-1.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
 prose, and the prompt that grouped the Positions. Three versions rather than one because they change for
 different reasons, and all of them are cheap in a way bumping `notes-1` is not: they re-read Notes that
 already exist rather than re-reading the Corpus.

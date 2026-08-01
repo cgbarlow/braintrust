@@ -27,6 +27,7 @@ import {
   gateFacts,
   INFERRED_MARKER,
   STALE_COMPILE_MS,
+  VOICE_MIN_WORDS,
   writeRelations,
 } from '../src/compile/index.js';
 import { createDb, type Db, type PostgresDb, type TransactionalDb } from '../src/db.js';
@@ -260,6 +261,45 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     assert.equal(evidence.skipped_paywall, 1);
     assert.equal(evidence.skipped_short, 1);
     assert.equal(evidence.by_source['substack:nate.substack.com']!.retrieved, ITEMS);
+  });
+
+  it('splits coverage by form at the same floor voice measures over', async () => {
+    // The four seeded items are a few dozen words each — short-form by any reading. One
+    // essay against them is the shape a mixed corpus has, and the shape that made the old
+    // single-population arithmetic meaningless.
+    const essay = `${body(9)}\n\n${'It seems like the constraint is never the tooling. '.repeat(150)}`;
+    await addItem('an-essay', essay, '2025-06-15');
+    await compile();
+
+    const persona = await loadPersona(db, 'nate');
+    const coverage = persona.layers.coverage!.evidence as {
+      retrieved: number;
+      words_retrieved: number;
+      by_form: { long_form: { items: number; words: number }; short_form: { items: number; words: number } };
+      voice_measured_over: { min_words: number; items: number; items_excluded: number };
+    };
+    const voice = persona.layers.voice!.evidence as { items_measured: number };
+
+    assert.equal(coverage.by_form.long_form.items, 1);
+    assert.equal(coverage.by_form.short_form.items, ITEMS);
+
+    // The split has to be the *same* count as the total, not a second count that happens
+    // to agree — which is why it comes out of one expression in one query.
+    assert.equal(
+      coverage.by_form.long_form.items + coverage.by_form.short_form.items,
+      coverage.retrieved,
+    );
+    assert.equal(
+      coverage.by_form.long_form.words + coverage.by_form.short_form.words,
+      coverage.words_retrieved,
+    );
+
+    // And the boundary is voice's own floor, so the two layers cannot disagree about
+    // which items are long enough to argue in.
+    assert.equal(coverage.voice_measured_over.min_words, VOICE_MIN_WORDS);
+    assert.equal(coverage.voice_measured_over.items, voice.items_measured);
+    assert.equal(voice.items_measured, coverage.by_form.long_form.items);
+    assert.equal(coverage.voice_measured_over.items_excluded, coverage.by_form.short_form.items);
   });
 
   it('replaces the previous persona whole, rather than editing it', async () => {

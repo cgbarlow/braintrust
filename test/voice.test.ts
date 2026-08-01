@@ -14,6 +14,7 @@ import { describe, it } from 'node:test';
 import {
   EXEMPLARS_PER_MOVE,
   measureVoice,
+  VOICE_MIN_WORDS,
   voiceLayer,
   type MeasuredItem,
 } from '../src/compile/voice.js';
@@ -247,13 +248,90 @@ describe('the two forms, from one set of measurements', () => {
   });
 });
 
+describe('the population voice is measured over', () => {
+  /** Long enough to clear the floor, and hedging in every one so spread is unambiguous. */
+  function essay(id: string): MeasuredItem {
+    return {
+      external_id: id,
+      url: `https://example.test/${id}`,
+      published_at: '2025-06-01',
+      body_text:
+        `I think the argument in ${id} is worth setting out slowly. ` +
+        'It seems like the constraint is never the tooling. '.repeat(150),
+    };
+  }
+
+  it('measures long-form only, and reads short-form for something else', () => {
+    // One essay against four short posts: the shape a mixed corpus actually has, and the
+    // shape that made the old arithmetic meaningless — four short items would be 80% of
+    // the denominator, so nothing the essay does could ever reach a spread threshold.
+    const { evidence } = voiceLayer([essay('long'), ...ITEMS]);
+
+    assert.equal(evidence.measured_over.min_words, VOICE_MIN_WORDS);
+    assert.equal(evidence.measured_over.items, 1);
+    assert.equal(evidence.measured_over.items_excluded, ITEMS.length);
+    assert.equal(evidence.items_measured, 1);
+
+    // Excluded from voice, not from braintrust. Nothing here deletes them; they are read
+    // for what they say rather than for how they say it.
+    assert.ok(evidence.measured_over.median_words >= VOICE_MIN_WORDS);
+  });
+
+  it('keeps spread a fraction of items, so one long item cannot become a personality', () => {
+    // Two essays, one of them enormous. Word-weighting would hand the long one the
+    // majority of the corpus and make its tics the person; item-spread does not.
+    const enormous = essay('enormous');
+    enormous.body_text = enormous.body_text.repeat(20);
+    const { evidence } = voiceLayer([essay('ordinary'), enormous]);
+
+    assert.equal(evidence.items_measured, 2);
+    for (const measured of evidence.moves) {
+      assert.ok(measured.spread <= 2, `${measured.move} spread is an item count`);
+    }
+  });
+
+  it('drops the floor for a corpus with no long-form, and labels it rather than withholding it', () => {
+    const { evidence, descriptive_md, generative_md } = voiceLayer(ITEMS);
+
+    // A persona that refuses to describe a voice is worse than one that says which voice
+    // it measured. So the layer is built, and it says what it was built from.
+    assert.equal(evidence.measured_over.min_words, 0);
+    assert.equal(evidence.measured_over.items, ITEMS.length);
+    assert.equal(evidence.measured_over.items_excluded, 0);
+    assert.ok(generative_md.length > 0);
+    assert.match(descriptive_md, /floor was dropped rather than the layer withheld/);
+  });
+
+  it('always names its population in the prose, not only in the evidence', () => {
+    const { descriptive_md } = voiceLayer([essay('long'), ...ITEMS]);
+
+    assert.match(descriptive_md, /\*\*Which items\.\*\*/);
+    assert.match(descriptive_md, new RegExp(`${VOICE_MIN_WORDS} words or more`));
+    assert.match(descriptive_md, /read for what they say rather than for how they say it/);
+  });
+
+  it('puts no number in that prose that is not also a field of its evidence', () => {
+    const { descriptive_md, generative_md, evidence } = voiceLayer([essay('long'), ...ITEMS]);
+
+    assert.deepEqual(numbersMissingFromEvidence(descriptive_md, evidence), []);
+    assert.deepEqual(numbersMissingFromEvidence(generative_md, evidence), []);
+  });
+});
+
 describe('no model is in this path', () => {
   it('is enforced by the module having nothing to call', async () => {
     // `measured` is a structural claim rather than a declared one: a layer no model
-    // wrote. A module with no imports cannot have reached an endpoint.
+    // wrote. A module that imports no *values* cannot have reached an endpoint — and a
+    // type import cannot either, because it is erased before anything runs. Coverage has
+    // one, for the Voice population it restates as a blind spot; the rule that matters is
+    // the next assertion, which no type import may satisfy.
     for (const file of ['voice.ts', 'coverage.ts']) {
       const source = await readFile(new URL(`../src/compile/${file}`, import.meta.url), 'utf8');
-      assert.doesNotMatch(source, /^import /m, `src/compile/${file} imports something`);
+      assert.doesNotMatch(
+        source,
+        /^import (?!type )/m,
+        `src/compile/${file} imports a value, so it could call something`,
+      );
       assert.doesNotMatch(
         source,
         /\bfetch\(|\bFetcher\b|\bEmbedder\b|\bExtractor\b/,

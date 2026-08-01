@@ -13,6 +13,7 @@
 
 import type { Db, TransactionalDb } from '../db.js';
 import type { CoverageEvidence, SourceCoverage } from './coverage.js';
+import { VOICE_MIN_WORDS } from './voice.js';
 import type { GateFacts, GateLayer, ItemCounts } from './gate.js';
 import type { BuiltPosition } from './positions.js';
 import type { MeasuredItem } from './voice.js';
@@ -168,6 +169,10 @@ type CoverageRow = {
   failed: string;
   pending: string;
   words_retrieved: string;
+  long_form_items: string;
+  long_form_words: string;
+  short_form_items: string;
+  short_form_words: string;
   first_published: string | null;
   last_published: string | null;
 };
@@ -181,26 +186,46 @@ type CoverageRow = {
  * tokens of the stored body — so the two layers cannot disagree about the size of the
  * Corpus they describe.
  */
-export async function measureCoverage(db: Db, personId: string): Promise<CoverageEvidence> {
+export async function measureCoverage(
+  db: Db,
+  personId: string,
+): Promise<Omit<CoverageEvidence, 'voice_measured_over'>> {
   const { rows } = await db.query<CoverageRow>(
-    `select s.platform, s.handle, s.backfill_complete, s.blocked_at,
-            count(i.id) filter (where i.retrieval = 'retrieved')::text        as retrieved,
-            count(i.id) filter (where i.retrieval = 'skipped_paywall')::text  as skipped_paywall,
-            count(i.id) filter (where i.retrieval = 'skipped_short')::text    as skipped_short,
-            count(i.id) filter (where i.retrieval = 'skipped_window')::text   as skipped_window,
-            count(i.id) filter (where i.retrieval = 'failed')::text           as failed,
-            count(i.id) filter (where i.retrieval = 'pending')::text          as pending,
-            coalesce(sum(array_length(regexp_split_to_array(btrim(i.body_text), '\\s+'), 1))
-                       filter (where i.retrieval = 'retrieved' and i.body_text is not null), 0)::text
+    // The word count is computed once in `counted` and read four times, because the form
+    // split has to be the *same* count as `words_retrieved` — two expressions that agree
+    // today is not the same guarantee as one expression.
+    `with counted as (
+       select i.id, i.source_id, i.retrieval, i.published_at,
+              case when i.body_text is null then 0
+                   else coalesce(array_length(regexp_split_to_array(btrim(i.body_text), '\\s+'), 1), 0)
+              end as words
+         from braintrust_items i
+     )
+     select s.platform, s.handle, s.backfill_complete, s.blocked_at,
+            count(c.id) filter (where c.retrieval = 'retrieved')::text        as retrieved,
+            count(c.id) filter (where c.retrieval = 'skipped_paywall')::text  as skipped_paywall,
+            count(c.id) filter (where c.retrieval = 'skipped_short')::text    as skipped_short,
+            count(c.id) filter (where c.retrieval = 'skipped_window')::text   as skipped_window,
+            count(c.id) filter (where c.retrieval = 'failed')::text           as failed,
+            count(c.id) filter (where c.retrieval = 'pending')::text          as pending,
+            coalesce(sum(c.words) filter (where c.retrieval = 'retrieved'), 0)::text
                                                                               as words_retrieved,
-            min(i.published_at) filter (where i.retrieval = 'retrieved')::text as first_published,
-            max(i.published_at) filter (where i.retrieval = 'retrieved')::text as last_published
+            count(c.id) filter (where c.retrieval = 'retrieved' and c.words >= $2)::text
+                                                                              as long_form_items,
+            coalesce(sum(c.words) filter (where c.retrieval = 'retrieved' and c.words >= $2), 0)::text
+                                                                              as long_form_words,
+            count(c.id) filter (where c.retrieval = 'retrieved' and c.words < $2)::text
+                                                                              as short_form_items,
+            coalesce(sum(c.words) filter (where c.retrieval = 'retrieved' and c.words < $2), 0)::text
+                                                                              as short_form_words,
+            min(c.published_at) filter (where c.retrieval = 'retrieved')::text as first_published,
+            max(c.published_at) filter (where c.retrieval = 'retrieved')::text as last_published
        from braintrust_sources s
-       left join braintrust_items i on i.source_id = s.id
+       left join counted c on c.source_id = s.id
       where s.person_id = $1
       group by s.id, s.platform, s.handle, s.backfill_complete, s.blocked_at
       order by s.platform, s.handle`,
-    [personId],
+    [personId, VOICE_MIN_WORDS],
   );
 
   const by_source: Record<string, SourceCoverage> = {};
@@ -212,6 +237,10 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
     failed: 0,
     pending: 0,
     words: 0,
+    long_items: 0,
+    long_words: 0,
+    short_items: 0,
+    short_words: 0,
   };
   const dates: string[] = [];
 
@@ -240,6 +269,10 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
     totals.failed += source.failed;
     totals.pending += source.pending;
     totals.words += source.words_retrieved;
+    totals.long_items += Number(row.long_form_items);
+    totals.long_words += Number(row.long_form_words);
+    totals.short_items += Number(row.short_form_items);
+    totals.short_words += Number(row.short_form_words);
     if (source.window) dates.push(source.window[0], source.window[1]);
   }
 
@@ -255,6 +288,10 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
     pending: totals.pending,
     words_retrieved: totals.words,
     by_source,
+    by_form: {
+      long_form: { items: totals.long_items, words: totals.long_words },
+      short_form: { items: totals.short_items, words: totals.short_words },
+    },
   };
 }
 
