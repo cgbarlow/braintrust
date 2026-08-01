@@ -6,10 +6,18 @@
 [Define how a person and their sources are registered](https://github.com/cgbarlow/braintrust/issues/17) and
 [Decide what braintrust does when a source blocks it](https://github.com/cgbarlow/braintrust/issues/21).
 
+**§§6–7 and the amendments marked below are assembled from
+[the Bluesky and personal-blogs map](https://github.com/cgbarlow/braintrust/issues/52)** — fourteen decisions,
+each linked where it lands. Four of them **correct** what this document previously asserted, and each of those
+is named as a correction rather than quietly rewritten, because someone will have built against the old
+sentence.
+
 Vocabulary is in [`CONTEXT.md`](../../CONTEXT.md); the tables are in [`schema.md`](./schema.md). The reasoning
 behind each choice is in the resolution comment linked at the head of each section — **this document is what
 braintrust does, not why it does it.** Measurements are in
-[`substack-source-facts.md`](../research/substack-source-facts.md); every figure below came from a live fetch.
+[`substack-source-facts.md`](../research/substack-source-facts.md) and — for the blog sources — in
+[`ghost-source-facts.md`](https://github.com/cgbarlow/braintrust/blob/research/ghost-source-facts/docs/research/ghost-source-facts.md),
+which is still on its research branch. Every figure below came from a live fetch.
 
 ---
 
@@ -17,19 +25,28 @@ braintrust does, not why it does it.** Measurements are in
 
 [#5](https://github.com/cgbarlow/braintrust/issues/5)
 
-Ingestion is not one adapter per platform. It splits into three layers, and the split is the same on both
-platforms:
+Ingestion is not one adapter per platform. It splits into three layers, and the split holds across all four:
 
-| Layer | Shape | Adding a source #3 |
+| Layer | Shape | Adding a source |
 |---|---|---|
-| **Discovery + cursor** | Generic RSS/Atom. Stable id + publish date, no body. | **a config entry** |
+| **Discovery + cursor** | Generic RSS/Atom. Stable id + publish date, and — on a blog — the body too. | **a config entry, where the platform has a feed** |
 | **Backfill** | Per platform. Walks the archive back to `backfill_floor`. | new code |
-| **Body retrieval** | Per platform, and the expensive half. | new code |
+| **Body retrieval** | Per platform, and usually the expensive half. | new code |
 
-**Neither source returns a body at discovery.** Retrieval is always a separate step, which is why
-`braintrust_items.body_text` is nullable and normally null.
+**That prediction has now been tested twice, and it survived once.** A personal blog needs no discovery code
+at all — an Atom feed is an Atom feed. Bluesky does not fit it: braintrust reads the public AppView rather
+than a feed, because [a Bluesky Item is a day of posts](https://github.com/cgbarlow/braintrust/issues/53) and
+no feed hands over a day.
 
-### The two platforms, concretely
+**Amended by [#55](https://github.com/cgbarlow/braintrust/issues/55): discovery sometimes *is* retrieval.**
+This document previously said *"neither source returns a body at discovery"* and generalised it. On a
+feed-bearing blog the feed carries the whole post — page extraction agreed with the feed body at **1.00 on 11
+of 11 posts** across both Karpathy blogs, 12,550 words agreeing exactly on the longest — so the expensive half
+costs nothing and a whole blog backfill can be one request. `braintrust_items.body_text` is still nullable and
+still normally null, because it stays null on Substack, on YouTube, and on a feedless blog until retrieval
+runs.
+
+### The two platforms v1 shipped, concretely
 
 | | Substack | YouTube |
 |---|---|---|
@@ -45,9 +62,19 @@ Three facts the build has to respect:
 
 - **The YouTube bot gate is path-specific.** Per-video `extract_info()` fails every time; caption download at
   4s spacing succeeded 4 of 4. The Atom feed supplies exactly the metadata captions cannot come with, so the
-  two cheap endpoints compose. **The 4s spacing is load-bearing** and the unattended crawl keeps it. It is
-  spent **per Item, not per request** — one video costs two or three back-to-back calls, which is what yt-dlp
-  was doing inside each of the four measured downloads.
+  two cheap endpoints compose. **The 4s spacing is load-bearing** and the unattended crawl keeps it. One video
+  costs two or three back-to-back calls, which is what yt-dlp was doing inside each of the four measured
+  downloads, and the whole group is spaced once.
+
+  **Corrected by [#66](https://github.com/cgbarlow/braintrust/issues/66): the spacing is spent per *request*,
+  not per Item.** This document argued the opposite, and it was safe to argue only while one Item *was* one
+  expensive request — which is true on YouTube and on Substack and on nothing added since. One Bluesky call
+  returns 100 posts and yields ~18 Items; a feed-bearing blog produces **zero** per-Item requests. Read per
+  Item, the rule makes the cheapest source braintrust has the slowest one it reads, purely because the word
+  *Item* is doing two jobs: a 12-month Bluesky backfill would take **102 minutes instead of ~16 seconds**, and
+  buy no politeness at all, since the requests are identical either way and only the waiting changes. Nothing
+  about YouTube's behaviour changes — the same group of calls, the same 4s between groups. See §6 for the
+  per-source figures.
 - **Dates on older YouTube items cost a second call** — because the Atom feed only dates the most recent 15.
   Without dates there are no held-then-revised Positions at all, so an undated Item is a degraded Item rather
   than a normal one. Measured during the build (#29): the watch page is 1,241,747 bytes, but the player
@@ -56,8 +83,10 @@ Three facts the build has to respect:
 - **Shorts are excluded by default** (`braintrust_sources.exclude_shorts`). Sub-five-minute videos yield a few
   hundred words of promotional copy. The duration arrives with the channel listing and again with the player
   response, so an excluded Short is recognised **before** its transcript is requested, and is written as
-  `retrieval = 'skipped_short'` — the one skip that is braintrust's own policy rather than a source's
-  decision, and therefore the one that turning the setting off undoes without a second crawl.
+  `retrieval = 'skipped_short'` — braintrust's own policy rather than a source's decision, and therefore
+  undone by turning the setting off, without a second crawl. It was the first of those and is no longer the
+  only one: [§8](#8-blogs-any-feed-best-effort) adds `skipped_not_a_post`, reopened by a `<lastmod>` moving
+  rather than by a setting, on the same rule.
 
 **No yt-dlp, and no Python in either deployment.** The research reached captions through yt-dlp and this
 document named `skip_download` as the route. Measured during #29: `POST /youtubei/v1/player` returns the
@@ -79,6 +108,31 @@ invents. This is one of the two lines
 [the consent posture](https://github.com/cgbarlow/braintrust/issues/9) enforces in code, and
 [registration](https://github.com/cgbarlow/braintrust/issues/17) refuses to make it configurable.
 
+**On a platform that declares nothing, the same line is drawn on evidence rather than on a field.** The
+allow-list was written against Substack, where every post states its audience. Read literally on a blog it
+would refuse every Ghost site including one with no members at all, so
+[#64](https://github.com/cgbarlow/braintrust/issues/64) settled where the rule's purpose actually lands:
+**Ghost enforces its own paywall at the feed as well as the page** — `content:encoded` is *empty* for a
+members-only post, not truncated — so the hard line cannot be crossed by accident and no allow-list is
+protecting it. What remains is a **completeness** problem: braintrust can store a publisher's deliberately
+public 696-word intro and treat it as a whole argument. §8 carries the detection rule and the residual risk.
+
+### The two this map adds
+
+| | Bluesky | Personal blog |
+|---|---|---|
+| **Discovery** | `app.bsky.feed.getAuthorFeed` on the public AppView — 100 posts per call, cursored | the feed the homepage declares, or the sitemap where there is none |
+| **Identity** | `<did>:<YYYY-MM-DD>` — a closed UTC day | the post URL |
+| **Publish date** | `createdAt` on each post | the page's own metadata, read on the fetch braintrust already makes |
+| **Backfill** | the same cursored call, back to `backfill_floor` | `sitemap-posts.xml` / `sitemap.xml`, dated and newest-first |
+| **Body** | comes with discovery | the feed, where there is one; otherwise the page, extracted |
+| **Audience** | always public | undeclared — inferred from gating markers, §7 |
+| **Auth** | **none.** No key, no cookies, no sign-in | none |
+
+**Bluesky is on a better footing than either source v1 shipped.** braintrust accepts a knowing terms breach to
+read YouTube captions and needs none here: the public AppView is open by design, serves 100 posts per
+unauthenticated call, and answered in 548ms with no rate-limit headers on the response at all.
+
 ---
 
 ## 2. Registration: you paste links, braintrust resolves them, a human confirms
@@ -94,6 +148,40 @@ through an AI client against an empty database.
 YouTube channel page, an `@handle`, a link to one video. braintrust normalises. `GET
 https://www.youtube.com/@Handle` returns `channel_id=UC…` in the page body, HTTP 200, case-insensitive, no bot
 gate — so the opaque `UC…` id is never something a human types or sees.
+
+**A blog resolves through the feed its homepage declares, never through a list of guessed paths.**
+[#63](https://github.com/cgbarlow/braintrust/issues/63) measured path-guessing as **wrong on three of four
+blogs**, and it produced this map's one false premise: charting recorded `agentics.org.nz` as a blog with no
+feed, and it has one — at `/blog/rss/`, carrying all 12 posts with full bodies, declared on the homepage the
+whole time, and 404ing at `/rss/` only because the site sits under a path prefix. There is no path that works
+everywhere and the near-misses are 301s back to the homepage rather than to feeds. So resolution fetches the
+homepage — which it must do anyway to identify the blog — and reads
+`<link rel="alternate" type="application/rss+xml">`. One request, no guessing, and it is the mechanism the web
+already standardised for exactly this.
+
+**braintrust refuses a bridged Bluesky account and names the blog it mirrors.**
+[#58](https://github.com/cgbarlow/braintrust/issues/58) found the duplication is total rather than partial: a
+Bridgy Fed record carries `bridgyOriginalText` holding the *entire* blog post, HTML and all, so a braintrust
+following both would hold the same words twice and the copy would not even look short. The detection is one
+self-applied moderation label matching **`bridged-from-*`**, returned by the `getProfile` call registration
+already makes, so it costs no extra request. Not the `.brid.gy` handle suffix, which catches today's bridge
+and misses tomorrow's; not `bridgyOriginalText`, which is per-record and so is only visible after braintrust
+has already followed the account. The refusal is a redirect, because the profile hands over the canonical URL:
+*"`karpathy.bearblog.dev.web.brid.gy` is a bridge of karpathy.bearblog.dev, republished by Bridgy Fed rather
+than posted by Andrej Karpathy — it calls itself "karpathy [Unofficial]". Follow the blog instead."*
+
+The justification is provenance, not efficiency, and the temptation is worth naming: `bridgyOriginalText` is
+cleaner, better-structured HTML than scraping the blog page, and it arrives through an API that is open by
+design. Following the bridge would be **easier than following the source**. That is exactly when provenance
+has to win, or braintrust's record of what someone wrote quietly becomes a record of what a bridge said they
+wrote.
+
+**braintrust never infers a mirror from content.** An account with no bridge label — a hand-rolled
+cross-poster, someone who pastes their own posts in both places — is not detected, and
+[the v1 rule](#deliberately-not-decided) applies unchanged: two Items, both counted, nothing merged. This is
+the same line held for a block and for a paywall — **braintrust acts on what a source declares, never on what
+it infers** — and its cost is stated rather than hidden: `item_count` on such a Person is genuinely inflated,
+which is why Coverage reports *items read* rather than *unique writing*.
 
 **braintrust cannot find a Person from their name.** Neither platform offers a search braintrust can use. A
 human always supplies pointers; recorded so no later session re-proposes it.
@@ -124,6 +212,13 @@ count and paywall split are exact, because `audience` and `post_date` arrive wit
 YouTube's count is extrapolated from the publish rate across the Atom feed's 15 dated entries, because an
 exact figure would mean walking the whole archive during a call that is supposed to be cheap.
 
+**The rule the label rests on, stated by [#67](https://github.com/cgbarlow/braintrust/issues/67): a count is
+`measured` only when every item in it has been placed inside the window.** Nothing weaker earns the word. This
+distinction is doing real work already — YouTube says `estimated` and was **8× wrong** for Matt Pocock — and a
+human confirming a follow is agreeing to a cost, so the label is what tells them how much to trust the number.
+The rule generalises to three different answers rather than one, and the Plan **quotes what braintrust can
+defend, names the direction of the error, and never converts an upper bound into a midpoint.**
+
 ```jsonc
 { "plan": {
     "person": "Nate B. Jones",                       // proposed; confirm or change
@@ -150,6 +245,47 @@ exact figure would mean walking the whole archive during a call that is supposed
 surface, which is the one failure mode pasting links introduces over a strict handle notation.
 **`will_skip_paywalled` is shown before anything is fetched**, so a human sees that 142 of 156 posts will not
 be read *before* agreeing rather than discovering it in Coverage afterwards.
+
+#### Three more Plan shapes, because there are three genuinely different offers
+
+Flattening them would mean picking one lie to tell twice.
+
+**Bluesky — `measured`, and the unit is days.** `getProfile` returns `postsCount` and the account's
+`createdAt` free, before anything is fetched, and [#61](https://github.com/cgbarlow/braintrust/issues/61) made
+a day the Item — so days are the honest number and they are `measured`, because the window *is* days and
+braintrust will read every closed day in it.
+
+> **emollick.bsky.social — 365 days in the window, ~1,530 posts (measured). About 16 seconds of fetching.**
+
+The post count travels alongside as the thing being summarised, because this is the source where 1,530 posts
+become ~365 model calls and a human confirming it should see both. **Posts-in-window is a labelled rate
+projection** — `postsCount / days-since-creation × window` — not folded into the `measured` claim, because it
+is a rate over the account's whole life and someone who has just started posting heavily is undercounted.
+
+**A sitemap-bearing blog — `estimated`, and this is the honest downgrade.** The sitemap gives an exact URL
+count and it is tempting to call that `measured`. It is not, twice over: it includes non-posts (the Bear Blog
+sitemap contains the homepage), and `<lastmod>` is a modification date, so **nothing in the sitemap says which
+URLs fall inside the window** — the control site in [#56](https://github.com/cgbarlow/braintrust/issues/56)
+had all 7,651 of its `<lastmod>`s inside a fortnight after a migration.
+
+> **karpathy.bearblog.dev — 15 URLs in the archive, at most 15 in the window (estimated: the sitemap dates
+> changes, not publications). About 1 minute of fetching.**
+
+*At most* rather than *about*, because the direction of the error is known — every URL is a candidate, and the
+window and the non-posts can only remove. **An upper bound braintrust can defend beats a midpoint it cannot**,
+and it is the opposite failure mode from YouTube's 8×-too-high guess, which was wrong in the same direction
+without saying so. Where the blog has a feed the Plan says fetching collapses to one request, because that is
+a different offer to agree to; a 2,213-URL feedless blog quoting **~2.5 hours** is exactly the number a human
+should see first.
+
+**A feed-only blog — `estimated`, and it says what it cannot see.** A feed is a tail — 10 entries for both
+Karpathy blogs, 20 for Substack — so it cannot price an archive it cannot enumerate.
+
+> **karpathy.github.io — 10 posts visible in the feed; the archive cannot be enumerated, so braintrust will
+> follow forward and never claim to have read all of it (estimated).**
+
+The Plan says the same thing the Persona will say. A human agreeing to this is agreeing to a permanently
+partial Corpus, and that belongs in the sentence they confirm rather than in Coverage a fortnight later.
 
 ### Defaults, and the one setting that is not one
 
@@ -199,8 +335,8 @@ everything away in one statement, so the capability exists; it is an operator ac
 
 [#12](https://github.com/cgbarlow/braintrust/issues/12)
 
-**braintrust polls both Sources once a day whether or not anyone is using it.** One schedule serves both
-Sources, not one per Source. The reason is a correctness constraint rather than a freshness preference:
+**braintrust polls every Source once a day whether or not anyone is using it.** One schedule serves them all,
+not one per Source. The reason is a correctness constraint rather than a freshness preference:
 YouTube's Atom feed holds 15 entries, roughly ten days at this channel's rate, and Items that age out lose
 their publish date — converting a free date into a ~1.3MB fetch, ~395 times over. A daily poll buys a 10×
 margin for two cheap HTTP requests.
@@ -211,7 +347,8 @@ margin for two cheap HTTP requests.
    `cursor_published_at`.
 2. **Check for a gap** — §4.
 3. **Drain the Backlog** — backfill any Source not `backfill_complete`; retrieve bodies and write Notes for
-   `pending` Items, at 4s spacing on YouTube.
+   `pending` Items, spaced [per request rather than per Item](#6-how-fast-each-source-is-read) — 4s on YouTube
+   and on a blog page, 1s on Bluesky, 250ms on a feed or sitemap page.
 4. **Rebuild** — if the Backlog is empty and anything changed since the last Compile:
    [build → gate → promote](./compiler.md#5-a-compile-must-earn-the-right-to-replace-its-predecessor).
 
@@ -364,10 +501,10 @@ become a failure the counter counts.
 
 ### What a block does
 
-- **`blocked_at` is set and the crawl for that Source stops immediately. Every other Source continues.** The
-  two Sources share nothing but a Person and they fail in opposite directions — Substack's constraint is a
-  paywall, YouTube's is a bot gate. Stopping the whole run would be a failure braintrust invented rather than
-  one a Source imposed.
+- **`blocked_at` is set and the crawl for that Source stops immediately. Every other Source continues.**
+  Sources share nothing but a Person and they fail in unrelated directions — Substack's constraint is a
+  paywall, YouTube's is a bot gate, a personal blog's is somebody's own hosting. Stopping the whole run would
+  be a failure braintrust invented rather than one a Source imposed.
 - **`blocked_at` suppresses that Source's Backlog** — all three row-states above. This is what stops a Source
   that can never finish its backfill from sitting in a permanent repair loop. `backfill_complete` stays
   `false`, because the Corpus genuinely *is* incomplete; **the flag keeps telling the truth and merely stops
@@ -441,6 +578,343 @@ during the very first backfill, which is exactly when nobody has been told anyth
 
 ---
 
+## 6. How fast each Source is read
+
+[#66](https://github.com/cgbarlow/braintrust/issues/66)
+
+**braintrust spaces the requests it makes, and an Item that costs no request costs no wait.** This is what the
+per-Item rule in §1 always meant; YouTube simply never made the distinction visible, because there one Item
+*is* one expensive request.
+
+| Source | Spacing | Per |
+|---|---|---|
+| **Bluesky** | **1s** | request — one call is 100 posts |
+| **YouTube** | **4s** | Item — one Item is one group of back-to-back calls |
+| **Blog page fetch** | **4s** | request, unchanged from the YouTube figure |
+| **Feed or sitemap poll** | **250ms** | page, matching the existing `PAGE_PAUSE_MS` |
+
+**Bluesky at 1s** because the public AppView is open by design, is served from a CDN, answered in 548ms, and
+returns no rate-limit headers to respect. One request a second against a service built to be read publicly is
+not a load anyone will notice. It is deliberately **not** zero: braintrust's posture is *documented, not
+disguised*, and a source with no stated limit gets courtesy rather than the benefit of the doubt. **Absence of
+a stated limit is not permission**, and braintrust does not rely on being unnoticed.
+
+**Blog pages keep 4s** for the opposite reason. A personal blog is somebody's own hosting — Bear Blog is
+shared, the reference Ghost site is a single Fly instance — and it is the one place in braintrust where a
+fetch lands on infrastructure with no capacity story at all. Erring slow costs braintrust nothing that
+matters; erring fast is rude to a person rather than to a platform.
+
+What that buys, in wall-clock, against real accounts:
+
+```
+Bluesky backfill, 12 months of emollick     ~1,530 posts → 16 requests → ~16s
+  (the same corpus under the old per-Item rule: 1,530 × 4s = 102 minutes)
+Blog backfill, karpathy.bearblog.dev        the feed carries every body → ONE request
+Blog backfill, 404media (2,213 candidates)  892KB sitemap + 2,213 × 4s ≈ 2.5 hours
+Daily poll, feed-bearing blog               1 request
+Daily poll, sitemap-only blog               1 request, up to 892KB
+Daily poll, Bluesky                         1 request (one day ≈ 4 posts)
+```
+
+**1s and 4s are still chosen numbers**, exactly like the 4s they replace. What changed is that each is now
+attached to something that was measured — 548ms and no rate-limit headers for one, somebody's personal hosting
+for the other.
+
+*Rejected: spacing by response size*, so an 892KB sitemap waits longer than a 4KB one. Plausible, and it
+optimises the single request braintrust makes per day — a rule with nothing to do.
+
+---
+
+## 7. Bluesky: a day of posts is the Item
+
+[#53](https://github.com/cgbarlow/braintrust/issues/53),
+[#61](https://github.com/cgbarlow/braintrust/issues/61)
+
+**One person's posts from a single calendar day become one Item.** Measured against `emollick.bsky.social` —
+100 posts in 17 days, 3,359 words — that turns roughly **2,100 Items a year into ~365 model calls**, which is
+what makes Bluesky affordable at all. The comparison that decided it: Stuart Winter-Tear's entire Substack is
+36,700 words across 23 Items, so one post per Item would have cost ~2,100 model calls for under twice the
+words of a 23-essay corpus. Read-once economics were built for ~4,000-word videos and invert completely at a
+34-word skeet.
+
+A day is also the smallest unit with a plausible through-line: someone posting six times in a day is usually
+circling one thing, so there is something for the extractor to find.
+
+**Accepted cost:** two genuinely unrelated posts on the same day are read as though connected, and the day
+boundary will sometimes cut a thought in half.
+
+### braintrust never batches the current UTC day
+
+**A day is eligible when `now` is past its end** — full stop, not "past its end plus a margin", because the
+boundary is exact and a margin would be a guess dressed as caution. That one rule removes the problem rather
+than mitigating it: read-once assumes Items are immutable, and this makes the assumption **true by
+construction** instead of true-in-practice. Nothing needs to detect a changed day, because a day that can
+still change is not yet an Item.
+
+**Whose day: UTC.** braintrust does not know where anyone lives and `createdAt` is UTC, so a UTC day is the
+only boundary it can compute and a reader can check. A US-evening poster gets their evening split across two
+Items, which is a real cost and the smaller one — the alternative is inferring a timezone from posting times,
+which is the class of guess braintrust refuses everywhere else, and getting it wrong would move the boundary
+silently rather than visibly.
+
+**The external id is the whole idempotency story: `<did>:<YYYY-MM-DD>`.** Deterministic, derived from data
+both paths already hold, and it is what makes the backfill and the daily poll safe to overlap — they reach the
+same closed day, compute the same key, and write **one row**. The same property Substack gets from its slug
+and YouTube from its video id, obtained here by construction rather than by luck. The `did` rather than the
+handle, because Bluesky handles are rebindable domains and a person who changes theirs must not acquire a
+second copy of their own archive.
+
+**A day that later loses a post: nothing happens.** braintrust does not re-walk closed days and the Note is
+not re-read. This is the existing posture applied rather than a special case waved through — the Corpus is a
+record of what was published, as read on the day it was read, and a deleted Substack post behaves the same
+way. Chasing deletions would mean re-fetching every day of every Bluesky Source forever to find out whether
+anything vanished. The honest limit, stated: **a Position may quote a post that has since been deleted**, and
+the citation resolves to a URL that 404s — visible to the reader rather than hidden from them.
+
+**Latency, against the actual cron: up to ~33 hours.** The job runs 3am NZST = 15:00 UTC the previous day, so
+at cron time only *yesterday* UTC is closed, and a post written at 00:30 UTC waits for the following run.
+braintrust is not a feed reader; its output is a Persona recompiled daily whose whole claim is that it was
+built from things the person actually finished saying. A day of lag on the newest post costs nothing
+braintrust promises.
+
+### What braintrust asks a day of posts
+
+**The same three questions it asks an essay — claims, argument, assumptions — with no new prompt.** The
+extractor prompt already licenses the honest empty answer (*"if the item genuinely asserts nothing … return an
+empty claims array and say so in argument"*), which was written for a different case and fits this one. A day
+of remarks with no through-line should come back saying so.
+
+*Rejected: a separate short-form prompt.* Better prose per Item, and it would put two Note generations under
+one Person — the compiler declares a **single** `extractor` version per Compile, and that assumption is
+load-bearing. *Rejected: claims only.* Cheap and honest, but Bluesky would then contribute nothing to
+Reasoning, so someone who mostly posts short-form gets a Persona that can quote them and not think like them.
+
+**The risk to watch:** some days will produce a strained argument rather than an honest empty one. Only real
+output tells us how often, and the existing signal is the drop rate for unquotable claims.
+
+### A citation points at the individual post, not the day
+
+**The day is stored as one body with each post's character span recorded**; when a quote is verified,
+braintrust resolves which span it fell inside and cites that post's URL and timestamp. This is the mechanism
+braintrust already uses rather than a new one — the model is never asked for a chunk id or a timestamp, both
+are read off the rows once the quote has been located. Citations from Bluesky stay exactly as checkable as
+citations from Substack, which matters because *dated and cited back to what they actually published* is the
+product.
+
+**A day with no posts produces no Item**, so there is no empty row to explain. **A one-post day is an Item of
+~34 words** and is not `skipped_short` — that state is braintrust's own policy about promotional content and
+Coverage says so to a reader in those words, while a one-post day is real writing.
+
+---
+
+## 8. Blogs: any feed, best effort
+
+[#63](https://github.com/cgbarlow/braintrust/issues/63),
+[#54](https://github.com/cgbarlow/braintrust/issues/54),
+[#55](https://github.com/cgbarlow/braintrust/issues/55),
+[#56](https://github.com/cgbarlow/braintrust/issues/56),
+[#64](https://github.com/cgbarlow/braintrust/issues/64),
+[#62](https://github.com/cgbarlow/braintrust/issues/62)
+
+**You paste any blog URL and braintrust does its best**, which is how following already works. There is no
+first-class platform here — see *braintrust does not branch on Ghost*, below.
+
+### Discovery: the declared feed, then the sitemap, then a refusal
+
+**`discovery_url` stays one column and stays a feed.** For every blog measured there was nothing to decide:
+each declares a feed, and where a feed exists it carries the whole body, so discovery, dating and body all
+come from one document.
+
+**For a blog that genuinely has none, the sitemap becomes the discovery URL.** The objection was that
+discovery and archive are different jobs — discovery is *what is new* and a sitemap is a full list with no
+notion of new. That does not survive the measurement: `sitemap-posts.xml` carries `<lastmod>` on **every URL**
+(2,213 of 2,213; 7,651 of 7,651) and is **ordered newest-first by it**, so a walk from the top that stops at
+the first URL already held with an unchanged `lastmod` is precisely what reading a feed does. It needs no new
+concept, because `lastmod` is already the change signal (below).
+
+**Measured cost, and it is the real one:** a large sitemap is **892KB** against a feed of a few tens of KB,
+and it grows rather than shrinks as the blog ages. **A feedless blog costs roughly a megabyte a day to poll,
+forever.** Affordable for a personal tool, not free, and recorded as the price of following a blog that
+publishes no feed. Such a blog also gets no body from discovery, so every post costs a page fetch and goes
+through the extractor below.
+
+**Neither declared feed nor sitemap → braintrust refuses and says what it tried**, rather than following
+something that cannot tell it what is new.
+
+**Index-page crawling stays out.** It would yield an archive from almost any blog, and it is general web
+crawling — a different posture toward the sites braintrust visits, not just more code. braintrust reads feeds
+and known catalogues.
+
+### The archive walk: the sitemap enumerates, the page dates itself
+
+**A publish date comes from the page's own metadata** — `<time datetime>`, `article:published_time`, JSON-LD
+`datePublished` — read on the fetch braintrust already makes. No extra request, and it mirrors YouTube exactly,
+where an Item the channel walk found undated gets its date from the per-item fetch that follows.
+
+***`<lastmod>` is never read as a publish date.*** Every sitemap measured carries it on every URL, and it is a
+*modification* date: on the reference site a post published `2026-05-27` carries a `<lastmod>` of
+`2026-06-05`, and on the control site **all 7,651 posts carry one inside the same two weeks** because a
+migration re-saved the archive. Using it would silently misdate old posts that were edited recently, and that
+is not cosmetic — `held_since` is derived from Item dates and revision detection **refuses to judge a pair it
+cannot place in time**, so wrong dates do not produce missing revisions, they produce revisions pointing the
+wrong way. A Persona appearing to change its mind backwards.
+
+**Accepted cost:** a blog carrying none of that metadata leaves its Items undated. `published_at` is already
+nullable and the compiler already declines to judge undated pairs, so this degrades rather than breaks.
+
+**Telling a post from a page: fetch it and let the content decide.** No URL heuristics — Bear Blog's sitemap
+includes the homepage, Ghost's posts-only sitemap does not, and nothing in a URL reliably distinguishes them.
+**A candidate is a post only if it yields a publish date and a real body.** One rule beats three, and it
+matches the posture braintrust holds everywhere else: a thing it cannot verify is dropped rather than stored.
+Accepted cost: one wasted fetch per about-page and tag-page, paid once.
+
+*Rejected: learning the URL pattern from the feed.* Cheaper and genuinely clever — the feed says what a post
+looks like, the sitemap says how many there are — but it fails exactly where it is needed, on the blog with no
+feed.
+
+**A blog with a feed and no archive route is followed anyway, and never claims `backfill_complete`.**
+`karpathy.github.io` serves `feed.xml` and 404s on `sitemap.xml`. braintrust ingests what the feed carries and
+leaves the flag `false` permanently — which is already the flag Coverage reads, so the Persona states plainly
+that it is built on part of the archive rather than all of it. **No new machinery: the honesty already
+exists.** The accepted cost is stated rather than engineered around: that flag also drives the repair walk, so
+braintrust re-checks for a sitemap on every run — **one request a day, forever**, the same shape of answer as
+a permanently blocked Source. *Rejected: refusing to follow it.* Karpathy's older blog is real, readable,
+valuable writing, and declining all of it over a missing XML file is a worse answer than reading some of it
+and saying so.
+
+### The body: the feed is the body, the page is the fallback
+
+**braintrust stores the longer of the feed body and the page extraction.** Both are in hand for free, since
+the page is fetched regardless for its date, and the two failure modes are opposite and each covers the other:
+a truncated feed loses to the page, an over-capturing extraction loses to the feed. The agreement figure is
+recorded alongside the Item.
+
+That safeguard was validated by the site it was measured on. The reference Ghost blog's feed came back longer
+than the extraction on all four posts (111 vs 59 words, 207 vs 162, 88 vs 64, 125 vs 93), because its
+recent-posts widget repeats real post headings on every page and boilerplate removal over-stripped them.
+
+**The extractor is: densest container, then cross-page boilerplate removal.** Container selection alone is not
+enough and the Ghost site proves it — selection found `<section class="gh-content">` on the two long posts and
+fell through to `<div class="gh-viewport">`, the entire page chrome, on all four short ones. Removing lines
+that repeat across the blog's other pages rescued every one of them and was a **no-op on all eleven pages
+where selection had already worked**. It is safe to apply always, and it needs no judgement about what the
+chrome *is*.
+
+Two costs, named. **Boilerplate removal needs more than one page from the same blog** — the backfill walks the
+sitemap in a batch, so the set is computed across that batch and a single later post reuses it; it is
+recomputed on each backfill, which is also how a redesign gets picked up. And **a post's own title can be
+stripped from its own body**, which is harmless because the title is a column of its own rather than something
+recovered from prose.
+
+***Text-to-markup density is rejected as a confidence signal.*** It measures post length, not extraction
+quality: a real short Ghost post scored 0.097, a real short Bear Blog post 0.204, and the successfully
+extracted Ghost posts 0.366 and 0.404. There is no threshold separating *failed extraction* from *short post*,
+and using it would drop real posts for being brief.
+
+**There is no "unconfident but stored" state, because nothing survives that could create one.** The feared
+outcome — a Persona built partly from nav menus — is prevented by a **mechanism rather than a judgement**:
+cross-page repetition strips the chrome without deciding what chrome is, and what remains is either enough
+prose to read or falls **below the short-item floor that already exists**. The Bear Blog homepage sits in the
+sitemap, will be fetched, yields 30 words, and goes out that way.
+
+### braintrust does not branch on Ghost
+
+**The case for first-class Ghost treatment did not survive measurement, and that is a good outcome rather than
+a loss.** Ghost was worth special-casing for its markup and its paywall field, and it has neither.
+
+- **The generator tag does not identify it** — present on 3 of 4 sites, absent on a real Ghost blog whose
+  theme does not emit it. The sitemap quartet is not a fallback fingerprint either: the control site serves the
+  entire Ghost sitemap shape **and is not Ghost**, being a former Ghost blog that kept its URLs after
+  migrating to Astro.
+- **Custom themes break the markup assumptions in the worst possible pattern.** `gh-content` appeared on 2 of
+  4, and **both misses were the heavily customised themes** — precisely the population special-casing would
+  exist to serve. It works where it is least needed.
+- **The Content API is never usable without the owner's key.** 403 self-hosted, 302 away from the API on Ghost
+  Pro. A key is issued from the site's own admin, so it exists only for a blog braintrust's user owns.
+
+**Recognition earns exactly one thing.** `GET /members/api/site/` is unauthenticated, one request, and returns
+Ghost JSON carrying an exact `version` — it answered correctly on all three real Ghost sites and returned an
+HTML page on the impostor. That version is worth recording on the Source row as provenance for a human reading
+a Persona's basis, and worth nothing to the ingest path. Everything Ghost actually offers — a complete dated
+archive, a per-page publish date — it offers through `sitemap-posts.xml` and `article:published_time`, and
+**both are things any blog may have**, already read by the generic path above.
+
+### A gated post is `skipped_paywall`, and a partial is never stored
+
+**No new state. `retrieved` does not split, and there is no `partial`.** A partial has only two possible
+fates, and one of them is already a state: read it, and braintrust extracts an argument from an opening and
+cites a Position to a post the reader cannot finish; do not read it, and `skipped_paywall` is what it is —
+whose Coverage prose is already exactly right. A `partial` state would put a number in Coverage a reader
+cannot act on: *"3 items were read in part"* invites *"how much?"*, which braintrust cannot answer, because it
+does not know how long the post it could not see was.
+
+**The same answer for Substack and Ghost — only the moment differs.** Substack declares `audience` in the
+catalogue, so braintrust refuses **before** spending a fetch. Ghost declares nothing, so braintrust fetches,
+finds a marker, and records `skipped_paywall` **after**, spending one request it cannot avoid. That request is
+the entire cost of Ghost lacking the field.
+
+**A post is `skipped_paywall` when *any* of:**
+
+1. its feed `content:encoded` is empty while the item is dated and listed — the fully-gated case, measured at
+   **0 words** on a real publication's public RSS;
+2. `gh-post-upgrade-cta` appears in the page's **rendered** markup, outside `<style>` and `<script>`;
+3. the page carries members CTA copy — *"This post is for …"* — in the rendered markup.
+
+Any-of rather than all-of, because the failure that matters is storing a partial and each marker misses a
+different theme. Marker 2 fires on the default-family theme and not the heavily customised one; marker 3 fired
+on both and is genuinely per-post rather than site furniture, appearing on three of four articles on the
+custom-theme site. **Marker 3 is the weak one** — editable, translatable — and it is there to catch what 1 and
+2 miss rather than to be trusted alone. Ghost emits no schema.org `isAccessibleForFree`, so there is no
+standards-based signal to prefer.
+
+*This corrects an earlier finding.* [#56](https://github.com/cgbarlow/braintrust/issues/56) reported
+`gh-post-upgrade-cta` on *"every post measured, free and paid alike"* and concluded a gated Ghost post was
+undetectable. That was a counting error — the grep matched the class name inside the theme's `<style>` block,
+which every page carries. Against rendered markup the marker separates cleanly.
+
+**The residual risk, stated rather than papered over:** a custom theme that rewords or translates its members
+CTA, on a post with a free intro long enough to clear the body floor, escapes all three markers, and braintrust
+stores public words as a whole post. This is **not a consent breach** — the publisher gave those words away —
+and it is bounded to blogs that both sell subscriptions and run a rewritten theme.
+
+*Rejected: length as a signal.* A 696-word gated intro and a 696-word real short post are indistinguishable by
+length. *Rejected: treating every Ghost blog as paid*, which is where the allow-list leads if read literally —
+it would refuse a site with no members at all.
+
+### A URL that turns out not to be a post
+
+**No date → `skipped_not_a_post`.** braintrust looked, and this is not an article: the homepage, the about
+page, a tag index. **Dated but under the body floor → `skipped_short`**, a real post that is very brief. This
+splits [the post test](#the-archive-walk-the-sitemap-enumerates-the-page-dates-itself) across two states, and
+the split is not cosmetic — Coverage says different things to a reader. *"3 URLs in the archive turned out not
+to be posts"* is braintrust doing its job; *"3 items could not be retrieved at all"*, which `failed` renders,
+would be a lie about a source that answered perfectly.
+
+Both follow the rule the vocabulary already draws: **`failed` means the source declined or could not answer,
+and everything braintrust *decided* is `skipped_<reason>` — a row of its own, carrying what would have to
+change, reopened when it changes.**
+
+**What reopens it: `<lastmod>` moving.** The row records the `lastmod` the sitemap carried when braintrust
+decided, and the next walk reopens it when the sitemap shows a newer one. This is `lastmod` used for the one
+thing it is honestly a measurement of — *this URL changed* — and it leaves the refusal to read it as a
+*publish* date completely intact. It is present on every URL of every sitemap tested, so the trigger is
+universally available wherever a sitemap is. A stub filled in next month becomes a post next month, at the
+cost of one fetch, **with no polling loop and no re-examination interval anyone had to choose**.
+
+**Where there is no sitemap there is no trigger, and the row stays skipped** — consistent with a feed-only
+blog never claiming `backfill_complete`. Such a blog knows it is behind and says so.
+
+*Rejected: leaving the row absent.* The URL would be rediscovered on every walk and refetched forever, which
+is the cost this rule exists to stop. *Rejected: a re-examination interval.* A number with no measurement
+behind it, when `lastmod` answers the question exactly. *Rejected: reusing `skipped_short` for both.* It reads
+as one state to a reader and has the wrong reopen trigger — `exclude_shorts` is a setting, and no setting
+makes an about page an essay.
+
+**Accepted cost:** a page that gains a date without gaining a `lastmod` is never reopened. Not observed on any
+sitemap measured; a blog that updates a page without stamping it is not one braintrust can track.
+
+---
+
 ## Accepted costs
 
 | Cost | Where it comes from |
@@ -450,6 +924,13 @@ during the very first backfill, which is exactly when nobody has been told anyth
 | A `retrieval = 'failed'` Item stays failed. Coverage reports it; nothing retries it. | §3 |
 | Two Personas with different windows have Coverage numbers that are not comparable. | §2 |
 | 93% of the Substack Corpus is never read, by design. Coverage names it. | §1 |
+| **An unlabelled cross-poster is not detected**, so `item_count` on such a Person is genuinely inflated. Coverage reports items read, never unique writing. | §2 |
+| **Bluesky's newest post waits up to ~33 hours** to be read, because a day is not an Item until it has closed. | §7 |
+| **A Position may quote a Bluesky post that has since been deleted.** The citation resolves to a URL that 404s — visible rather than hidden. | §7 |
+| **A blog with no feed costs roughly a megabyte a day to poll, forever**, and a 2,213-URL one is a ~2.5-hour first backfill. | §8 |
+| **One wasted fetch per non-post and per gated Ghost post.** The price of not guessing from URL shape, and of Ghost having no `audience` field. | §8 |
+| **A rewritten members CTA on a long free intro escapes all three gating markers**, and braintrust stores public words as a whole post. Not a consent breach; bounded to blogs that both sell subscriptions and run a custom theme. | §8 |
+| **A blog carrying no date metadata leaves its Items undated**, which costs it revision detection entirely. | §8 |
 
 ## Deliberately not decided
 
@@ -460,5 +941,11 @@ during the very first backfill, which is exactly when nobody has been told anyth
   update covers the impatient case.
 - What happens if a Source's handle changes. The `UC…` id is stable so YouTube survives it; Substack is
   untested. Nothing in the schema keys on the handle.
-- **Whether the two Sources are ever reconciled.** A free video and a paid post can cover the same subject on
-  the same day. v1 answers *two Items* — a Position may cite both, and nothing tries to merge them.
+- **Whether Sources are ever reconciled.** A free video and a paid post can cover the same subject on the same
+  day. v1 answers *two Items* — a Position may cite both, and nothing tries to merge them. **Unchanged by
+  [#58](https://github.com/cgbarlow/braintrust/issues/58):** a bridged account never becomes two Items,
+  because it never becomes one, so a refusal at registration is not a dedup rule and this stays open.
+- **The over-fetch factor retrieval uses to feed its Item collapse** — see
+  [`compiler.md` §7](./compiler.md#7-embedding-one-model-one-space-everywhere).
+- **Whether a bridged account that stops self-labelling is ever caught.** It would be ingested as a person.
+  Same shape as every other declaration braintrust trusts.
