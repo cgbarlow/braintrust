@@ -66,6 +66,73 @@ describe('schema.sql against real Postgres', { skip }, () => {
     return rows[0]!.id;
   }
 
+  /**
+   * **Idempotent means idempotent against a database that already exists**, which is the
+   * only kind anybody re-pastes this file into. Applying it twice to a fresh database — the
+   * check above — proves nothing about the case that matters: `create table if not exists`
+   * leaves an old table alone, so every column and every constraint value added since must
+   * arrive by `alter`, and a `comment on` a column that has not arrived yet is a hard error
+   * rather than a skipped notice.
+   *
+   * Found by a real paste into a real database, which failed on two counts at once: a
+   * comment ordered before its own alter, and two Position columns that had no alter at all
+   * and therefore never reached a deployed database.
+   *
+   * The old shape is reconstructed rather than read from git, so the test says what it
+   * depends on instead of depending on history staying reachable.
+   */
+  it('upgrades a database that predates every column added since', async () => {
+    const sql = await readFile(new URL('../schema.sql', import.meta.url), 'utf8');
+
+    const added: [string, string][] = [
+      ['braintrust_items', 'lastmod'],
+      ['braintrust_positions', 'held_until'],
+      ['braintrust_positions', 'days_spanned'],
+      ['braintrust_position_citations', 'post_url'],
+      ['braintrust_position_citations', 'posted_at'],
+      ['braintrust_compiles', 'extractor'],
+    ];
+
+    // Wind the database back to before any of it existed, constraints included.
+    for (const [table, column] of added) {
+      await db.query(`alter table ${table} drop column if exists ${column}`);
+    }
+    await db.query(
+      `alter table braintrust_sources drop constraint if exists braintrust_sources_platform_check;
+       alter table braintrust_sources add constraint braintrust_sources_platform_check
+         check (platform in ('substack', 'youtube'));
+       alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
+       alter table braintrust_items add constraint braintrust_items_retrieval_check
+         check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'failed'));`,
+    );
+
+    // The paste, exactly as a user makes it.
+    await db.query(sql);
+
+    const { rows } = await db.query<{ table_name: string; column_name: string }>(
+      `select table_name, column_name from information_schema.columns
+        where table_schema = 'public' and (table_name, column_name) in (${added
+          .map((_, index) => `($${index * 2 + 1}, $${index * 2 + 2})`)
+          .join(', ')})`,
+      added.flat(),
+    );
+    assert.equal(rows.length, added.length, 'every column added since has to reach an old database');
+
+    // And the constraints let the newer values through, which is the other half of it.
+    const { rows: platforms } = await db.query<{ check: string }>(
+      `select pg_get_constraintdef(oid) as check from pg_constraint
+        where conname = 'braintrust_sources_platform_check'`,
+    );
+    assert.match(platforms[0]!.check, /bluesky/);
+    assert.match(platforms[0]!.check, /blog/);
+
+    const { rows: retrievals } = await db.query<{ check: string }>(
+      `select pg_get_constraintdef(oid) as check from pg_constraint
+        where conname = 'braintrust_items_retrieval_check'`,
+    );
+    assert.match(retrievals[0]!.check, /skipped_not_a_post/);
+  });
+
   it('creates every table the design specifies, with RLS enabled on each', async () => {
     const { rows } = await db.query<{ tablename: string; rowsecurity: boolean }>(
       `select tablename, rowsecurity from pg_tables

@@ -112,12 +112,6 @@ comment on column braintrust_items.retrieval is
   'undone by widening window_months, which is what makes the backfill window a setting '
   'rather than a one-way door; skipped_not_a_post is undone by the sitemap''s lastmod moving.';
 
-comment on column braintrust_items.lastmod is
-  'The sitemap''s <lastmod> as it stood when braintrust decided this URL was not a post. '
-  'Never read as a publish date — it is a modification date, and misdating an item makes '
-  'revisions point backwards. Its one honest use is "this URL changed", which is exactly '
-  'the question of whether a stub has become a post.';
-
 -- `create table if not exists` leaves an existing table alone, so a database created
 -- before skipped_short existed would reject the value. Re-stating the constraint is
 -- the one honest way to add a value without a migration framework, and it is
@@ -128,7 +122,18 @@ alter table braintrust_items add constraint braintrust_items_retrieval_check
                        'skipped_window', 'skipped_not_a_post', 'failed'));
 
 -- And the column that state's reopen trigger reads, for the same reason.
+--
+-- **The alter comes before the comment, and that ordering is load-bearing.** A comment
+-- on a column an already-deployed database does not have yet is a hard error, so a file
+-- that commented first would only be idempotent against the fresh databases that never
+-- needed the alter in the first place. Found by a real paste into a real database.
 alter table braintrust_items add column if not exists lastmod timestamptz;
+
+comment on column braintrust_items.lastmod is
+  'The sitemap''s <lastmod> as it stood when braintrust decided this URL was not a post. '
+  'Never read as a publish date — it is a modification date, and misdating an item makes '
+  'revisions point backwards. Its one honest use is "this URL changed", which is exactly '
+  'the question of whether a stub has become a post.';
 
 create index if not exists braintrust_items_source_published_idx
   on braintrust_items (source_id, published_at desc);
@@ -256,6 +261,13 @@ create table if not exists braintrust_positions (
   item_count  int not null,
   unique (compile_id, slug)
 );
+
+-- A position reports its span, not only its beginning. Both are derived from the
+-- citations at every compile exactly as held_since is, so nothing here is carried
+-- forward — but an already-deployed database still has to be given the columns, and
+-- without these two the compiler's insert fails on a database that predates them.
+alter table braintrust_positions add column if not exists held_until date;
+alter table braintrust_positions add column if not exists days_spanned int;
 
 comment on column braintrust_positions.held_since is
   'Recomputed every compile. A backfill that finds older evidence moves it earlier.';
