@@ -665,6 +665,82 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     assert.equal(foreign, 0);
   });
 
+  /** One Position over every claim, so its span is the span of the whole corpus. */
+  const together = (claims: string[]) => [
+    { slug: 'the-constraint-is-not-speed', statement: 'The constraint is never speed.', claims },
+  ];
+
+  it('grades a position by the span of its evidence, and serves the span', async () => {
+    // A fifth item, because `high` starts at five distinct Items — and four months of
+    // them, because the whole question is whether it was said again later.
+    await addItem('post-4', body(4), '2025-05-01');
+    await compile({ synthesiser: fakeSynthesiser({ positionsFor: together }) });
+
+    const { rows } = await db.query<{
+      confidence: string;
+      item_count: number;
+      held_since: string;
+      held_until: string;
+      days_spanned: number;
+    }>(
+      `select confidence, item_count, held_since::text as held_since,
+              held_until::text as held_until, days_spanned
+         from braintrust_positions where compile_id = $1`,
+      [(await currentCompileId())!],
+    );
+
+    const position = rows[0]!;
+    assert.equal(position.item_count, 5);
+    assert.equal(position.confidence, 'high');
+    assert.equal(position.held_since, '2025-01-01');
+    assert.equal(position.held_until, '2025-05-01');
+    assert.equal(position.days_spanned, 120);
+  });
+
+  it('caps a burst at moderate, with the numbers it used in the answer', async () => {
+    await addItem('post-4', body(4), '2025-05-01');
+    // The same five Items and the same five claims, moved into one week. Nothing about
+    // the evidence changed except when it was said — which is the entire claim.
+    await db.query(
+      `update braintrust_items set published_at = date '2025-05-01' + (
+         substring(external_id from 6)::int
+       ) where external_id like 'post-%'`,
+    );
+    await compile({ synthesiser: fakeSynthesiser({ positionsFor: together }) });
+
+    const { rows } = await db.query<{
+      confidence: string;
+      item_count: number;
+      days_spanned: number;
+    }>(
+      `select confidence, item_count, days_spanned
+         from braintrust_positions where compile_id = $1`,
+      [(await currentCompileId())!],
+    );
+
+    const position = rows[0]!;
+    // Five separate pieces of work, still counted as five — the cap is a ceiling, not a
+    // retune, and `item_count` stays the denominator a reader judges it on.
+    assert.equal(position.item_count, 5);
+    assert.equal(position.days_spanned, 4);
+    assert.equal(position.confidence, 'moderate');
+  });
+
+  it('cannot cap a position it cannot date, and grades it on the count alone', async () => {
+    await addItem('post-4', body(4), '2025-05-01');
+    await db.query(`update braintrust_items set published_at = null where external_id like 'post-%'`);
+    await compile({ synthesiser: fakeSynthesiser({ positionsFor: together }) });
+
+    const { rows } = await db.query<{ confidence: string; days_spanned: number | null }>(
+      `select confidence, days_spanned from braintrust_positions where compile_id = $1`,
+      [(await currentCompileId())!],
+    );
+
+    // braintrust does not penalise what it cannot measure; it declines to claim it.
+    assert.equal(rows[0]!.days_spanned, null);
+    assert.equal(rows[0]!.confidence, 'high');
+  });
+
   it('drops a position it cannot cite rather than publishing an uncited one', async () => {
     const report = await compile({
       synthesiser: fakeSynthesiser({

@@ -474,14 +474,17 @@ export async function writePositions(
     for (const position of positions) {
       const { rows } = await tx.query<{ id: string }>(
         `insert into braintrust_positions
-           (compile_id, slug, statement, held_since, basis, confidence, item_count)
-         values ($1, $2, $3, $4, 'measured', $5, $6)
+           (compile_id, slug, statement, held_since, held_until, days_spanned, basis,
+            confidence, item_count)
+         values ($1, $2, $3, $4, $5, $6, 'measured', $7, $8)
          returning id`,
         [
           compileId,
           position.slug,
           position.statement,
           position.held_since,
+          position.held_until,
+          position.days_spanned,
           position.confidence,
           position.item_count,
         ],

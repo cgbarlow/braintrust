@@ -137,6 +137,13 @@ export type FoundPosition = {
   slug: string;
   statement: string;
   held_since: string | null;
+  /**
+   * The span, not only the beginning. `high` across three years reads differently from
+   * `high` across five days, and without these a client could not tell them apart — which
+   * is exactly what a grade that never filters anything is for.
+   */
+  held_until: string | null;
+  days_spanned: number | null;
   basis: string;
   confidence: string;
   item_count: number;
@@ -299,6 +306,8 @@ type PositionRow = {
   slug: string;
   statement: string;
   held_since: string | null;
+  held_until: string | null;
+  days_spanned: number | null;
   basis: string;
   confidence: string;
   item_count: number;
@@ -345,14 +354,16 @@ async function matchingPositions(
                  from hits group by item_id
                 order by distance
                 limit ${MATCH_ITEMS})
-     select p.id, p.slug, p.statement, p.held_since::text as held_since, p.basis,
+     select p.id, p.slug, p.statement, p.held_since::text as held_since,
+            p.held_until::text as held_until, p.days_spanned, p.basis,
             p.confidence, p.item_count::text as item_count,
             min(items.distance) as distance
        from braintrust_positions p
        join braintrust_position_citations pc on pc.position_id = p.id
        join items on items.item_id = pc.item_id
       where p.compile_id = $1
-      group by p.id, p.slug, p.statement, p.held_since, p.basis, p.confidence, p.item_count
+      group by p.id, p.slug, p.statement, p.held_since, p.held_until, p.days_spanned,
+               p.basis, p.confidence, p.item_count
       order by distance asc, p.item_count desc, p.slug`,
     [compileId, vector, search.model, search.since, search.until],
   );
@@ -423,6 +434,8 @@ async function withEvidence(
       slug: row.slug,
       statement: row.statement,
       held_since: row.held_since,
+      held_until: row.held_until,
+      days_spanned: row.days_spanned === null ? null : Number(row.days_spanned),
       basis: row.basis,
       confidence: row.confidence,
       item_count: row.item_count,

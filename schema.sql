@@ -225,6 +225,8 @@ create table if not exists braintrust_positions (
   slug        text not null,
   statement   text not null,
   held_since  date,
+  held_until  date,
+  days_spanned int,
   basis       text not null default 'measured' check (basis in ('measured', 'inferred')),
   confidence  text not null check (confidence in ('high', 'moderate', 'low')),
   item_count  int not null,
@@ -233,6 +235,11 @@ create table if not exists braintrust_positions (
 
 comment on column braintrust_positions.held_since is
   'Recomputed every compile. A backfill that finds older evidence moves it earlier.';
+
+comment on column braintrust_positions.days_spanned is
+  'held_until minus held_since. Confidence is capped at moderate when it is a week or '
+  'less: five pieces of work in one week are one occasion wearing five dates. Null when '
+  'every citation is undated, and a null is never capped.';
 
 comment on column braintrust_positions.item_count is
   'The denominator. A position resting on one video should say so.';

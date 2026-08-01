@@ -353,7 +353,7 @@ in the extractor's shape reached the gate as *"beliefs carried nothing to serve"
 looking at the Corpus instead of at the endpoint.
 
 **Synthesis is versioned separately from measurement.** `compiler_version` is
-`0.1.0+measured-2.core-1.positions-1.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
+`0.1.0+measured-2.core-1.positions-2.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
 prose, and the prompt that grouped the Positions. Three versions rather than one because they change for
 different reasons, and all of them are cheap in a way bumping `notes-1` is not: they re-read Notes that
 already exist rather than re-reading the Corpus.
@@ -711,10 +711,12 @@ embedding cost.
 - Whether a persistently rejected Compile is ever surfaced to a human. Still no in v1.
 - **How much thinness to surface.** Both prototypes keep it visible; `item_count` and `confidence` travel with
   every Position and the client decides what one mention is worth.
-- **The clustering prompt, the per-call bound, and the confidence thresholds.** Version `positions-1` asks for
+- **The clustering prompt, the per-call bound, and the confidence thresholds.** Version `positions-2` asks for
   at most 24 Positions per call and grades at 5 and 2 Items — **starting points, not findings**, with the same
   status as `notes-1`, `measured-1` and `core-1`. Tuning any of them is a free rebuild. **The 7-day burst
   window has the same status**, and unlike the other two it is visible in the served data as `days_spanned`.
+  The version moved from `positions-1` when the burst cap landed, because a grade that now reads dates says
+  something different about the same claims, and a Persona has to be able to say which rule graded it.
 - **`VOICE_MIN_WORDS`, built at 300.** A judgement rather than a finding, chosen to separate a batched
   short-form day (~198 words) from the shortest real essay measured (492). It travels in `measured_over` and
   in `compiler_version`, so changing it rebuilds every Persona and the change is visible.
