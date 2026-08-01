@@ -132,7 +132,7 @@ the one thing coverage must never do.
 
 Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
 
-- [x] Source ingestion pipeline — Substack and YouTube
+- [x] Source ingestion pipeline — Substack, YouTube, any blog, and Bluesky a day at a time
 - [x] Persona compiler and daily refresh loop — one cycle, three triggers: the daily clock, an AI-callable refresh, and following someone
 - [ ] MCP server exposing personas as tools — five of the six are live
 - [ ] Council mode: one question, every persona answers

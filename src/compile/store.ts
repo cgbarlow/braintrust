@@ -503,9 +503,17 @@ export async function writePositions(
 
       for (const citation of position.citations) {
         await tx.query(
-          `insert into braintrust_position_citations (position_id, item_id, start_ms, quote)
-           values ($1, $2, $3, $4)`,
-          [positionId, citation.item_id, citation.start_ms, citation.quote],
+          `insert into braintrust_position_citations
+             (position_id, item_id, start_ms, quote, post_url, posted_at)
+           values ($1, $2, $3, $4, $5, $6::timestamptz)`,
+          [
+            positionId,
+            citation.item_id,
+            citation.start_ms,
+            citation.quote,
+            citation.post_url,
+            citation.posted_at,
+          ],
         );
       }
     }

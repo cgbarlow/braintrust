@@ -22,6 +22,8 @@ export type NameSignals = {
   youtubeTitle?: string | undefined;
   blogAuthor?: string | undefined;
   blogTitle?: string | undefined;
+  blueskyAuthor?: string | undefined;
+  blueskyTitle?: string | undefined;
 };
 
 /** Brand fragments a publication name accretes and a person's name does not. */
@@ -35,12 +37,22 @@ const SEGMENT_SEPARATOR = /\s*[|•·–—]\s*|\s+-\s+/;
  * is the common shape and the Person half is the half that matters.
  */
 export function proposeDisplayName(signals: NameSignals, fallback: string): string {
-  const { substackAuthor, substackTitle, youtubeAuthor, youtubeTitle, blogAuthor, blogTitle } =
-    signals;
+  const {
+    substackAuthor,
+    substackTitle,
+    youtubeAuthor,
+    youtubeTitle,
+    blogAuthor,
+    blogTitle,
+    blueskyAuthor,
+    blueskyTitle,
+  } = signals;
 
   // A blog's `dc:creator` is a person's name by construction for the same reason
-  // Substack's is: the author tag on a personal blog is the author.
-  for (const author of [substackAuthor, blogAuthor]) {
+  // Substack's is: the author tag on a personal blog is the author. A Bluesky display
+  // name is the same signal and a slightly better one — nobody brands their own profile
+  // "Ethan's Bluesky", so it is a person's name far more often than a feed title is.
+  for (const author of [blueskyAuthor, substackAuthor, blogAuthor]) {
     if (author && looksLikePersonName(author)) return author;
   }
 
@@ -53,9 +65,11 @@ export function proposeDisplayName(signals: NameSignals, fallback: string): stri
     youtubeAuthor,
     substackAuthor,
     blogAuthor,
+    blueskyAuthor,
     youtubeTitle,
     substackTitle,
     blogTitle,
+    blueskyTitle,
   ]) {
     const stripped = candidate?.replace(PUBLICATION_SUFFIX, '').trim();
     if (stripped) return stripped;
@@ -70,6 +84,7 @@ export function nameSignals(surveys: { platform: string; survey: SourceSurvey }[
   const substack = of('substack');
   const youtube = of('youtube');
   const blog = of('blog');
+  const bluesky = of('bluesky');
   return {
     substackAuthor: substack?.feedAuthor,
     substackTitle: substack?.feedTitle,
@@ -77,6 +92,8 @@ export function nameSignals(surveys: { platform: string; survey: SourceSurvey }[
     youtubeTitle: youtube?.feedTitle,
     blogAuthor: blog?.feedAuthor,
     blogTitle: blog?.feedTitle,
+    blueskyAuthor: bluesky?.feedAuthor,
+    blueskyTitle: bluesky?.feedTitle,
   };
 }
 

@@ -111,6 +111,14 @@ export type PositionCitation = {
   item_id: string;
   quote: string;
   start_ms: number | null;
+  /**
+   * Where inside a batched Item the quote is, when the Item is one. Carried from the Note
+   * rather than resolved here: the day's post spans were read once, when the words were
+   * read, and a Compile that re-derived them would be re-deciding a settled fact from
+   * whatever the body looks like now.
+   */
+  post_url: string | null;
+  posted_at: string | null;
 };
 
 export type BuiltPosition = {
@@ -245,7 +253,13 @@ export function buildPositions(
       const key = `${ref.item_id} ${ref.claim.quote}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      citations.push({ item_id: ref.item_id, quote: ref.claim.quote, start_ms: ref.claim.start_ms });
+      citations.push({
+        item_id: ref.item_id,
+        quote: ref.claim.quote,
+        start_ms: ref.claim.start_ms,
+        post_url: ref.claim.post_url ?? null,
+        posted_at: ref.claim.posted_at ?? null,
+      });
     }
 
     const items = new Set(cited.map((ref) => ref.item_id));

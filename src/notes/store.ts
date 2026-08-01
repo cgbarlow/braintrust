@@ -24,6 +24,8 @@ export type ReadableItem = {
   external_id: string;
   title: string | null;
   body_text: string;
+  /** Whatever the platform gave. Read here for the post spans a batched day carries. */
+  body_raw: unknown;
 };
 
 /**
@@ -37,7 +39,7 @@ export async function unreadItems(
   person?: string | undefined,
 ): Promise<ReadableItem[]> {
   const { rows } = await db.query<ReadableItem>(
-    `select i.id, i.external_id, i.title, i.body_text
+    `select i.id, i.external_id, i.title, i.body_text, i.body_raw
        from braintrust_items i
        join braintrust_sources s on s.id = i.source_id
       where i.retrieval = 'retrieved'

@@ -12,8 +12,9 @@
 
 import type { Db } from '../db.js';
 import { BraintrustError } from '../errors.js';
+import { storedPosts } from '../ingest/bluesky.js';
 import type { Extractor } from './extractor.js';
-import { chunkSpans, unreadItems, writeNote } from './store.js';
+import { chunkSpans, type ReadableItem, unreadItems, writeNote } from './store.js';
 import { verifyClaims } from './verify.js';
 
 export * from './extractor.js';
@@ -90,7 +91,7 @@ export async function readCorpus(deps: ReadDeps): Promise<ReadReport> {
 }
 
 async function readItem(
-  item: { id: string; external_id: string; title: string | null; body_text: string },
+  item: ReadableItem,
   deps: ReadDeps,
   report: ReadReport,
   log: (line: string) => void,
@@ -111,7 +112,15 @@ async function readItem(
     return;
   }
 
-  const verified = verifyClaims(raw.claims, item.body_text, await chunkSpans(deps.db, item.id));
+  // The Chunk *and* the post, both read off the rows once the quote has been located.
+  // Asking a model which post a quote came from would invite an invented permalink, which
+  // is the same objection that keeps it from being asked for a chunk id.
+  const verified = verifyClaims(
+    raw.claims,
+    item.body_text,
+    await chunkSpans(deps.db, item.id),
+    storedPosts(item.body_raw),
+  );
 
   // The Note is written even when every quote failed: the argument and the assumptions
   // are the model's own words about the Item rather than the author's, so they are not

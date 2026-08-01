@@ -369,6 +369,58 @@ export async function storedPages(db: Db, sourceId: string, limit: number): Prom
   return rows.map((row) => row.html);
 }
 
+/**
+ * The newest closed day braintrust has already batched for this Source.
+ *
+ * **This is Bluesky's whole cursor**, and it is a query rather than a column because the
+ * rows are the only honest answer: `cursor_published_at` records the newest *post* seen,
+ * and stopping a walk there would cut the day that post belongs to in half.
+ */
+export async function latestStoredDay(db: Db, sourceId: string): Promise<string | undefined> {
+  const { rows } = await db.query<{ day: string | null }>(
+    'select max(published_at)::text as day from braintrust_items where source_id = $1',
+    [sourceId],
+  );
+  return rows[0]?.day ?? undefined;
+}
+
+/** One closed UTC day of posts, as it goes into a row. */
+export type DayRow = {
+  externalId: string;
+  url: string;
+  title: string;
+  /** `YYYY-MM-DD`. The day is the publish date, because the day is the Item. */
+  publishedAt: string;
+  text: string;
+  raw: unknown;
+};
+
+/**
+ * Writes a batched day, straight to `retrieved`.
+ *
+ * **There is no `pending` state to pass through**, because the words arrived in the same
+ * response as the discovery that found them — so a row that existed unretrieved would be a
+ * row describing work braintrust had already done.
+ *
+ * `on conflict do nothing` is the entire idempotency story, and it is doing real work here
+ * rather than being defensive: `<did>:<YYYY-MM-DD>` is deterministic, so a backfill and a
+ * daily poll that reach the same closed day write one row — and a walk that re-reads the
+ * newest stored day every run, which is exactly what a correct one does, costs a statement
+ * and changes nothing. Returns false when the day was already known.
+ */
+export async function storeDay(db: Db, source: SourceRow, day: DayRow): Promise<boolean> {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into braintrust_items
+       (source_id, external_id, url, title, published_at, audience, retrieval,
+        body_text, body_raw, retrieved_at)
+     values ($1, $2, $3, $4, $5::date, 'everyone', 'retrieved', $6, $7::jsonb, now())
+     on conflict (source_id, external_id) do nothing
+     returning id`,
+    [source.id, day.externalId, day.url, day.title, day.publishedAt, day.text, JSON.stringify(day.raw)],
+  );
+  return rows.length > 0;
+}
+
 export async function storeBody(
   db: Db,
   itemId: string,

@@ -383,13 +383,18 @@ because `create table if not exists` leaves an existing table alone and a user's
 to be able to accept a value added later.
 
 ```sql
--- Two more platforms, and they arrive one at a time. 'blog' landed in schema.sql with
--- the blog build; the alter is what a database that already exists needs. Bluesky is
--- read through the public AppView rather than through a feed, and its own ticket
--- restates this constraint with 'bluesky' in it — a drop-and-restate re-run is a no-op.
+-- Both landed in schema.sql, one build at a time; the alter is what a database that
+-- already exists needs, and re-running a drop-and-restate is a no-op.
 alter table braintrust_sources drop constraint if exists braintrust_sources_platform_check;
 alter table braintrust_sources add constraint braintrust_sources_platform_check
-  check (platform in ('substack', 'youtube', 'blog'));
+  check (platform in ('substack', 'youtube', 'blog', 'bluesky'));
+
+-- Where a citation points when the item is a batch of separately-published things. A
+-- bluesky item is a whole UTC day; the day records each post's character span, and a
+-- verified quote resolves to the post it fell inside. The same question start_ms answers
+-- for a transcript, in the unit the other batched form has. Landed with the Bluesky build.
+alter table braintrust_position_citations add column if not exists post_url text;
+alter table braintrust_position_citations add column if not exists posted_at timestamptz;
 
 -- One more skip, and it is braintrust's own decision like the other two policy skips.
 -- Landed in schema.sql with the archive walk; the alter is what a database that already
@@ -434,6 +439,17 @@ reading a feed does. See [`ingestion.md` §8](./ingestion.md#8-blogs-any-feed-be
 **`body_raw` absorbs what each new platform actually gives**, with no new column: the day's posts with their
 character spans for Bluesky — which is what lets a citation resolve to the individual post rather than to the
 day — and the feed entry for a blog. Same reason there is no transcript-segment table.
+
+**The resolved answer does need two columns, and they sit beside `start_ms` because they are the same
+question.** *Where inside this Item are these words* is answered in milliseconds by a transcript and by a
+permalink by a batched day; both are read off the rows once the quote has been located, in the read-once pass,
+and neither is ever asked of a model. Resolving at serve time was the alternative and was rejected: it would
+re-derive a settled fact from whatever the body looks like at query time, and put the extractor's
+quote-locating into the request path of every question.
+
+**`handle` on a Bluesky Source is the DID, never the handle Bluesky calls a handle.** Bluesky handles are
+rebindable domains, and `unique (person_id, platform, handle)` is what stops one person becoming two — so the
+column holds the thing that cannot be re-pointed, exactly as it holds `UC…` rather than `@name` for YouTube.
 
 **Nothing here is a new table.** Coverage's `by_form` is computed from Items at compile time and written into
 the layer's `evidence`, exactly as `by_source` already is, so the mixed-corpus reporting costs no schema at

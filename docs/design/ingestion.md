@@ -711,6 +711,78 @@ product.
 ~34 words** and is not `skipped_short` — that state is braintrust's own policy about promotional content and
 Coverage says so to a reader in those words, while a one-post day is real writing.
 
+### What the build settled about reading Bluesky
+
+[#81](https://github.com/cgbarlow/braintrust/issues/81)
+
+**The walk is the poll, the backfill and the body — one loop, because the AppView hands over all three in one
+response.** Every other Source keeps them apart because a catalogue and a body are different endpoints; here,
+insisting on the separation would mean discarding words braintrust had already been given and asking for them
+again. So `discovery_url` is the first page of `getAuthorFeed`, the same document the walk continues from, and
+a Bluesky Source has **no `pending` state at all**: a day is written straight to `retrieved`.
+
+**How far back to read is a query over the rows, not a column.** While the archive has not been reached the
+answer is `backfill_floor`, every run. Once it has, it is **the start of the newest day braintrust already
+stored** — which makes the steady-state poll exactly one request, and makes a gap repair itself, because the
+walk always covers everything between that day and now. `cursor_published_at` cannot serve: it records the
+newest *post* seen, and stopping there would truncate the day that post belongs to. That newest stored day is
+therefore re-collected every run, and `on conflict do nothing` declines it for the cost of one statement.
+
+**A day is written only once nothing older can be added to it.** The feed arrives newest-first in pages of
+100, so a day sitting on a page boundary is incomplete until the next page proves otherwise — and an
+incomplete day written as an Item would be read once, permanently, with half of it missing.
+
+**Reposts and replies into other people's threads are dropped; their own threads are kept.**
+`posts_and_author_threads` is the AppView's own name for that line, and braintrust re-checks it against the
+parent's author anyway: a Persona is a claim about what one person said, and the cost of one wrong entry is
+somebody else's words attributed to them permanently. A post with no text is skipped rather than stored as an
+empty span a citation could land in.
+
+**braintrust's own measurement can never block a Bluesky Source, and that follows from the rule rather than
+excepting it.** A block is counted across consecutive failures on *distinct Items*, and Bluesky issues no
+per-Item request — so a refusal is a failed poll, reported and retried tomorrow. Nothing here is a special
+case for a source that is open by design.
+
+**A citation carries the DID, not the handle.** bsky.app resolves both and the DID is uglier, but a handle is
+a domain somebody can stop renting, and a citation that stops resolving is a citation braintrust cannot
+defend. The same reasoning that makes the DID the row's identity makes it the permalink's.
+
+**`start_ms` and the post permalink are the same question in two units.** *Where inside this Item are these
+words* — answered in milliseconds by a transcript and by a permalink by a batched day, both read off the rows
+once the quote has been located, and neither ever asked of a model. That is why the day's post spans live in
+`body_raw` and the resolution happens in the read-once pass beside the Chunk lookup, rather than at serve time
+or at compile time.
+
+**The Plan is projected from what they have just been doing, and the first live run is why.** The free survey
+— `postsCount` and `createdAt` off the profile — was wrong in both directions at once. Its post projection
+was a lifetime rate and came out **9.6× high** for one account, because `postsCount` counts replies and
+reposts across years of somebody who no longer posts that way. Worse, its item count was a *calendar* count:
+the Plan promised **365 days, `measured`**, and the run wrote **303**, because a day with no posts is no Item.
+So the survey now spends one more unauthenticated read of the author feed — the same call the walk makes,
+ingesting nothing, which is what call 1 has always permitted — and measures the recent posting rate, the
+fraction of recent days posted on at all, and the ratio of entries to keepers. Everything it returns is
+labelled `estimated` with its method in the sentence, and the calendar-day ceiling is *named* rather than
+quoted. The one case that still earns `measured` is an account whose whole history fits in the single call,
+where the walk has effectively already happened.
+
+**Requests are priced on entries, not on posts.** A call returns 100 entries whether braintrust wants them or
+not, so pricing the keepers would quote a heavy reposter half the requests their backfill actually costs.
+
+**The live run, 2026-08-01, one cycle, real network, 39 seconds.** Two accounts nobody here controls, over a
+12-month window:
+
+```
+emollick.bsky.social   1,076 posts → 303 days → 12 requests, 41,473 words
+pfrazee.com            1,082 posts → 276 days → 21 requests, 19,102 words
+corpus                 579 items, 0 failed, 0 pending
+plan vs run            days +18% / −22%, posts +65% / −53%, requests +50% / −38%
+```
+
+2,158 posts became **579 model calls**, which is the whole economic claim as a number. The bridge refusal was
+checked against the live `karpathy.bearblog.dev.web.brid.gy`, which still self-labels
+`bridged-from-bridgy-fed-web` and still calls itself *"karpathy [Unofficial]"*; braintrust refused it and
+named the blog.
+
 ---
 
 ## 8. Blogs: any feed, best effort
@@ -1120,6 +1192,11 @@ forever because it serves no sitemap.
 | **The first page or two of a blog's *first* backfill are extracted against a smaller boilerplate set than the rest, and nothing re-extracts them.** Later runs seed the set from stored markup, so this is the first backfill only. | §8 |
 | **A paragraph a blog repeats on every post is removed from all of them**, because repetition is the only thing the extractor measures. The same trade as a post's title being stripped by the widget that lists it. | §8 |
 | **Every blog pays one wasted request at registration**, asking whether it is a Substack on a custom domain. The order is what stops a Substack resolving as a blog. | §8 |
+| **A Bluesky backfill killed halfway re-reads the pages it already read.** It never re-reads a *day*, which is what a model call is charged against, and 100 posts a request at 1s makes a year 16 seconds — so resuming precisely would buy nothing. | §7 |
+| **A Bluesky Plan is a projection from recent behaviour, and its direction is unknown.** Measured against two real accounts: days +18% and −22%, posts +65% and −53%. Somebody who has just changed how they post is quoted the wrong number, and only the walk can say which way. | §7 |
+| **A Bluesky Source spends one request a day re-reading the newest day it already stored.** The alternative is stopping at the newest post seen, which truncates the day that post belongs to. | §7 |
+| **A person who reposts heavily is read thinly.** Reposts are dropped as somebody else's words, so a feed that is mostly reposts yields few Items for its requests. | §7 |
+| **A US-evening poster gets their evening split across two Items**, because a UTC day is the only boundary braintrust can compute and a reader can check. | §7 |
 
 ## Deliberately not decided
 

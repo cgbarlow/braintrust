@@ -19,6 +19,7 @@
 
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
+import { actorFromUrl, BSKY_HOSTS, isBlueskyHandle, isDid, resolveBluesky } from './bluesky.js';
 import { resolveBlog } from './blog.js';
 import { isSubstackHost, looksLikeSubstack, substackSource } from './substack.js';
 import { isChannelId, resolveYoutubeChannelId, youtubeSource } from './youtube.js';
@@ -45,7 +46,7 @@ export async function resolveLinks(links: string[], deps: ResolveDeps): Promise<
   if (supplied.length === 0) {
     throw new BraintrustError(
       'braintrust needs at least one link. It cannot find someone from their name — ' +
-        'neither Substack nor YouTube offers a search it can use — so paste what you already ' +
+        'no platform braintrust reads offers a search it can use — so paste what you already ' +
         `have: ${ACCEPTED_FORMS}`,
     );
   }
@@ -75,19 +76,28 @@ export async function resolveLinks(links: string[], deps: ResolveDeps): Promise<
 
 const ACCEPTED_FORMS =
   'a Substack post URL or hostname, a YouTube channel page, an @handle, a link to one video, ' +
-  'or the address of any blog.';
+  'a bsky.app profile or post link, or the address of any blog.';
 
 async function resolveOne(link: string, deps: ResolveDeps): Promise<ResolvedSource> {
   // An explicit prefix, for the case where a bare word is genuinely ambiguous.
-  const prefixed = /^(substack|youtube):(.+)$/i.exec(link);
+  const prefixed = /^(substack|youtube|bluesky|bsky):(.+)$/i.exec(link);
   if (prefixed) {
     const platform = prefixed[1]!.toLowerCase();
     const rest = prefixed[2]!.trim();
-    return platform === 'substack'
-      ? substackSource(hostFromSubstackToken(rest, link), link)
-      : resolveYoutube(rest, link, deps);
+    if (platform === 'substack') return substackSource(hostFromSubstackToken(rest, link), link);
+    if (platform === 'youtube') return resolveYoutube(rest, link, deps);
+    return resolveBluesky(rest, link, deps.fetcher);
   }
 
+  // A DID is a Bluesky identity and nothing else's, so it needs no prefix. A `.bsky.social`
+  // handle is the same, and stops there: a Bluesky handle *is* a domain, so recognising any
+  // domain as one would swallow every blog address pasted at braintrust — and someone's own
+  // domain is their website first. Anything else says `bluesky:` or pastes a bsky.app link.
+  if (isDid(link) || isBlueskyHandle(link)) return resolveBluesky(link, link, deps.fetcher);
+
+  // `@handle` stays YouTube's, because that is the notation YouTube itself puts on a
+  // channel page and it is what people paste. A Bluesky handle carrying an `@` is
+  // recognised by its `.bsky.social` suffix above, and every other one is a link.
   if (link.startsWith('@') || isChannelId(link)) return resolveYoutube(link, link, deps);
 
   const url = asUrl(link);
@@ -101,6 +111,19 @@ async function resolveOne(link: string, deps: ResolveDeps): Promise<ResolvedSour
   const host = url.hostname.toLowerCase();
   if (YOUTUBE_HOSTS.has(host)) return resolveYoutube(url.toString(), link, deps);
   if (isSubstackHost(host)) return substackSource(host, link);
+
+  // A profile link, or a link to one post on it — both carry the actor in the same place,
+  // which is the whole of what braintrust needs.
+  if (BSKY_HOSTS.has(host)) {
+    const actor = actorFromUrl(url);
+    if (!actor) {
+      throw new BraintrustError(
+        `"${link}" is a bsky.app link braintrust cannot read a person out of. Paste their ` +
+          'profile — https://bsky.app/profile/emollick.bsky.social — or a link to one of their posts.',
+      );
+    }
+    return resolveBluesky(actor, link, deps.fetcher);
+  }
 
   // Not a host braintrust knows by name. A Substack on a custom domain is a real and
   // ordinary case, and the archive API answers the question in one cheap request, so
