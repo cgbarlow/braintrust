@@ -17,6 +17,13 @@
  * That invariant is the point: a quote is checkable against the stored body without
  * trusting anything this file did.
  *
+ * **A Chunk never spans two Items.** It falls out of the signature — one Item's body goes
+ * in — but it stopped being incidental once retrieval began ranking Items by their best
+ * Chunk: a Chunk crossing a join would belong to two Items at once, so it could neither be
+ * cited nor scored for either of them. Batching a day of short posts into one Item is
+ * exactly the case that could have tempted otherwise, and it does not — the day *is* the
+ * Item, so one body arrives here as usual.
+ *
  * See docs/design/compiler.md §6.
  */
 
