@@ -11,8 +11,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildPlan, RETRIEVAL_SPACING_SECONDS } from '../src/follow/plan.js';
-import { DEFAULT_SETTINGS } from '../src/sources/types.js';
+import { buildPlan, estimateDuration } from '../src/follow/plan.js';
+import { DEFAULT_SETTINGS, REQUEST_SPACING_SECONDS } from '../src/sources/types.js';
 import {
   CHANNEL_ID,
   NOW,
@@ -87,23 +87,52 @@ describe('the plan', () => {
     }
     // The duration is a number too, and its key names it an estimate.
     assert.ok(plan.estimated_duration_min > 0);
-    assert.match(plan.estimated_duration_how, /at 4s per item/);
+    assert.match(plan.estimated_duration_how, /at 4s each/);
   });
 
-  it('prices the wait per item, which is what the job actually spends', async () => {
+  it('prices the wait per request, which is what the job actually spends', async () => {
     const { plan } = await buildPlan(LINKS, [], deps());
 
-    // The 4s spacing sits between Items, not between requests — a video's date, caption
-    // list and track go out back-to-back. Pricing the requests instead would tell the
-    // person approving this that a 12-month backfill takes twice as long as it does.
-    const items = YOUTUBE_ESTIMATE + SUBSTACK_FREE;
-    assert.equal(plan.estimated_duration_min, Math.ceil((items * RETRIEVAL_SPACING_SECONDS) / 60));
+    // Unchanged on these two Sources, and that is the point: on Substack and YouTube one
+    // request *is* one Item — a video's date, caption list and track go out back-to-back
+    // inside a single spaced request — so re-expressing the rule as per-request is a
+    // re-expression of the measurement rather than a loosening of it.
+    const requests = YOUTUBE_ESTIMATE + SUBSTACK_FREE;
+    assert.equal(
+      plan.estimated_duration_min,
+      Math.ceil((requests * REQUEST_SPACING_SECONDS.youtube) / 60),
+    );
 
     // The date fetches are still named: they are traffic the operator is agreeing to.
     const dateFetches = YOUTUBE_ESTIMATE - YOUTUBE_FEED_ENTRIES;
     assert.match(plan.estimated_duration_how, new RegExp(`${dateFetches} publish-date fetches alongside`));
-    assert.match(plan.estimated_duration_how, new RegExp(`${SUBSTACK_FREE} posts`));
-    assert.match(plan.estimated_duration_how, new RegExp(`${YOUTUBE_ESTIMATE} videos`));
+    assert.match(plan.estimated_duration_how, new RegExp(`${SUBSTACK_FREE} post requests at 4s each`));
+    assert.match(plan.estimated_duration_how, new RegExp(`${YOUTUBE_ESTIMATE} video requests at 4s each`));
+  });
+
+  /**
+   * The reason this ticket lands before the source tickets: a Plan is a promise made to a
+   * human before they agree to anything, and pricing a Source that answers a hundred Items
+   * per call as though each Item were a call quotes a wait nobody will ever spend.
+   *
+   * Bluesky has no surveyor yet. The pricing contract it has to meet does.
+   */
+  it('prices a source that answers many items per request at what it will actually cost', async () => {
+    const BLUESKY_POSTS = 1_530;
+    const BLUESKY_REQUESTS = Math.ceil(BLUESKY_POSTS / 100);
+
+    const priced = estimateDuration([
+      {
+        source: { platform: 'bluesky' },
+        survey: { itemsInWindow: BLUESKY_POSTS, basis: 'measured', bodyFetches: BLUESKY_REQUESTS, dateFetches: 0 },
+      },
+    ]);
+
+    // 16 requests at 1s — sixteen seconds, which rounds up to the smallest minute a Plan
+    // can say. The per-Item rule would have quoted 1,530 × 4s: a hundred and two minutes.
+    assert.equal(priced.minutes, 1);
+    assert.equal(Math.ceil((BLUESKY_POSTS * 4) / 60), 102);
+    assert.match(priced.how, /16 post-page requests at 1s each/);
   });
 
   it('keeps the link as pasted, so a wrong resolution is visible here', async () => {

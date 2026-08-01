@@ -353,7 +353,7 @@ in the extractor's shape reached the gate as *"beliefs carried nothing to serve"
 looking at the Corpus instead of at the endpoint.
 
 **Synthesis is versioned separately from measurement.** `compiler_version` is
-`0.1.0+measured-1.core-1.positions-2.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
+`0.1.0+measured-2.core-1.positions-2.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
 prose, and the prompt that grouped the Positions. Three versions rather than one because they change for
 different reasons, and all of them are cheap in a way bumping `notes-1` is not: they re-read Notes that
 already exist rather than re-reading the Corpus.
@@ -630,7 +630,12 @@ answer still wins on its best passage. What it loses is the advantage of simply 
 top-k over Chunks, so a Chunk-level candidate pool is still how the Items are found; it just has to be wider
 than the number of Items wanted. The factor is a tuning constant with the same status as every other number
 here — *a starting point to tune against real retrieval results rather than a decided value* — and it is
-bounded, so the query stays a single indexed top-k rather than a scan.
+bounded, so the query stays a single indexed top-k rather than a scan. **Built at 8**: 480 Chunks to rank 60
+Items, against the ~7,600 Chunks the measured Corpus holds.
+
+**Bounded means bounded, and the residual is named.** A pool a few very long Items monopolise yields *fewer*
+Items, not longer ones — the answer narrows, and it never re-sorts by length. That is the failure worth
+having, and it is the one the factor is there to be tuned against.
 
 **Re-embedding is not required**, and this does not move `compiler_version` or rebuild any Persona. Nothing
 about the Chunks or the vectors changes, only which candidates the query keeps.
@@ -715,8 +720,10 @@ embedding cost.
 - **`VOICE_MIN_WORDS`, built at 300.** A judgement rather than a finding, chosen to separate a batched
   short-form day (~198 words) from the shortest real essay measured (492). It travels in `measured_over` and
   in `compiler_version`, so changing it rebuilds every Persona and the change is visible.
-- **The over-fetch factor retrieval uses to feed its Item collapse.** Same status and same honesty as the
-  chunk window and the retrieval floor: a starting point to tune against real retrieval results.
+- **The over-fetch factor retrieval uses to feed its Item collapse, built at 8** — 480 Chunks to rank 60
+  Items. Same status and same honesty as the chunk window and the retrieval floor: a starting point to tune
+  against real retrieval results. What is *not* left open is which side of the collapse the truncation sits
+  on; only how wide the pool feeding it is.
 - **The retrieval floor a question has to clear**, built at 0.35 cosine similarity. It is the one threshold
   here that **cannot** be measured against the real Corpus, because it is a property of the embeddings model
   an operator configures and braintrust declares none. What v1 does instead is make it visible: an empty

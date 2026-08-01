@@ -22,7 +22,7 @@ import { readCorpus, type Extractor, type ReadReport } from '../notes/index.js';
 import { indexCorpus, type Embedder, type IndexReport } from '../retrieval/index.js';
 import {
   BLOCK_AFTER_FAILURES,
-  RETRIEVAL_SPACING_MS,
+  requestSpacingMs,
   SHORT_MAX_SECONDS,
   type Audience,
   type Platform,
@@ -597,14 +597,17 @@ async function resolveUndescribed(
 }
 
 /**
- * The expensive half, at 4s spacing, newest first.
+ * The expensive half, newest first, spaced at whatever this Source's rate is.
  *
- * **The 4 seconds are between Items, not between requests.** One YouTube Item costs two
- * or three back-to-back calls — the date, the caption list, the track — and the spacing
- * that tested clean was measured per *video*, with yt-dlp making exactly those calls
- * inside each one. Spacing the requests instead would turn the 26-minute backfill in
- * `ingestion.md` §3 into 79 minutes without making braintrust any better behaved: the
- * average is still well under one request a second.
+ * **The wait is between requests, not between Items.** This comment used to say the
+ * opposite, and on YouTube the two are the same thing: one Item is one request braintrust
+ * issues, with yt-dlp expanding it into the date, the caption list and the track inside
+ * that one call. Nothing added since works that way — one Bluesky request returns a
+ * hundred posts — so the per-Item reading would charge the cheapest Source braintrust has
+ * the highest bill, for traffic identical either way.
+ *
+ * Substack and YouTube are unaffected: 4s per request is 4s per Item on both.
+ * See docs/design/ingestion.md §6.
  */
 async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: SourceReport): Promise<void> {
   const pause = deps.pause ?? sleep;
@@ -640,7 +643,7 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
       continue;
     }
 
-    if (fetched > 0) await pause(RETRIEVAL_SPACING_MS);
+    if (fetched > 0) await pause(requestSpacingMs(source.platform));
     fetched += 1;
 
     try {

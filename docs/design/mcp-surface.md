@@ -87,10 +87,11 @@ four `braintrust_persona_layers` rows; there is no assembly step.
   "layers": {
     "voice":     { "basis": "measured",
                    "generative":  "Hedge before committing…",
-                   "descriptive": "Hedges in 32 of 34 measured items…",
+                   "descriptive": "Hedges in 59 of 63 measured items…",
                    // `measured_over` names the population, because voice is measured
-                   // over items long enough to argue in rather than over the corpus
-                   "evidence": { "items_measured": 34,
+                   // over items long enough to argue in rather than over the corpus —
+                   // so `items_measured` *is* that population, not the corpus size
+                   "evidence": { "items_measured": 63,
                                  "measured_over": { "min_words": 300, "items": 63,
                                                     "median_words": 3200,
                                                     "items_excluded": 349 }, … } },

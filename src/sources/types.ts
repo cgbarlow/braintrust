@@ -89,14 +89,60 @@ export function audienceOf(raw: string | null | undefined): Audience {
 }
 
 /**
- * The 4s spacing between fetches. Measured on YouTube captions — 4 of 4 succeeded at
- * this spacing where per-video metadata failed every time — and it is the difference
- * between reading a feed and hammering a service. Substack keeps it too: the same
- * politeness costs a minute across a year of free posts.
- * See docs/research/source-terms-and-consent.md §7.
+ * Every kind of Source braintrust prices, including the two it does not yet read. The
+ * spacing table has to be complete before the source tickets land, because each of them
+ * prices its backfill against it — and a rate invented per source ticket is a rate nobody
+ * compared to the others.
  */
-export const RETRIEVAL_SPACING_SECONDS = 4;
-export const RETRIEVAL_SPACING_MS = RETRIEVAL_SPACING_SECONDS * 1000;
+export type SpacedSource = Platform | 'bluesky' | 'blog';
+
+/**
+ * **Seconds between one request and the next, per Source.**
+ *
+ * The unit is a *request braintrust issues*, not an Item. The two were the same number
+ * for a reason that no longer holds: one YouTube Item is one request braintrust makes —
+ * yt-dlp expands it into the date, the caption list and the track, and the spacing that
+ * tested clean was measured around exactly that group — so spacing the Items *was* how
+ * you priced the traffic. Nothing added since works that way. One Bluesky call returns
+ * 100 posts and a blog feed carries every body, so an Item can cost a fraction of a
+ * request, or a request can carry a hundred Items.
+ *
+ * Read per Item, the rule made the cheapest Source braintrust has the slowest one it
+ * reads: a 12-month Bluesky backfill would take 102 minutes instead of ~16 seconds, and
+ * buy no politeness at all, because the requests are identical either way and only the
+ * waiting changes.
+ *
+ * **Substack and YouTube keep the traffic they have today.** 4s was measured on YouTube
+ * captions — 4 of 4 succeeded at this spacing where per-video metadata failed every time
+ * — and this is a re-expression of that measurement, not a loosening of it.
+ *
+ * **Bluesky at 1s** because the public AppView is open by design, is served from a CDN,
+ * answered in 548ms and returns no rate-limit headers to respect. Deliberately not zero:
+ * absence of a stated limit is not permission.
+ *
+ * **A blog page keeps 4s** for the opposite reason. It is the one place a braintrust
+ * fetch lands on somebody's own hosting rather than on a platform, and erring slow costs
+ * braintrust nothing that matters.
+ *
+ * See docs/design/ingestion.md §6 and docs/research/source-terms-and-consent.md §7.
+ */
+export const REQUEST_SPACING_SECONDS: Record<SpacedSource, number> = {
+  substack: 4,
+  youtube: 4,
+  bluesky: 1,
+  blog: 4,
+};
+
+export function requestSpacingMs(source: SpacedSource): number {
+  return REQUEST_SPACING_SECONDS[source] * 1000;
+}
+
+/**
+ * Paging a feed, an archive or a sitemap. One poll is one logical read that happens to
+ * arrive in pages, and none of the pages is expensive — so the courtesy owed is between
+ * pages of the same read rather than between reads.
+ */
+export const PAGE_SPACING_MS = 250;
 
 /**
  * Five minutes. Below it a video is a Short or an advert for a longer one — measured

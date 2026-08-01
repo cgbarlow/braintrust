@@ -38,8 +38,39 @@ import { BraintrustError } from './errors.js';
 import { vectorLiteral, type Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
 
-/** How many Chunks the vector search considers. The Items behind them are what map to Positions. */
-export const MATCH_CHUNKS = 60;
+/**
+ * How many **Items** the vector search ranks. The Items are what map to Positions, so this
+ * is the number that decides how wide an answer's evidence can be.
+ *
+ * It reads as a chunk limit and was one until [#68](https://github.com/cgbarlow/braintrust/issues/68).
+ * Applied before the collapse to Items, it made an Item's chance of surviving proportional
+ * to how many Chunks it has — a four-hour lecture entered a 60-ticket draw holding 180 of
+ * them and a batched Bluesky day held one, which is a proportion of length and nothing to
+ * do with relevance. See docs/design/compiler.md, "Retrieval ranks Items, not passages".
+ */
+export const MATCH_ITEMS = 60;
+
+/**
+ * How much wider than `MATCH_ITEMS` the Chunk pool is, so the collapse has enough to work
+ * with. pgvector answers approximate top-k over Chunks, so Chunks are still how the Items
+ * are found; the pool just has to be wider than the number of Items wanted.
+ *
+ * **Bounded on purpose.** The query stays a single indexed top-k rather than a scan: 480
+ * Chunks against the ~7,600 the measured Corpus holds. The residual is that a pool
+ * monopolised by a few very long Items yields *fewer* Items, not longer ones — a narrower
+ * answer rather than a length-ranked one, which is the failure worth having.
+ *
+ * A starting point to tune against real retrieval results, with the same status as the
+ * retrieval floor below.
+ */
+export const ITEM_OVER_FETCH = 8;
+
+/**
+ * How many Chunks the passages fallback returns. Passages *are* Chunks — there is no
+ * collapse to be on the wrong side of here, because the raw material is what is being
+ * served. It shared a constant with the Item limit only because the numbers matched.
+ */
+export const MATCH_PASSAGES = 60;
 
 /**
  * How close a Chunk has to be before braintrust calls it a match. Cosine similarity, so
@@ -286,6 +317,13 @@ type PositionRow = {
  * The Positions whose citations point at Items the search actually matched, best match
  * first.
  *
+ * **Three stages, and the order of the middle two is the whole point.** `hits` is the
+ * approximate top-k pgvector can actually answer, over-fetched by `ITEM_OVER_FETCH`
+ * because it exists only to find Items. `items` collapses those Chunks to the Items behind
+ * them and *then* truncates, so every Item competes once on its single best passage and a
+ * lecture and a batched day are equals at the point of ranking. Truncating first — which is
+ * what this did — ranked Items by how many Chunks they happen to have.
+ *
  * The window filters **what is searched**, not what a Position is allowed to show: a
  * Position found by a Q2 item still reports the Items it rests on across the whole Corpus,
  * because `item_count` is the denominator a reader judges it on and a silently narrowed one
@@ -310,9 +348,12 @@ async function matchingPositions(
           and ($5::date is null or i.published_at <= $5::date)
           and e.embedding <=> $2::vector <= ${1 - MATCH_FLOOR}
         order by distance
-        limit ${MATCH_CHUNKS}
+        limit ${MATCH_ITEMS * ITEM_OVER_FETCH}
      ),
-     items as (select item_id, min(distance) as distance from hits group by item_id)
+     items as (select item_id, min(distance) as distance
+                 from hits group by item_id
+                order by distance
+                limit ${MATCH_ITEMS})
      select p.id, p.slug, p.statement, p.held_since::text as held_since,
             p.held_until::text as held_until, p.days_spanned, p.basis,
             p.confidence, p.item_count::text as item_count,
@@ -488,7 +529,7 @@ async function matchingPassages(db: Db, vector: string, search: Search): Promise
         and ($5::date is null or i.published_at <= $5::date)
         and e.embedding <=> $1::vector <= ${1 - MATCH_FLOOR}
       order by e.embedding <=> $1::vector
-      limit ${MATCH_CHUNKS}`,
+      limit ${MATCH_PASSAGES}`,
     [vector, search.person, search.model, search.since, search.until],
   );
 

@@ -45,6 +45,16 @@ function evidence(overrides: Partial<CoverageEvidence> = {}): CoverageEvidence {
     pending: totals.reduce((n, one) => n + one.pending, 0),
     words_retrieved: totals.reduce((n, one) => n + one.words_retrieved, 0),
     by_source: sources,
+    // A default split that adds up to the totals above, so the no-number-outside-evidence
+    // check is measuring the prose rather than an inconsistent fixture.
+    by_form: {
+      long_form: { items: 40, words: 110000 },
+      short_form: {
+        items: totals.reduce((n, one) => n + one.retrieved, 0) - 40,
+        words: totals.reduce((n, one) => n + one.words_retrieved, 0) - 110000,
+      },
+    },
+    voice_measured_over: { min_words: 300, items: 40, median_words: 2500, items_excluded: 29 },
     ...overrides,
   };
 }
@@ -53,8 +63,9 @@ describe('the coverage layer', () => {
   it('says what it read, and where that leaves the persona', () => {
     const { descriptive_md } = coverageLayer(evidence());
 
-    assert.match(descriptive_md, /read 69 items/);
-    assert.match(descriptive_md, /118402 words/);
+    assert.match(descriptive_md, /read 118402 words/);
+    assert.match(descriptive_md, /40 long-form items/);
+    assert.match(descriptive_md, /69 in all/);
     assert.match(descriptive_md, /2025-05-28 and 2026-07-27/);
     assert.match(descriptive_md, /Everything this persona knows comes from those items/);
   });
@@ -160,6 +171,37 @@ describe('the shape of the evidence', () => {
     // Repeated inside the entry, so no client has to parse the key to use it.
     assert.equal(measured.by_source['substack:one.test']!.platform, 'substack');
     assert.equal(measured.by_source['substack:one.test']!.handle, 'one.test');
+  });
+
+  it('leads with words, because an item count across four orders of magnitude is not a size', () => {
+    const { descriptive_md } = coverageLayer(evidence());
+
+    // "read 69 items" flatters a corpus that is mostly one-liners. The shape is the fact.
+    assert.match(descriptive_md, /read 118402 words/);
+    assert.match(descriptive_md, /40 long-form items carrying 110000 words/);
+    assert.match(descriptive_md, /29 shorter ones carrying 8402/);
+    assert.match(descriptive_md, /69 in all/);
+  });
+
+  it('names the voice population as a blind spot, which is what this layer is for', () => {
+    const { descriptive_md } = coverageLayer(evidence());
+
+    // A reader is entitled to know voice was measured on a fraction of the corpus.
+    assert.match(descriptive_md, /\*\*How voice was measured\.\*\*/);
+    assert.match(descriptive_md, /Voice was measured from 40 items of 300 words or more/);
+    assert.match(descriptive_md, /29 shorter items were read for what they say, not for how they say it/);
+  });
+
+  it('says a dropped floor was dropped, rather than reporting a floor nobody applied', () => {
+    const { descriptive_md } = coverageLayer(
+      evidence({
+        voice_measured_over: { min_words: 0, items: 69, median_words: 198, items_excluded: 0 },
+      }),
+    );
+
+    assert.match(descriptive_md, /voice was measured over all 69 items, median 198 words/);
+    assert.match(descriptive_md, /labelled rather than withheld/);
+    assert.doesNotMatch(descriptive_md, /300 words or more/);
   });
 
   it('puts no number in its prose that is not also a field of its evidence', () => {

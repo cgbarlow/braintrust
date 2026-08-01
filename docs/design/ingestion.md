@@ -447,7 +447,7 @@ else's Backlog inside a call about this Person would spend the operator's tokens
 and it is the expensive step that would spend them.
 
 **The fetch half of a refresh is time-boxed at 30 seconds, and says what it did not reach.** A first backfill
-is ~395 fetches at 4s spacing and a refresh is one HTTP request with a client waiting on it. Something has to
+is ~395 requests at 4s spacing and a refresh is one HTTP request with a client waiting on it. Something has to
 give and it is not going to be the spacing. This costs nothing precisely because the Backlog is rows: the
 call's work is on disk, `still_owed` says what is left, and the next call or the next daily run continues
 rather than starting again. The rebuild is outside the budget — it only happens when the Backlog is empty, so
@@ -622,6 +622,12 @@ for the other.
 
 *Rejected: spacing by response size*, so an 892KB sitemap waits longer than a 4KB one. Plausible, and it
 optimises the single request braintrust makes per day — a rule with nothing to do.
+
+**The Plan quotes requests, because the Plan is the promise.** `estimated_duration_how` names what each Source
+will cost in the unit the drain actually spends — *"548 video requests at 4s each + 41 publish-date fetches
+alongside"* — rather than a single global rate applied to an Item count. A Plan is agreed to before anything is
+fetched, so a wait nobody will ever spend is not a conservative estimate; it is a wrong one, and it is wrong in
+the direction that makes someone decline.
 
 ---
 

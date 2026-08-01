@@ -36,8 +36,8 @@ import type { Embedder } from './retrieval/embed.js';
  * How long a refresh spends fetching before it stops and reports.
  *
  * A refresh is one HTTP request with a client waiting on it, and a first backfill is
- * ~395 fetches at 4s spacing. Something has to give, and it is not going to be the
- * spacing. So the fetch half is time-boxed and the answer says what is left — which
+ * ~395 requests at this Source's spacing. Something has to give, and it is not going to
+ * be the spacing. So the fetch half is time-boxed and the answer says what is left — which
  * costs nothing, because the Backlog is rows: the work this call did is on disk, and
  * the next run (or the next refresh) continues from it rather than starting again.
  *
