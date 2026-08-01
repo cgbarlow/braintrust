@@ -116,13 +116,23 @@ behaves the same way: the paid posts render 773–1,493 page-words against 2,468
 **Ghost serves an unauthenticated reader exactly what it is entitled to see, and nothing more.** Paid
 prose is not obtainable without credentials, so the hard line cannot be crossed by accident.
 
-There is, however, **no machine-readable per-post marker**:
+There is **no declared field** like Substack's `audience`, but there are usable markers. Counted against
+**rendered markup only** — the class name also appears ten times inside the theme's `<style>` block on
+every page, free or paid, which an earlier count of this file got wrong:
 
-- `gh-post-upgrade-cta` appears on **every post measured, free and paid alike** — it is a template
-  partial, not a paywall flag.
-- The `<body>` class differs only by tags (`post-template tag-ai tag-china` vs `post-template`).
-- The only reliable difference is theme copy — *"This post is for paying subscribers"* — which is
-  editable and translatable.
+| | Platformer paid | Platformer free | 404 Media (custom theme) |
+|---|---|---|---|
+| `gh-post-upgrade-cta` | **2** | 0 | 0 |
+| *"This post is for …"* | **1** | 0 | per-post: 0, 1, 1 |
+| `gh-comments` | 0 | **1** | — |
+
+`gh-post-upgrade-cta` fires on the default-family theme and is absent from 404 Media's custom one; the
+members CTA copy fired on both, and is genuinely per-post rather than site furniture — across four
+404 Media articles it appeared on three and not the fourth. Comments are rendered on the free post and
+suppressed on the gated one.
+
+Ghost emits **no** schema.org `isAccessibleForFree` or `hasPart` on either, so there is no
+standards-based signal to prefer. The `<body>` class differs only by tags.
 
 So braintrust cannot label a Ghost post `paid` the way Substack's `audience` field lets it. What it can
 observe is that the body it received is short or empty.
