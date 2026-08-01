@@ -43,7 +43,7 @@ const FEED_TYPE = /^application\/(?:rss|atom)\+xml\b/i;
  * fixes, and `sitemap-posts.xml` is tried first because the sites that serve one serve
  * `/sitemap.xml` as an *index* pointing at it.
  */
-const SITEMAP_PATHS = ['/sitemap-posts.xml', '/sitemap.xml'];
+export const SITEMAP_PATHS = ['/sitemap-posts.xml', '/sitemap.xml'];
 
 export type BlogDeps = { fetcher: Fetcher; now: Date };
 
@@ -153,25 +153,32 @@ export function declaredFeed(html: string, base: string): string | undefined {
  * declines the rest rather than picking the tags sitemap and calling it an archive.
  */
 function chooseSitemap(document: string, url: string, tried: Attempt[]): string | undefined {
-  if (documentKind(document) !== 'sitemap') {
-    tried.push({ url, outcome: 'not a sitemap' });
-    return undefined;
-  }
+  const chosen = resolveSitemap(document, url);
+  if (typeof chosen === 'string') return chosen;
+  tried.push({ url, outcome: chosen.declined });
+  return undefined;
+}
+
+/**
+ * The same choice, without the refusal bookkeeping, because the archive walk asks it too
+ * — a blog followed through its feed still looks for a sitemap to walk, and may land on
+ * an index. Returns the sitemap to read, or why braintrust declined this one.
+ */
+export function resolveSitemap(document: string, url: string): string | { declined: string } {
+  if (documentKind(document) !== 'sitemap') return { declined: 'not a sitemap' };
   if (!/<sitemapindex\b/i.test(document)) return url;
 
   const children = allTags(document, 'loc').filter((child) => /^https?:/i.test(child));
   const posts = children.find((child) => /post/i.test(child));
   if (posts) return posts;
-  if (children.length === 1) return children[0];
+  if (children.length === 1) return children[0]!;
 
-  tried.push({
-    url,
-    outcome:
+  return {
+    declined:
       children.length === 0
         ? 'a sitemap index listing no sitemaps'
         : `a sitemap index of ${children.length} sitemaps, none of them posts`,
-  });
-  return undefined;
+  };
 }
 
 /**

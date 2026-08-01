@@ -69,6 +69,8 @@ export type RefreshedSource = {
   skipped_paywall: number;
   skipped_short: number;
   skipped_window: number;
+  /** URLs from a blog's sitemap that turned out to be pages rather than posts. */
+  skipped_not_a_post: number;
   failed: number;
   backfill_complete: boolean;
   error?: string;
@@ -223,6 +225,7 @@ function describe(
       skipped_paywall: source.skipped_paywall,
       skipped_short: source.skipped_short,
       skipped_window: source.skipped_window,
+      skipped_not_a_post: source.skipped_not_a_post,
       failed: source.failed,
       backfill_complete: source.backfill_complete,
       ...(source.error ? { error: source.error } : {}),

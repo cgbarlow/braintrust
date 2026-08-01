@@ -17,7 +17,14 @@
  */
 
 import type { Db } from '../db.js';
-import { SHORT_MAX_SECONDS, type Audience, type Platform, type Retrieval } from '../sources/types.js';
+import {
+  audienceKnownBeforeFetch,
+  SHORT_MAX_SECONDS,
+  SHORT_MAX_WORDS,
+  type Audience,
+  type Platform,
+  type Retrieval,
+} from '../sources/types.js';
 import type { FeedEntry } from './feed.js';
 
 export type SourceRow = {
@@ -221,6 +228,12 @@ export type ArchiveItem = {
    * never reaches the expensive half at all.
    */
   durationSeconds?: number | undefined;
+  /**
+   * A sitemap's `<lastmod>` for this URL. **Never a publish date** — it records *when
+   * this URL last changed*, which is the one thing it honestly measures and exactly the
+   * question `skipped_not_a_post` is reopened by.
+   */
+  lastmod?: Date | undefined;
 };
 
 /**
@@ -244,8 +257,8 @@ export async function recordCatalogued(db: Db, source: SourceRow, item: ArchiveI
   const decided = decide(source, item);
 
   const { rows } = await db.query<{ retrieval: Retrieval }>(
-    `insert into braintrust_items (source_id, external_id, url, title, published_at, audience, retrieval)
-     values ($1, $2, $3, $4, $5::date, $6, $7)
+    `insert into braintrust_items (source_id, external_id, url, title, published_at, audience, retrieval, lastmod)
+     values ($1, $2, $3, $4, $5::date, $6, $7, $8::timestamptz)
      on conflict (source_id, external_id) do update
         set audience = excluded.audience,
             url = excluded.url,
@@ -254,6 +267,14 @@ export async function recordCatalogued(db: Db, source: SourceRow, item: ArchiveI
             retrieval = case
               when braintrust_items.retrieval = 'pending' then excluded.retrieval
               else braintrust_items.retrieval
+            end,
+            -- Frozen the moment the row leaves 'pending', because the column means "the
+            -- lastmod this row's state was decided on". Letting a walk overwrite it would
+            -- move the thing the next walk compares against, and no change would ever
+            -- look like a change.
+            lastmod = case
+              when braintrust_items.retrieval = 'pending' then excluded.lastmod
+              else braintrust_items.lastmod
             end
      returning retrieval`,
     [
@@ -264,6 +285,7 @@ export async function recordCatalogued(db: Db, source: SourceRow, item: ArchiveI
       item.publishedAt ? item.publishedAt.toISOString().slice(0, 10) : null,
       item.audience,
       decided,
+      item.lastmod?.toISOString() ?? null,
     ],
   );
 
@@ -277,9 +299,17 @@ export async function recordCatalogued(db: Db, source: SourceRow, item: ArchiveI
  * Shorts rule comes second because it is a preference the operator owns. An Item whose
  * duration the catalogue did not mention is `pending`, and the Shorts rule gets its
  * second chance at retrieval, where the duration always arrives.
+ *
+ * **A blog is exempt from the first filter and not from the line it enforces.** There is
+ * no blog catalogue to ask, so `unknown` here means *nobody has been asked yet* rather
+ * than *the answer was withheld*; refusing it would refuse every blog post there is. The
+ * gating markers are in the page, so the same hard line is enforced one step later, on
+ * the fetch that was going to happen anyway.
  */
 function decide(source: SourceRow, item: ArchiveItem): Retrieval {
-  if (item.audience !== 'everyone') return 'skipped_paywall';
+  if (audienceKnownBeforeFetch(source.platform) && item.audience !== 'everyone') {
+    return 'skipped_paywall';
+  }
   if (source.exclude_shorts && item.durationSeconds !== undefined && item.durationSeconds < SHORT_MAX_SECONDS) {
     return 'skipped_short';
   }
@@ -338,24 +368,116 @@ export async function markSkippedPaywall(db: Db, itemId: string): Promise<void> 
 }
 
 /**
- * Excluded by the Shorts rule, and the duration is kept so nothing has to ask again.
+ * How short a thing turned out to be, in whichever unit its platform has.
+ *
+ * One state, two measures, because the operator's decision is the same one: a Short and
+ * a thirty-word page are both *braintrust declined to read this because it is too small
+ * to be someone's thinking*, and `exclude_shorts` undoes both.
+ */
+export type ShortMeasure =
+  | { platform: 'youtube'; durationSeconds: number }
+  | { platform: 'blog'; words: number };
+
+/**
+ * Excluded by the Shorts rule, and the measurement is kept so nothing has to ask again.
  *
  * `body_raw` rather than `body_text`: braintrust learned something about this Item
- * without reading it, and `body_text` is reserved for words that were actually
- * published.
+ * without keeping it, and `body_text` is reserved for words that were actually
+ * published. On a blog that means the extraction is thrown away — which is right, since
+ * the thing that would bring the Item back is a setting rather than a better read.
  */
-export async function markSkippedShort(
+export async function markSkippedShort(db: Db, itemId: string, measure: ShortMeasure): Promise<void> {
+  const raw =
+    measure.platform === 'youtube'
+      ? { platform: 'youtube', duration_seconds: measure.durationSeconds }
+      : { platform: 'blog', words: measure.words };
+
+  await db.query(
+    `update braintrust_items
+        set retrieval = 'skipped_short', body_raw = $2::jsonb
+      where id = $1 and retrieval = 'pending'`,
+    [itemId, JSON.stringify(raw)],
+  );
+}
+
+/**
+ * A URL out of the sitemap that turned out to be the homepage, the about page or a tag
+ * index — braintrust fetched it, found no publish date, and is saying so.
+ *
+ * **This is braintrust doing its job, and `failed` would render it as the opposite.** A
+ * sitemap enumerates URLs; nothing in a URL reliably says which of them are posts (Bear
+ * Blog's sitemap carries its homepage, Ghost's posts-only sitemap does not), so the
+ * fetch is the test. *"3 URLs in the archive turned out not to be posts"* is a true
+ * sentence about a source that answered perfectly; *"3 items could not be retrieved at
+ * all"* would be a lie about it.
+ *
+ * The `lastmod` is the reopen trigger and it is written here rather than trusted from
+ * the catalogue pass, because this is the moment the decision is made and that is what
+ * the column records.
+ */
+export async function markSkippedNotAPost(
   db: Db,
   itemId: string,
-  durationSeconds: number,
+  lastmod: Date | undefined,
 ): Promise<void> {
   await db.query(
     `update braintrust_items
-        set retrieval = 'skipped_short',
-            body_raw = jsonb_build_object('platform', 'youtube', 'duration_seconds', $2::int)
+        set retrieval = 'skipped_not_a_post', lastmod = $2::timestamptz
       where id = $1 and retrieval = 'pending'`,
-    [itemId, durationSeconds],
+    [itemId, lastmod?.toISOString() ?? null],
   );
+}
+
+/** One URL braintrust decided was not a post, and the `<lastmod>` it decided on. */
+export type NotAPostRow = { id: string; external_id: string; lastmod: Date | null };
+
+export async function skippedNotPosts(db: Db, sourceId: string): Promise<NotAPostRow[]> {
+  const { rows } = await db.query<NotAPostRow>(
+    `select id, external_id, lastmod
+       from braintrust_items
+      where source_id = $1 and retrieval = 'skipped_not_a_post'`,
+    [sourceId],
+  );
+  return rows;
+}
+
+/**
+ * **The reopen nobody has to perform.**
+ *
+ * A stub that becomes a post next month is a post next month, at the cost of one fetch —
+ * and the trigger is the sitemap's own `<lastmod>` rather than a re-examination interval
+ * somebody would have had to choose with no measurement behind it. `<lastmod>` was
+ * present on 2,213 of 2,213 and 7,651 of 7,651 URLs measured, so wherever there is a
+ * sitemap there is a trigger.
+ *
+ * **Where there is no sitemap there is no trigger, and the row stays skipped.** Stated
+ * rather than silently true: a feed-only blog cannot enumerate its archive, so it never
+ * revisits a URL it declined, exactly as it never claims `backfill_complete`.
+ *
+ * A row whose recorded `lastmod` is null reopens on any dated one, because the sitemap
+ * has since started saying something it did not say before.
+ */
+export async function reopenChangedNotPosts(
+  db: Db,
+  sourceId: string,
+  lastmods: Map<string, Date>,
+): Promise<number> {
+  const moved = (await skippedNotPosts(db, sourceId)).filter((row) => {
+    const current = lastmods.get(row.external_id);
+    if (!current) return false;
+    return row.lastmod === null || current.getTime() > row.lastmod.getTime();
+  });
+
+  for (const row of moved) {
+    await db.query(
+      `update braintrust_items
+          set retrieval = 'pending', lastmod = null
+        where id = $1 and retrieval = 'skipped_not_a_post'`,
+      [row.id],
+    );
+  }
+
+  return moved.length;
 }
 
 /**
@@ -449,6 +571,7 @@ export type CorpusCounts = {
   skipped_paywall: number;
   skipped_short: number;
   skipped_window: number;
+  skipped_not_a_post: number;
   failed: number;
 };
 
@@ -460,6 +583,7 @@ export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCou
             count(*) filter (where retrieval = 'skipped_paywall') as skipped_paywall,
             count(*) filter (where retrieval = 'skipped_short')   as skipped_short,
             count(*) filter (where retrieval = 'skipped_window')  as skipped_window,
+            count(*) filter (where retrieval = 'skipped_not_a_post') as skipped_not_a_post,
             count(*) filter (where retrieval = 'failed')          as failed
        from braintrust_items
       where ($1::uuid is null or source_id = $1::uuid)`,
@@ -473,6 +597,7 @@ export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCou
     skipped_paywall: Number(row.skipped_paywall),
     skipped_short: Number(row.skipped_short),
     skipped_window: Number(row.skipped_window),
+    skipped_not_a_post: Number(row.skipped_not_a_post),
     failed: Number(row.failed),
   };
 }

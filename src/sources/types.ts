@@ -80,8 +80,14 @@ export type Audience = 'everyone' | 'paid' | 'unknown';
  * *decided* is `skipped_<reason>`** — a row of its own, carrying what would have to
  * change, reopened when it changes.
  *
- * That line is why there are three skips rather than one catch-all: each names a
+ * That line is why there are four skips rather than one catch-all: each names a
  * different thing an operator could do about it, and each is undone by doing it.
+ *
+ * `skipped_not_a_post` is the one whose undoing nobody has to perform. A sitemap
+ * enumerates URLs rather than posts, so an about page or a tag index is fetched, found to
+ * carry no publish date, and recorded — and the sitemap's own `<lastmod>` moving is what
+ * brings it back. A stub filled in next month becomes a post next month, at the cost of
+ * one fetch, with no polling loop and no re-examination interval anybody had to choose.
  */
 export type Retrieval =
   | 'pending'
@@ -89,6 +95,7 @@ export type Retrieval =
   | 'skipped_paywall'
   | 'skipped_short'
   | 'skipped_window'
+  | 'skipped_not_a_post'
   | 'failed';
 
 /**
@@ -170,6 +177,45 @@ export const PAGE_SPACING_MS = 250;
  * turning the setting off brings them in instead of requiring a second crawl.
  */
 export const SHORT_MAX_SECONDS = 300;
+
+/**
+ * The same line, drawn for text, because a blog has no duration to draw it by.
+ *
+ * **It exists to stop a Persona being built out of nav menus, and it works by measuring
+ * rather than judging.** The extractor strips a page's chrome by cross-page repetition
+ * and never decides what chrome *is*; what survives is either prose or it is short, and
+ * this is the number that says which.
+ *
+ * The measurements bound it from both sides. The shortest thing that is unambiguously a
+ * real post is **59 words** — a genuine Ghost article, alongside others at 88, 93, 111,
+ * 125, 162 and 207 — and the longest thing that is unambiguously not one is the **30
+ * words** the Bear Blog homepage yields. Forty sits between them. It is not a number
+ * anybody measured directly, and like `BLOCK_AFTER_FAILURES` it is left to tuning against
+ * real behaviour; what the measurements fix is the span it has to fall in.
+ *
+ * Governed by `exclude_shorts`, exactly as the video line is, so an operator who wants
+ * the brief ones gets them back through `reopenShorts` and nothing loops.
+ * See docs/design/ingestion.md §8.
+ */
+export const SHORT_MAX_WORDS = 40;
+
+/**
+ * **Whether a Source can be asked about a paywall before its body is fetched.**
+ *
+ * The allow-list — anything not exactly `everyone` is never fetched — is a *pre-fetch*
+ * filter, and a pre-fetch filter needs something to ask. Substack answers in its
+ * catalogue and YouTube has no paywall at all, so for both of them an Item still
+ * `unknown` at retrieval time is an Item braintrust must not request.
+ *
+ * A blog has no catalogue that could ever answer. The gating markers are in the page, so
+ * treating `unknown` as a refusal would mean refusing to read any blog at all. The line
+ * is not moved, it is enforced one step later — after the fetch and before the row —
+ * which is the whole cost of a blog having no `audience` field.
+ * See docs/design/ingestion.md §8.
+ */
+export function audienceKnownBeforeFetch(platform: Platform): boolean {
+  return platform !== 'blog';
+}
 
 /**
  * How many consecutive retrieval failures, across *distinct* Items of one Source, mean
