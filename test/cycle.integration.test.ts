@@ -575,24 +575,31 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     );
   });
 
+  /** A floor nearer than the feed's own window, so the feed carries posts the walk stops short of. */
+  async function narrowTheWindow(days: number): Promise<string> {
+    const floor = new Date(NOW.getTime() - days * 86_400_000).toISOString().slice(0, 10);
+    await db.query(
+      `update braintrust_sources set backfill_floor = $1::date where platform = 'substack'`,
+      [floor],
+    );
+    return floor;
+  }
+
   it('never records a paywall it did not see, even for a post it cannot describe', async () => {
     await follow();
 
-    // A backfill floor nearer than the feed's own window: the feed carries posts the
-    // archive walk stops short of, so their audience is never established. Found by a
-    // live run, where 18 posts were being recorded as skipped_paywall on no evidence.
-    await db.query(
-      `update braintrust_sources set backfill_floor = $1::date where platform = 'substack'`,
-      [new Date(NOW.getTime() - 20 * 86_400_000).toISOString().slice(0, 10)],
-    );
+    // The archive walk stops at the floor, so these posts' audience is never
+    // established. Found by a live run, where 18 posts were being recorded as
+    // skipped_paywall on no evidence.
+    await narrowTheWindow(20);
 
     const { report, fetcher } = await run();
     const substack = of(report, 'substack');
 
-    const undescribed = await items("i.retrieval = 'failed' and s.platform = 'substack'");
+    const undescribed = await items("i.retrieval = 'skipped_window' and s.platform = 'substack'");
     assert.ok(undescribed.length > 0, 'the narrow floor leaves some posts undescribed');
     assert.ok(undescribed.every((row) => row.audience === 'unknown'));
-    assert.equal(substack.failed, undescribed.length);
+    assert.equal(substack.skipped_window, undescribed.length);
 
     // Every skipped_paywall row is one the catalogue actually called paid.
     const skipped = await items("i.retrieval = 'skipped_paywall' and s.platform = 'substack'");
@@ -601,6 +608,62 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     for (const row of undescribed) {
       assert.ok(!fetcher.requests.some((request) => request.endsWith(row.external_id)));
     }
+  });
+
+  it('records a post outside the window as skipped rather than failed, because it was never asked for', async () => {
+    await follow();
+    const floor = await narrowTheWindow(20);
+    await run();
+
+    // The distinction the whole state exists for: `failed` says the source declined,
+    // and nobody asked this source anything. Both rows are honest about the window they
+    // sit outside, so a reader can see the setting that produced them.
+    const outside = await items("i.retrieval = 'skipped_window' and s.platform = 'substack'");
+    assert.ok(outside.every((row) => row.published_at! < floor));
+    assert.equal((await items("i.retrieval = 'failed' and s.platform = 'substack'")).length, 0);
+  });
+
+  it('reaches those posts when the window widens, which is what makes it a setting', async () => {
+    await follow();
+    await narrowTheWindow(20);
+    const first = await run();
+
+    const skipped = await items("i.retrieval = 'skipped_window' and s.platform = 'substack'");
+    assert.ok(skipped.length > 0);
+
+    // The fix that did not work before this: widening the window and running again. The
+    // rows are already on disk, so this is an update rather than a second crawl — and it
+    // needs no "the window widened" flag, because the floor is the whole predicate.
+    await db.query(
+      `update braintrust_sources
+          set backfill_floor = $1::date, backfill_complete = false
+        where platform = 'substack'`,
+      [new Date(NOW.getTime() - 365 * 86_400_000).toISOString().slice(0, 10)],
+    );
+
+    const { report } = await run({ now: new Date(NOW.getTime() + 25 * 3600_000) });
+    const substack = of(report, 'substack');
+
+    assert.equal(substack.reopened_window, skipped.length);
+    assert.equal((await items("i.retrieval = 'skipped_window' and s.platform = 'substack'")).length, 0);
+    // Reopened *and* resolved on the same run: the catalogue describes them, so every one
+    // of them ends up read or recorded as paid rather than sitting pending.
+    assert.equal((await items("i.retrieval = 'pending' and s.platform = 'substack'")).length, 0);
+    assert.equal(first.report.corpus.retrieved < report.corpus.retrieved, true);
+  });
+
+  it('leaves what a narrower window already read alone, because items are never deleted to match a number', async () => {
+    await follow();
+    await run();
+
+    const before = await items("i.retrieval = 'retrieved' and s.platform = 'substack'");
+    await narrowTheWindow(20);
+    await run({ now: new Date(NOW.getTime() + 25 * 3600_000) });
+
+    // A narrower window is not a retraction. Nothing already read is skipped, and
+    // nothing skipped is reopened by a floor that moved the wrong way.
+    const after = await items("i.retrieval = 'retrieved' and s.platform = 'substack'");
+    assert.equal(after.length, before.length);
   });
 
   it('records a post it cannot describe as failed rather than reading it blind', async () => {

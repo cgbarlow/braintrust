@@ -40,11 +40,14 @@ import {
   markFailed,
   markSkippedPaywall,
   markSkippedShort,
+  markSkippedWindow,
+  outsideWindow,
   pendingItems,
   recordCatalogued,
   recordPoll,
   recordPublished,
   reopenShorts,
+  reopenWindow,
   sourcesForPerson,
   storeBody,
   type CorpusCounts,
@@ -116,6 +119,8 @@ export type SourceReport = {
   retrieved: number;
   skipped_paywall: number;
   skipped_short: number;
+  /** Items the feed carries that are older than the window this Source was given. */
+  skipped_window: number;
   failed: number;
   backfill_complete: boolean;
   gap_detected: boolean;
@@ -123,6 +128,8 @@ export type SourceReport = {
   dated: number;
   /** Set when an operator turned `exclude_shorts` off and past skips came back. */
   reopened_shorts?: number;
+  /** Set when an operator widened `window_months` and past skips came back. */
+  reopened_window?: number;
   /**
    * The Source stopped answering, measured across distinct Items. Never the user's
    * choice to stop, which is a Person being paused and is reported as `paused`.
@@ -205,7 +212,14 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
 
     const report = await runSource(source, { ...deps, now, log, stopping });
     reports.push(report);
-    if (report.discovered + report.retrieved + report.skipped_paywall + report.skipped_short > 0) {
+    if (
+      report.discovered +
+        report.retrieved +
+        report.skipped_paywall +
+        report.skipped_short +
+        report.skipped_window >
+      0
+    ) {
       changed.add(source.person);
     }
     if (report.error) log(`braintrust: ${source.platform} ${source.handle} — ${report.error}`);
@@ -313,6 +327,7 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
     retrieved: 0,
     skipped_paywall: 0,
     skipped_short: 0,
+    skipped_window: 0,
     failed: 0,
     backfill_complete: source.backfill_complete,
     gap_detected: false,
@@ -364,6 +379,19 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
             'item(s) braintrust skipped are pending again.',
         );
       }
+    }
+
+    // The same debt, owed for the same reason, to an operator who widened the window.
+    // Asked unconditionally because the floor is the question — a window that did not
+    // move reopens nothing, so there is no "was it widened" flag to keep in step with
+    // the setting it describes.
+    const reopenedWindow = await reopenWindow(deps.db, source.id, source.backfill_floor);
+    if (reopenedWindow > 0) {
+      report.reopened_window = reopenedWindow;
+      deps.log(
+        `braintrust: ${source.handle}'s window now reaches ${source.backfill_floor}, so ` +
+          `${reopenedWindow} item(s) braintrust had skipped as too old are pending again.`,
+      );
     }
 
     // 3. Drain the Backlog: the catalogue first, so every body fetch knows its audience.
@@ -524,18 +552,48 @@ async function catalogue(source: SourceRow, deps: SourceDeps, report: SourceRepo
   );
 
   // A post in the feed but not in the catalogue: braintrust cannot learn whether it is
-  // paid, and the allow-list means unknown is never fetched. `failed` is the honest
-  // resting place — a terminal recorded outcome that Coverage reports and the Backlog
-  // excludes, rather than a pending row that blocks every future Compile.
+  // paid, and the allow-list means unknown is never fetched. Which outcome that is
+  // depends on *whose* decision left it undescribed — the walk stopping at the floor is
+  // braintrust's, and anything else is the archive's.
   for (const externalId of wanted) {
     const item = unknown.find((candidate) => candidate.external_id === externalId)!;
-    await markFailed(deps.db, item.id);
-    report.failed += 1;
-    deps.log(
-      `braintrust: ${externalId} is in ${source.handle}'s feed but not its archive, so its ` +
-        'audience is unknowable. Recorded as failed rather than fetched.',
-    );
+    await resolveUndescribed(source, item, deps, report);
   }
+}
+
+/**
+ * An Item braintrust knows exists and cannot learn the audience of. Two outcomes that
+ * look identical from here and are not the same fact:
+ *
+ * - **Older than the floor** — the archive walk was told to stop before reaching it.
+ *   braintrust's own decision, so `skipped_window`, and widening the window undoes it.
+ * - **Inside the window and still not in the archive** — the source served a feed entry
+ *   it has no catalogue record for. Terminal, because nothing braintrust can change
+ *   would produce one.
+ */
+async function resolveUndescribed(
+  source: SourceRow,
+  item: PendingItem,
+  deps: SourceDeps,
+  report: SourceReport,
+): Promise<void> {
+  if (outsideWindow(source, item.published_at)) {
+    await markSkippedWindow(deps.db, item.id);
+    report.skipped_window += 1;
+    deps.log(
+      `braintrust: ${item.external_id} is older than ${source.handle}'s backfill floor of ` +
+        `${source.backfill_floor}, so braintrust never described it. Recorded as skipped; ` +
+        'widening window_months brings it back.',
+    );
+    return;
+  }
+
+  await markFailed(deps.db, item.id);
+  report.failed += 1;
+  deps.log(
+    `braintrust: ${item.external_id} is in ${source.handle}'s feed but not its archive, so its ` +
+      'audience is unknowable. Recorded as failed rather than fetched.',
+  );
 }
 
 /**
@@ -570,20 +628,15 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
     // decision braintrust is respecting; `unknown` means the catalogue never described
     // this Item — which happens when `backfill_floor` is nearer than the feed's window,
     // so a post appears in the feed and is older than anything the archive walk reads.
-    // That is the same unknowable-audience case `catalogue` already resolves as failed.
+    // That is the same unknowable-audience case `catalogue` resolves, so it is resolved
+    // the same way: braintrust's own window is a skip, and anything else is terminal.
     if (item.audience === 'paid') {
       await markSkippedPaywall(deps.db, item.id);
       report.skipped_paywall += 1;
       continue;
     }
     if (item.audience !== 'everyone') {
-      await markFailed(deps.db, item.id);
-      report.failed += 1;
-      deps.log(
-        `braintrust: ${item.external_id} is in ${source.handle}'s feed but older than its ` +
-          'backfill floor, so its audience is unknowable. Recorded as failed rather than ' +
-          'as a paywall braintrust never saw.',
-      );
+      await resolveUndescribed(source, item, deps, report);
       continue;
     }
 
@@ -751,6 +804,8 @@ export function summarise(report: CycleReport): string {
     const parts = [`+${source.discovered} discovered`, `${source.retrieved} retrieved`];
     if (source.skipped_paywall > 0) parts.push(`${source.skipped_paywall} skipped (paywall)`);
     if (source.skipped_short > 0) parts.push(`${source.skipped_short} skipped (short)`);
+    if (source.skipped_window > 0) parts.push(`${source.skipped_window} skipped (outside window)`);
+    if (source.reopened_window) parts.push(`${source.reopened_window} reopened (window widened)`);
     if (source.dated > 0) parts.push(`${source.dated} dated`);
     if (source.failed > 0) parts.push(`${source.failed} failed`);
     if (!source.backfill_complete) parts.push('backfill incomplete');
@@ -763,10 +818,11 @@ export function summarise(report: CycleReport): string {
     return `  ${source.person} / ${source.platform} ${source.handle}: ${parts.join(', ')}`;
   });
 
-  const { pending, retrieved, skipped_paywall, skipped_short, failed } = report.corpus;
+  const { pending, retrieved, skipped_paywall, skipped_short, skipped_window, failed } = report.corpus;
   lines.push(
     `  corpus: ${retrieved} retrieved, ${skipped_paywall} skipped (paywall), ` +
-      `${skipped_short} skipped (short), ${pending} pending, ${failed} failed`,
+      `${skipped_short} skipped (short), ${skipped_window} skipped (outside window), ` +
+      `${pending} pending, ${failed} failed`,
   );
 
   const indexed = [`${index.items_chunked} items chunked`, `${index.chunks_written} chunks`];

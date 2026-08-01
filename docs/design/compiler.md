@@ -144,9 +144,12 @@ displayed as a fact — which is only true if the sentence never becomes the onl
 are no percentages and no derived totals in either measured layer, and a test extracts every numeric token
 from the prose and fails if it is not in the structure.
 
-**Coverage's fixed shape gained two fields**, because folding either into an existing one would make a Persona
-claim a blind spot it does not have: `skipped_short` is braintrust's own policy rather than a Source's, and
-`pending` is work not yet done rather than work declined. `by_source` is keyed `platform:handle` rather than
+**Coverage's fixed shape gained three fields**, because folding any of them into an existing one would make a
+Persona claim a blind spot it does not have: `skipped_short` and `skipped_window` are braintrust's own policy
+rather than a Source's, and `pending` is work not yet done rather than work declined. The window one is the
+clearest case for why the prose matters as much as the count — *"4 items are older than the window braintrust
+was asked to read"* is true and actionable, and *"4 items could not be retrieved at all"*, which `failed`
+rendered, is a lie about a source that answered perfectly. `by_source` is keyed `platform:handle` rather than
 by platform, since one Person may follow two publications on the same platform and merging them silently
 would produce a count nobody could check.
 

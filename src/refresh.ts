@@ -68,6 +68,7 @@ export type RefreshedSource = {
   retrieved: number;
   skipped_paywall: number;
   skipped_short: number;
+  skipped_window: number;
   failed: number;
   backfill_complete: boolean;
   error?: string;
@@ -221,6 +222,7 @@ function describe(
       retrieved: source.retrieved,
       skipped_paywall: source.skipped_paywall,
       skipped_short: source.skipped_short,
+      skipped_window: source.skipped_window,
       failed: source.failed,
       backfill_complete: source.backfill_complete,
       ...(source.error ? { error: source.error } : {}),

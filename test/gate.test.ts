@@ -23,7 +23,14 @@ import {
 } from '../src/compile/gate.js';
 import { inferredMarker } from '../src/compile/infer.js';
 
-const ITEMS = { retrieved: 4, skipped_paywall: 1, skipped_short: 1, failed: 0, pending: 0 };
+const ITEMS = {
+  retrieved: 4,
+  skipped_paywall: 1,
+  skipped_short: 1,
+  skipped_window: 2,
+  failed: 0,
+  pending: 0,
+};
 
 function facts(overrides: Partial<GateFacts> = {}): GateFacts {
   return {
@@ -211,6 +218,15 @@ describe('coverage', () => {
 
     assert.match(verdict.reason!, /retrieved is 3/);
     assert.match(verdict.reason!, /skipped_paywall is 9/);
+  });
+
+  it('recounts every skip, so a new one cannot be added to the rows and left out of the layer', () => {
+    const verdict = checkCompile(facts({ coverage_evidence: { ...ITEMS, skipped_window: 0 } }));
+
+    // The check reads its fields from the recount rather than from a list written here,
+    // which is what stops a state existing in the schema and silently in no layer.
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /coverage says skipped_window is 0, the rows say 2/);
   });
 
   it('fails a coverage layer carrying no structured evidence at all', () => {

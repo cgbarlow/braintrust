@@ -60,6 +60,7 @@ export type ItemCounts = {
   retrieved: number;
   skipped_paywall: number;
   skipped_short: number;
+  skipped_window: number;
   failed: number;
   pending: number;
 };

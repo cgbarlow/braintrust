@@ -21,6 +21,7 @@ function source(overrides: Partial<SourceCoverage> = {}): SourceCoverage {
     retrieved: 69,
     skipped_paywall: 0,
     skipped_short: 9,
+    skipped_window: 0,
     failed: 0,
     pending: 0,
     words_retrieved: 118_402,
@@ -39,6 +40,7 @@ function evidence(overrides: Partial<CoverageEvidence> = {}): CoverageEvidence {
     retrieved: totals.reduce((n, one) => n + one.retrieved, 0),
     skipped_paywall: totals.reduce((n, one) => n + one.skipped_paywall, 0),
     skipped_short: totals.reduce((n, one) => n + one.skipped_short, 0),
+    skipped_window: totals.reduce((n, one) => n + one.skipped_window, 0),
     failed: totals.reduce((n, one) => n + one.failed, 0),
     pending: totals.reduce((n, one) => n + one.pending, 0),
     words_retrieved: totals.reduce((n, one) => n + one.words_retrieved, 0),
@@ -77,6 +79,19 @@ describe('the coverage layer', () => {
     assert.match(descriptive_md, /exclude_shorts off brings them back/);
   });
 
+  it('names the window as braintrust choosing not to look, never as a retrieval that failed', () => {
+    const { descriptive_md } = coverageLayer(
+      evidence({ by_source: { 'substack:x.test': source({ platform: 'substack', handle: 'x.test', skipped_window: 4 }) } }),
+    );
+
+    // The sentence this ticket was filed over. `failed` rendered these as "4 items could
+    // not be retrieved at all", which is a lie about a source that answered perfectly —
+    // braintrust was told where to stop and stopped there.
+    assert.match(descriptive_md, /4 items are older than the window braintrust was asked to read/);
+    assert.match(descriptive_md, /widening window_months brings them back/);
+    assert.doesNotMatch(descriptive_md, /could not be retrieved/);
+  });
+
   it('reports items not yet read as work outstanding rather than as a gap', () => {
     const { descriptive_md } = coverageLayer(
       evidence({ by_source: { 'youtube:UC0C': source({ pending: 12 }) } }),
@@ -88,7 +103,7 @@ describe('the coverage layer', () => {
 
   it('says nothing about gaps when there are none', () => {
     const { descriptive_md } = coverageLayer(
-      evidence({ by_source: { 'youtube:UC0C': source({ skipped_short: 0 }) } }),
+      evidence({ by_source: { 'youtube:UC0C': source({ skipped_short: 0, skipped_window: 0 }) } }),
     );
 
     assert.doesNotMatch(descriptive_md, /\*\*Not read\.\*\*/);
@@ -117,15 +132,16 @@ describe('the coverage layer', () => {
 });
 
 describe('the shape of the evidence', () => {
-  it('carries the six fields the spec fixes, plus the two skips that would otherwise vanish', () => {
+  it('carries the six fields the spec fixes, plus the skips that would otherwise vanish', () => {
     const measured = coverageLayer(evidence()).evidence;
 
     for (const field of ['window', 'retrieved', 'skipped_paywall', 'failed', 'words_retrieved', 'by_source']) {
       assert.ok(field in measured, `coverage evidence is missing ${field}`);
     }
-    // Neither of these is a failure and neither is a paywall. Folding them into either
-    // would make the persona claim a blind spot it does not have.
+    // None of these is a failure and none is a paywall. Folding them into either would
+    // make the persona claim a blind spot it does not have.
     assert.ok('skipped_short' in measured);
+    assert.ok('skipped_window' in measured);
     assert.ok('pending' in measured);
   });
 
@@ -160,6 +176,7 @@ describe('the shape of the evidence', () => {
             retrieved: 1,
             skipped_paywall: 304,
             skipped_short: 0,
+            skipped_window: 4,
             words_retrieved: 1_712,
             backfill_complete: false,
           }),

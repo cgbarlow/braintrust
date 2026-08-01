@@ -77,7 +77,7 @@ create table if not exists braintrust_items (
                   check (audience in ('everyone', 'paid', 'unknown')),
   retrieval     text not null default 'pending'
                   check (retrieval in ('pending', 'retrieved', 'skipped_paywall',
-                                       'skipped_short', 'failed')),
+                                       'skipped_short', 'skipped_window', 'failed')),
   body_text     text,                 -- null until retrieved; null forever if skipped
   body_raw      jsonb,                -- caption events, feed entry — whatever the platform actually gave
   retrieved_at  timestamptz,
@@ -90,9 +90,12 @@ comment on column braintrust_items.audience is
   '''everyone'' is paid, because live Substack values include only_paid and founding.';
 
 comment on column braintrust_items.retrieval is
-  'skipped_paywall is a row, not an absence — it is what lets a persona state its own blind spots. '
-  'skipped_short is braintrust''s own policy rather than a source''s, so it is the one skip that '
-  'can be undone: turning exclude_shorts off makes those items pending again.';
+  'failed means the source declined or could not answer. Everything braintrust decided is '
+  'skipped_<reason> — a row of its own carrying what would have to change, reopened when it '
+  'changes. skipped_paywall is a row rather than an absence so a persona can state its own '
+  'blind spots; skipped_short is undone by turning exclude_shorts off; skipped_window is '
+  'undone by widening window_months, which is what makes the backfill window a setting '
+  'rather than a one-way door.';
 
 -- `create table if not exists` leaves an existing table alone, so a database created
 -- before skipped_short existed would reject the value. Re-stating the constraint is
@@ -100,7 +103,8 @@ comment on column braintrust_items.retrieval is
 -- idempotent: running it twice lands in the same place.
 alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
 alter table braintrust_items add constraint braintrust_items_retrieval_check
-  check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'skipped_short', 'failed'));
+  check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'skipped_short',
+                       'skipped_window', 'failed'));
 
 create index if not exists braintrust_items_source_published_idx
   on braintrust_items (source_id, published_at desc);

@@ -24,6 +24,7 @@ export type SourceCoverage = {
   retrieved: number;
   skipped_paywall: number;
   skipped_short: number;
+  skipped_window: number;
   failed: number;
   pending: number;
   words_retrieved: number;
@@ -39,16 +40,17 @@ export type SourceCoverage = {
 
 /**
  * The six fields the spec fixes — `window`, `retrieved`, `skipped_paywall`, `failed`,
- * `words_retrieved`, `by_source` — plus the two skips that would otherwise vanish.
- * `skipped_short` is braintrust's own policy rather than a Source's, and `pending` is
- * work not yet done rather than work declined; folding either into `failed` would make
- * the Persona claim a blind spot it does not have.
+ * `words_retrieved`, `by_source` — plus the skips that would otherwise vanish.
+ * `skipped_short` and `skipped_window` are braintrust's own policy rather than a
+ * Source's, and `pending` is work not yet done rather than work declined; folding any of
+ * them into `failed` would make the Persona claim a blind spot it does not have.
  */
 export type CoverageEvidence = {
   window: [string, string] | null;
   retrieved: number;
   skipped_paywall: number;
   skipped_short: number;
+  skipped_window: number;
   failed: number;
   pending: number;
   words_retrieved: number;
@@ -95,6 +97,13 @@ function describe(evidence: CoverageEvidence): string {
         'exclude_shorts off brings them back.',
     );
   }
+  if (evidence.skipped_window > 0) {
+    gaps.push(
+      `${evidence.skipped_window} item${evidence.skipped_window === 1 ? ' is' : 's are'} older than ` +
+        'the window braintrust was asked to read. Nothing about them failed — braintrust chose ' +
+        'not to look, and widening window_months brings them back.',
+    );
+  }
   if (evidence.failed > 0) {
     gaps.push(
       `${evidence.failed} item${evidence.failed === 1 ? '' : 's'} could not be retrieved at all.`,
@@ -115,6 +124,7 @@ function describe(evidence: CoverageEvidence): string {
       const parts = [`${source.retrieved} read`, `${source.words_retrieved} words`];
       if (source.skipped_paywall > 0) parts.push(`${source.skipped_paywall} paywalled`);
       if (source.skipped_short > 0) parts.push(`${source.skipped_short} short`);
+      if (source.skipped_window > 0) parts.push(`${source.skipped_window} outside the window`);
       if (source.failed > 0) parts.push(`${source.failed} failed`);
       if (source.pending > 0) parts.push(`${source.pending} pending`);
       lines.push(`- \`${source.platform}:${source.handle}\` — ${parts.join(', ')}.`);
