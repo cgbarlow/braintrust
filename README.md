@@ -2,30 +2,38 @@
 
 **A living council of the minds you follow.**
 
-braintrust builds dynamically updated AI agent personas from the up-to-the-minute content of people you follow, powered by [Open Brain (OB1)](https://github.com/NateBJones-Projects/OB1) by Nate B. Jones.
+braintrust builds AI personas from what people are actually publishing, and rebuilds them as they publish more. Powered by [Open Brain (OB1)](https://github.com/NateBJones-Projects/OB1) by Nate B. Jones.
 
-Static personas go stale. A prompt that says "respond like X" reflects X as they were when you wrote it. braintrust keeps each persona current by continuously ingesting what that person is actually publishing, so when you ask your braintrust a question, you get advice grounded in what they think *now*.
+Static personas go stale. A prompt that says "respond like X" reflects X as they were when you wrote it. braintrust keeps each one current, so when you ask your council a question you get what they think *now* — dated, and cited back to what they actually published.
 
-braintrust is a personal tool: one person, their own council, not a service.
+It is a personal tool: one person, their own council, not a service.
 
 ## How it works
 
-1. **Follow.** Give braintrust the links you already have for someone — their Substack, their YouTube channel. It works out the rest and shows you what it found, and what following them will cost, before it fetches anything.
-2. **Ingest.** New content is captured, chunked, and embedded into braintrust's own tables alongside your Open Brain — a plain Postgres database with pgvector. Raw content and embeddings stay separate, so you can re-index on better models without losing anything.
-3. **Distill.** braintrust checks for new content daily and rebuilds a persona whenever anything arrives — never on a timer for its own sake. Each rebuild replaces the previous one whole rather than editing it, so a persona cannot drift away from the evidence it was built from.
-4. **Consult.** Any AI client that speaks MCP (Claude, ChatGPT, Cursor, whatever ships next month) can query a persona directly — load their voice and reasoning, or ask what they've said about something and get it back with citations and dates.
+1. **Follow.** Paste the links you already have for someone. braintrust resolves them, prices the work, and shows you the plan before it fetches anything.
+2. **Ingest.** It reads their archive back twelve months, then checks daily. Raw text and embeddings stay separate, so a better model means re-indexing rather than re-fetching.
+3. **Distill.** Each item is read exactly once and what was read is kept. A persona is rebuilt whenever something new arrives — never on a timer — and each rebuild replaces the last one whole, so a persona cannot drift from its evidence.
+4. **Consult.** Any MCP client — Claude, ChatGPT, Cursor — loads a persona's voice and reasoning, or asks what they've said about something and gets it back with quotes and dates.
 
-## Why build on Open Brain
+## What it reads
 
-Open Brain's core bet is that your memory should be yours: one database, one open protocol, any AI. braintrust extends that same principle to the thinkers you learn from. Your council lives in infrastructure you own, not in a vendor's silo, and it plugs into every AI tool you use rather than just one.
+| | How it is found | What an item is |
+|---|---|---|
+| **Substack** | the archive API | one post |
+| **YouTube** | the channel feed | one long-form video's captions |
+| **Any blog** | the feed the homepage declares, or its sitemap | one post |
+| **Bluesky** | the public AppView, no key or sign-in | **one UTC day of posts** |
+
+A day is the Bluesky unit because 2,100 skeets a year would be 2,100 model calls for fewer words than two Substacks. The batch is a unit of *reading* only — a citation still resolves to the individual post.
 
 ## Requirements
 
-- A working Open Brain (OB1) setup: Supabase/Postgres with pgvector and the Open Brain MCP server
+- A working Open Brain (OB1) setup: Supabase/Postgres with pgvector
 - Node.js 20+
-- An OpenAI-compatible embeddings endpoint. Local (Ollama, LM Studio, vLLM) or hosted — braintrust has no preference and no default, so you tell it which to use.
-- An OpenAI-compatible chat endpoint for the note extractor — the one job worth spending real money on. It reads each item exactly once, so following someone costs a few dollars up front and close to nothing thereafter. Again no default: it is handed whole published items, and where those go is yours to decide.
-- Somewhere to run a small always-on server and a daily scheduled job
+- An **embeddings endpoint** and a **chat endpoint**, both OpenAI-compatible. Local or hosted; braintrust has no default for either, because a default would mean silently shipping somebody's corpus to a third party you didn't pick.
+- Somewhere to run a small always-on server and a daily job
+
+The chat endpoint is the one job worth real money: it reads each item once, so following someone costs a few dollars up front and close to nothing thereafter.
 
 ## Getting started
 
@@ -34,26 +42,26 @@ braintrust is a repo you deploy, not a package you install.
 ```bash
 git clone https://github.com/YOUR_USERNAME/braintrust.git
 cd braintrust
-cp .env.example .env   # point at your Postgres and your embeddings endpoint
+cp .env.example .env   # your Postgres, your two endpoints
 ```
 
-Paste `schema.sql` into your Supabase SQL editor, then deploy two things from the same codebase — a web service running `npm start`, and a cron job running `npm run job` once a day. They share a database and nothing else, so a half-hour backfill can never slow down a question, and the job being killed mid-run costs the current fetch and nothing more.
+Paste [`schema.sql`](schema.sql) into your Supabase SQL editor — it is idempotent, so re-paste it after pulling. Then deploy twice from the same codebase: a web service running `npm start`, and a daily cron running `npm run job`. They share a database and nothing else, so a half-hour backfill can never slow down a question, and a job killed mid-run costs the current fetch and nothing more.
 
-Add your first council member through your AI client rather than the command line — `braintrust_follow_person`, with a link to their Substack and a link to their YouTube channel. braintrust proposes a plan; you confirm it. **Only a human can add someone to a braintrust**, so an AI can refresh a persona but can never introduce a new one.
+Add your first council member through your AI client, not the command line — `braintrust_follow_person`, with whatever links you have. **Only a human can add someone**, so an AI can refresh a persona but never introduce one.
 
-The first run after following someone is the backfill, and for a prolific channel that takes about half an hour.
+`npm test` runs the suite; the database tests skip without a Postgres.
 
 ## The design
 
 braintrust is specified before it is built. These five documents are the spec — everything v1 does, and every cost it accepts:
 
-- [**Ingestion**](docs/design/ingestion.md) — the sources, registration, the daily cycle, the backlog, and what happens when a source blocks us
-- [**The compiler**](docs/design/compiler.md) — read-once notes, the six persona layers, revision detection, chunking and embedding, and the publish gate
-- [**The MCP surface**](docs/design/mcp-surface.md) — the six tools, their return shapes, and the three rules that hold across all of them
-- [**Deployment**](docs/design/deployment.md) — server plus scheduled job, auth, configuration, and how to stand it up
+- [**Ingestion**](docs/design/ingestion.md) — the four sources, registration, the daily cycle, the backlog, and what happens when a source blocks us
+- [**The compiler**](docs/design/compiler.md) — read-once notes, the persona layers, revision detection, chunking, and the publish gate
+- [**The MCP surface**](docs/design/mcp-surface.md) — the six tools and the rules that hold across all of them
+- [**Deployment**](docs/design/deployment.md) — server plus scheduled job, auth, configuration
 - [**The tables**](docs/design/schema.md) — the three-tier store everything above writes to
 
-The vocabulary they all use is in [CONTEXT.md](CONTEXT.md), and the three choices a reader would find surprising are recorded as [ADRs](docs/adr/).
+Vocabulary is in [CONTEXT.md](CONTEXT.md); the choices a reader would find surprising are [ADRs](docs/adr/).
 
 ## Honest limitations
 
@@ -61,82 +69,30 @@ A persona is a model of a person's published thinking, not the person. It will b
 
 Some things braintrust does to keep that honest rather than just say it:
 
-- **A persona is always named as one.** Every answer arrives as "braintrust model of X", never the bare name — the disclosure travels with the content instead of sitting in a footnote.
-- **Paywalled content is never ingested**, and braintrust records what it skipped. A persona can tell you how much of someone's output it has not read, so it names its own blind spots rather than silently having them.
-- **Anything a model synthesised is labelled.** Voice and coverage are counted from the source text; reasoning and beliefs are inferred, and say so. You can check the first kind. The second kind tells you it is the second kind.
-- **Positions carry their evidence.** Every claim is dated and cited back to what the person actually published, and where they've changed their mind, braintrust shows the older position rather than quietly dropping it.
-- **Quotes are verbatim.** Most of what braintrust reads is auto-generated video captions — a machine's transcript of someone speaking, not something they wrote. It mishears names and technical terms, and it is not a text the person ever approved. braintrust hands you what was actually said rather than tidying it into prose nobody spoke.
+- **A persona is always named as one.** Every answer arrives as "braintrust model of X", so the disclosure travels with the content instead of sitting in a footnote.
+- **Paywalled content is never ingested**, and what was skipped is recorded — so a persona can name its own blind spots rather than silently having them.
+- **Anything a model synthesised is labelled.** Voice and coverage are counted from the source text and no model touches them; reasoning and beliefs are inferred, and say so in their own first line.
+- **Evidence travels with the claim.** Every position is dated and quoted back to what was published, and a claim braintrust cannot quote is dropped rather than stored.
+- **Where someone changed their mind, both states survive.** The older position is kept and served flagged, never quietly dropped.
+- **Quotes are verbatim.** Much of what braintrust reads is auto-generated captions — a machine's transcript, not something the person wrote or approved. It hands you what was said rather than tidying it into prose nobody spoke.
 
-## Status and roadmap
+## What braintrust refuses to do
 
-Early days. The design is settled and the build is under way. What works today: the tables, the authenticated MCP server, `braintrust_list_personas`, `braintrust_load_persona`, `braintrust_find_positions`, `braintrust_refresh_persona`, `braintrust_unfollow_person`, **following someone**, and **the daily job, for both sources, through to a searchable index, a note on every item, and a compiled persona**. Paste someone's links in your AI client and braintrust prices the work before fetching any of it; confirm, and the scheduled job discovers their posts and videos, walks both archives back twelve months, skips every paywalled post as a recorded gap, stores the text of the free posts and the transcript of every long-form video, then cuts all of it into passages and embeds them through the endpoint you configured.
+- **Guess.** It acts on what a source declares, never on what it infers. A block is counted, not read off a status code; a paywall is an allow-list; a bridged Bluesky account is refused because it says it is one.
+- **Evade.** One address, one user agent, nothing rotated or spoofed. A blocked source gets one ordinary request a day, forever, and an answer clears it.
+- **Publish something it cannot defend.** A rebuild must pass a gate of counts and presence checks before it replaces the persona currently answering. If it fails, yesterday's persona keeps answering and tomorrow's run tries again.
+- **Claim a complete corpus it doesn't have.** If it notices a gap, it says so until the gap closes.
 
-A first backfill for a prolific channel is around half an hour, spent four seconds at a time, and it survives being killed — the next run continues from the rows the last one wrote rather than starting again. Chunking and embedding resume the same way, and an embeddings endpoint that is switched off delays the vectors rather than the collecting.
+## Status
 
-braintrust refuses to start against an endpoint whose vectors do not fit the column, and refuses to answer questions if you swap in a different model without re-embedding — a same-sized model from another family fails no other way, and every search would come back confidently ranked and meaningless.
+The design is settled. Every build ticket is closed, and the whole path runs end to end: follow someone, and the daily job walks their archive, reads each item once, indexes it, compiles a persona, and gates it before publishing.
 
-Each item is then read exactly once and what was read is kept — the claims it makes, each with a quote braintrust checked against the item itself, the argument, and the assumptions. **A claim braintrust cannot quote is dropped rather than stored**, and the run says how many were. That is what makes every later rebuild cheap: following someone costs a few dollars once, and a rebuild reads notes rather than a million words.
-
-The same run then builds a persona from what it collected, and `braintrust_load_persona` serves it — **all four core layers**. Two of them no model ever writes: **voice**, counted over what the person actually published, and **coverage**, counted over the item rows. Voice comes back as an instruction to follow *and* as the counts that instruction was derived from, so you can check it rather than take its word — and a habit measured in one item of thirty is described but never instructed, because a persona should not perform someone's rarest tic in their name. Coverage is where a persona names its own blind spots: what was paywalled and never fetched, what braintrust skipped by its own rule, and what it has not read yet.
-
-The other two — **how someone reasons** and **what they believe** — are synthesised across the notes, because no single piece someone publishes states either. Both say so in their own first line, not just in a JSON field, so the label survives being pasted into a system prompt. And every point they make names the items it was traced to; a point braintrust cannot trace to something it actually holds is dropped rather than published, the same rule as a claim it cannot quote.
-
-**A rebuild has to earn the right to replace the persona that is currently answering.** A rebuild deletes its predecessor and there is no archive, so before anything is published braintrust checks its own output: four layers present and carrying something, voice carrying both forms, every inferred layer labelled, coverage still matching the item rows it claims to count, and no more than half the persona retired by revisions in a single rebuild. Every check is a count or a presence — never a model, because a check that needs a model can fail the way the compiler fails. A rebuild that does not pass is kept for inspection and not served; yesterday's persona keeps answering and tomorrow's run tries again. Rebuilds also wait until there is nothing left in the backlog, so a persona is never measured over half a corpus.
-
-**And you can now ask a persona a real question.** `braintrust_find_positions` embeds your question with the same model the corpus was indexed with, finds the passages that match it, and returns what that person holds on the topic — each position dated, graded by how many separate pieces of work it rests on, and quoted back to what they actually published. **A view braintrust found once is returned like any other, labelled `low`**, because what a single mention is worth is your judgement rather than braintrust's. Where the compiler formed no position, you get the indexed passages instead, labelled as raw material: *what they said*, not *what braintrust concluded*. Answers are trimmed for readability and say what they held back; asking for all of it needs no permission.
-
-**And when someone changes their mind, both states survive.** This is the thing braintrust exists for. Claims that sit near each other in meaning but were published months apart become candidate pairs, and a model is asked one question about each: does the later one withdraw, narrow or reverse the earlier? Only the strongest answer — `revised`, and only where the person says so in their own words — takes a position off `current`, and even then it is kept, served flagged, with the words it rested on and what replaced it. `unsettled` and `drifting` leave both positions standing, visible to anyone who looks and never spoken in the person's voice: a rephrase recorded as a reversal puts a contradiction on a real person's record that they would dispute, and that is the one error this cannot absorb. Direction comes from the dates rather than from the model, and a pair braintrust cannot place in time is not judged at all.
-
-**And braintrust now runs itself.** One daily job does the whole cycle — poll, check for a gap, drain the
-backlog, rebuild — and your AI client can ask for the same thing on demand with `braintrust_refresh_persona`,
-freely and without a human in the way, because the human decision that mattered was following the person in
-the first place. **A rebuild is triggered by content the persona has not read, never by the clock or by the
-asking**, so a run that brings in nothing costs nothing, and a run that finishes reading something last
-week's run collected does rebuild — the case a simple "did anything happen today" check gets wrong. Two
-clients asking at once cannot produce two rebuilds: the second is told when the first started, and that is
-the database refusing rather than braintrust remembering to. A refresh spends thirty seconds fetching and
-then tells you what it did not reach, because a first backfill is half an hour and your client is waiting;
-nothing repeats, so calling again carries on where it stopped.
-
-**And you can stop.** `braintrust_unfollow_person` ends the updates and **deletes nothing** — the items, the
-text, the notes and the compiled persona all stay, and that persona keeps answering, frozen at its last
-compile and shown as paused so nobody mistakes it for current. It is one call rather than a handshake,
-because stopping downloads is less exposure than starting them, and it is fully reversible: following them
-again picks up exactly where it left off, with nothing to re-fetch. **It is not a takedown**, and braintrust
-says so where it matters rather than in a footnote. Resuming does go through the full two-call handshake,
-because it does mean fetching someone's work again — and a refresh will not do it for you.
-
-**And when a source stops serving braintrust, braintrust stops asking.** Not because it read a status code —
-a 403 can be a CDN hiccup and a captcha arrives as a 200 with HTML in it — but because it counted five
-requests in a row, against five *different* pieces of work, that came back with nothing. One broken video is
-a broken video; five in a row is the platform. **That stops the one source and nothing else**: the two
-sources share nothing but a person, and stopping the run would be a failure braintrust invented rather than
-one anybody imposed. Everything already collected is kept, the rest of that source's backlog is left as rows,
-and **the persona still rebuilds on what braintrust actually has** — freezing it would hand a platform a veto
-over whether braintrust works at all. The next day braintrust sends **one ordinary request, unchanged** — the
-same one it was refused, from the same address, with nothing spoofed and nothing rotated. An answer clears
-the block. **A permanently blocked source therefore costs one request a day, forever**, which is stated here
-rather than engineered around.
-
-Both places a persona describes itself say so, and neither calls it something it is not: coverage names the
-source, when it stopped, and how much of it went unread, and the listing carries it beside the pause. **A
-block is never a pause.** One is a platform refusing braintrust; the other is you deciding to stop. A persona
-that reported the first as the second would be blaming its own user for someone else's decision.
-
-braintrust also notices when it has fallen behind. If the oldest thing in a feed is newer than the last thing
-braintrust saw, something published in between was never seen at all — and that is one comparison, repaired
-by the archive walk it already has. The initial load and the catch-up are the same action. Until it closes,
-the persona says its corpus is incomplete, because items braintrust never saw are not missing rows; they are
-no rows at all, and a measured layer confidently reporting a complete corpus with a three-week hole in it is
-the one thing coverage must never do.
-
-Run `npm test` for the suite; the schema and ingest tests need a Postgres and skip without one.
-
-- [x] Source ingestion pipeline — Substack, YouTube, any blog, and Bluesky a day at a time
-- [x] Persona compiler and daily refresh loop — one cycle, three triggers: the daily clock, an AI-callable refresh, and following someone
-- [ ] MCP server exposing personas as tools — five of the six are live
+- [x] Ingestion — Substack, YouTube, any blog, and Bluesky a day at a time
+- [x] The compiler — four core layers, positions, revision detection, and the publish gate
+- [x] Daily refresh — one cycle, three triggers: the clock, an AI-callable refresh, and following someone
+- [x] MCP server — all six tools live
 - [ ] Council mode: one question, every persona answers
-- [x] Drift tracking: see how someone's thinking has changed over time — the compiler writes the relations and both states are served; the judgement itself has not yet been run against a real model
+- [ ] Revision judgement run against a real model at scale — the mechanism ships, the tuning has not been done
 
 Contributions and issues welcome.
 
