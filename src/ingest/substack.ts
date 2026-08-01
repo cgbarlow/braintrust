@@ -19,7 +19,7 @@ import { parseDate } from '../dates.js';
 import { BraintrustError } from '../errors.js';
 import { htmlToText } from '../net/html.js';
 import type { Fetcher } from '../net/fetch.js';
-import { audienceOf, type Audience } from '../sources/types.js';
+import { audienceOf, PAGE_SPACING_MS, type Audience } from '../sources/types.js';
 import { fetchPolitely, type Pause } from './pace.js';
 import type { ArchiveItem, SourceRow } from './items.js';
 
@@ -27,9 +27,6 @@ const ARCHIVE_PAGE_SIZE = 50;
 
 /** 2,000 posts. Past the largest publication measured (581), so reaching it is a bug. */
 const MAX_ARCHIVE_PAGES = 40;
-
-/** Politeness between catalogue pages. Cheaper work than a body, so a lighter pause. */
-const PAGE_PAUSE_MS = 250;
 
 export type SubstackDeps = {
   fetcher: Fetcher;
@@ -73,7 +70,7 @@ export async function walkArchive(
   let pages = 0;
 
   for (let page = 0; page < MAX_ARCHIVE_PAGES; page += 1) {
-    if (page > 0) await pause(PAGE_PAUSE_MS);
+    if (page > 0) await pause(PAGE_SPACING_MS);
 
     const url =
       `https://${source.handle}/api/v1/archive` +

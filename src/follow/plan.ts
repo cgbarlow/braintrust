@@ -18,12 +18,13 @@ import { resolveLinks } from '../sources/resolve.js';
 import { surveySubstack } from '../sources/substack.js';
 import {
   DEFAULT_SETTINGS,
-  RETRIEVAL_SPACING_SECONDS,
+  REQUEST_SPACING_SECONDS,
   type Basis,
   type Platform,
   type ResolvedSource,
   type SourceSettings,
   type SourceSurvey,
+  type SpacedSource,
 } from '../sources/types.js';
 import { surveyYoutube } from '../sources/youtube.js';
 
@@ -89,10 +90,10 @@ export type PlanDeps = {
 };
 
 /**
- * The drain owns the pace; the Plan only quotes it to turn a fetch count into minutes.
- * Re-exported so a reader of a Plan can find the number that produced it.
+ * The drain owns the pace; the Plan only quotes it to turn a request count into minutes.
+ * Re-exported so a reader of a Plan can find the numbers that produced it.
  */
-export { RETRIEVAL_SPACING_SECONDS } from '../sources/types.js';
+export { REQUEST_SPACING_SECONDS } from '../sources/types.js';
 
 export const PAYWALL_NOTE =
   'Paywalled content is never ingested, and what was skipped is recorded. Not configurable.';
@@ -188,39 +189,48 @@ function toPlanSource(
   return planSource;
 }
 
+/** What one spaced request buys on each platform, for a `how` string a human reads. */
+const REQUEST_NOUN: Record<SpacedSource, string> = {
+  substack: 'post request',
+  youtube: 'video request',
+  bluesky: 'post-page request',
+  blog: 'page request',
+};
+
 /**
  * How long the confirmed Plan will actually take.
  *
- * **The 4 seconds are spent per Item, not per request.** A YouTube Item costs two or
- * three back-to-back calls — its date, its caption list, its track — and the cycle
- * spaces the Items rather than the calls, because that is how the spacing was measured
- * (see `retrieveBodies` in `ingest/cycle.ts`). Counting requests here would price a
- * 12-month YouTube backfill at 71 minutes when the job takes 36, and a Plan that
- * overstates the wait is still a Plan that lied to the person approving it.
+ * **Requests are what cost time, and this prices requests.** It used to price Items at
+ * one global 4s, which was the same arithmetic while every Item was one request — and
+ * stops being so the moment a Source answers a hundred Items in one call. A Plan is a
+ * promise made to a human *before* they agree to anything, so the number has to be the
+ * one the drain will actually spend: a 12-month Bluesky backfill is 16 requests at 1s,
+ * not 1,530 Items at 4s, and quoting 102 minutes for 16 seconds of work is still a Plan
+ * that lied to the person approving it.
  *
- * The date fetches are named anyway, because they are real traffic the operator is
- * agreeing to even where they cost no extra wait.
+ * `bodyFetches` is already a count of requests rather than Items, which is why the rate
+ * can simply multiply it. The date fetches are named anyway, because they are real
+ * traffic the operator is agreeing to even where they cost no extra wait.
  */
-function estimateDuration(
-  surveyed: { source: ResolvedSource; survey: SourceSurvey }[],
+export function estimateDuration(
+  surveyed: { source: { platform: SpacedSource }; survey: SourceSurvey }[],
 ): { minutes: number; how: string } {
   const parts: string[] = [];
-  let items = 0;
+  let seconds = 0;
 
   for (const { source, survey: found } of surveyed) {
+    const spacing = REQUEST_SPACING_SECONDS[source.platform];
     if (found.bodyFetches > 0) {
-      items += found.bodyFetches;
-      parts.push(plural(found.bodyFetches, source.platform === 'youtube' ? 'video' : 'post'));
+      seconds += found.bodyFetches * spacing;
+      parts.push(`${plural(found.bodyFetches, REQUEST_NOUN[source.platform])} at ${spacing}s each`);
     }
     if (found.dateFetches > 0) {
       parts.push(`${plural(found.dateFetches, 'publish-date fetch')} alongside`);
     }
   }
 
-  const minutes = Math.ceil((items * RETRIEVAL_SPACING_SECONDS) / 60);
-  const how = parts.length
-    ? `${parts.join(' + ')} at ${RETRIEVAL_SPACING_SECONDS}s per item`
-    : 'nothing to retrieve in this window';
+  const minutes = Math.ceil(seconds / 60);
+  const how = parts.length ? parts.join(' + ') : 'nothing to retrieve in this window';
   return { minutes, how };
 }
 

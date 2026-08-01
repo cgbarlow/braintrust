@@ -26,7 +26,7 @@ import { recordCatalogued, type SourceRow } from '../src/ingest/items.js';
 import { createExtractor } from '../src/notes/index.js';
 import { loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
-import { RETRIEVAL_SPACING_MS } from '../src/sources/types.js';
+import { requestSpacingMs } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeExtractor, TEST_GENERATION, testExtractorConfig } from './support/notes.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
@@ -465,7 +465,7 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.equal(done.filter((row) => row.retrieval === 'pending').length, 0);
   });
 
-  it('spends four seconds per item, which is where the 26 minutes comes from', async () => {
+  it('spends four seconds per request, which is where the 26 minutes comes from', async () => {
     await follow();
 
     const waits: number[] = [];
@@ -477,13 +477,14 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
       log: () => {},
     });
 
-    // One gap per item after the first, per source — and the gaps are between Items,
-    // not between requests, because that is how the spacing was measured.
-    const spacing = waits.filter((ms) => ms === RETRIEVAL_SPACING_MS);
+    // One gap per request after the first, per source. On Substack and YouTube a request
+    // *is* an Item — yt-dlp expands one video into three calls inside a single spaced
+    // request — so re-expressing the rule as per-request changed none of this traffic.
+    const spacing = waits.filter((ms) => ms === requestSpacingMs('youtube'));
     assert.equal(spacing.length, SUBSTACK_FREE - 1 + (YOUTUBE_LISTING_IN_WINDOW - 1 - 1));
 
     // The real channel: ~395 videos in twelve months at 4s apart.
-    assert.equal(Math.round((395 * RETRIEVAL_SPACING_MS) / 60_000), 26);
+    assert.equal(Math.round((395 * requestSpacingMs('youtube')) / 60_000), 26);
   });
 
   it('ingests nothing at all for a paused person', async () => {

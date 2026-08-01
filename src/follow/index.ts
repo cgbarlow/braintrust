@@ -140,7 +140,8 @@ async function confirm(args: FollowArgs, deps: FollowDeps): Promise<FollowedResp
       'The person and their sources are recorded. Every source starts with ' +
       '`backfill_complete: false`, which is the whole signal the daily job needs — there is no ' +
       'separate initial-load mode, so the first run after following someone is the backfill ' +
-      `(about ${pending.plan.estimated_duration_min} minutes at 4s spacing, unattended). ` +
+      `(about ${pending.plan.estimated_duration_min} minutes at the spacing each source is ` +
+      'read at, unattended). ' +
       'braintrust_list_personas will show this person immediately, with `compiled: false` until ' +
       'that first run finishes.',
   };

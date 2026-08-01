@@ -49,7 +49,7 @@
 import { parseDate } from '../dates.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
-import { SHORT_MAX_SECONDS } from '../sources/types.js';
+import { PAGE_SPACING_MS, SHORT_MAX_SECONDS } from '../sources/types.js';
 import { readCaptions, type CaptionLine } from './captions.js';
 import type { ArchiveItem, SourceRow } from './items.js';
 import { fetchPolitely, type Pause } from './pace.js';
@@ -81,9 +81,6 @@ const METADATA_CLIENT = {
 
 /** 30 items a page, so 40 pages is 1,200 videos — three times the channel measured. */
 const MAX_CHANNEL_PAGES = 40;
-
-/** Politeness between listing pages, as with Substack's archive. */
-const PAGE_PAUSE_MS = 250;
 
 /**
  * A month of slack on the backfill floor, because the listing's dates are labels like
@@ -134,7 +131,7 @@ export async function walkChannel(
   let pastFloor = false;
 
   for (let page = 0; page < MAX_CHANNEL_PAGES; page += 1) {
-    if (page > 0) await pause(PAGE_PAUSE_MS);
+    if (page > 0) await pause(PAGE_SPACING_MS);
 
     const payload = continuation
       ? { continuation }
