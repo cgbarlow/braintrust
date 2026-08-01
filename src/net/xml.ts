@@ -25,6 +25,28 @@ export function allTags(xml: string, name: string): string[] {
   return found;
 }
 
+/**
+ * The value most `<name>` elements agree on. Author tags are per entry rather than per
+ * feed, and a guest post or a co-author should not rename the Person — so the common
+ * case wins rather than the first one.
+ */
+export function mostCommonTag(xml: string, name: string): string | undefined {
+  const counts = new Map<string, number>();
+  for (const value of allTags(xml, name)) {
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  let best: string | undefined;
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (count > bestCount) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 /** Whole `<name>…</name>` blocks, including their markup — one per feed entry. */
 export function blocks(xml: string, name: string): string[] {
   const found: string[] = [];

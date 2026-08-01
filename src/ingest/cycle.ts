@@ -62,10 +62,13 @@ import { NoCaptions, retrieveYoutubeCaptions, videoMetadata, walkChannel } from 
  * What discovery can say about a new Item's audience before anything else runs.
  * YouTube is always public; Substack's paywall flag lives in the catalogue, not the
  * feed, so a freshly discovered post is honestly `unknown` until the catalogue speaks.
+ * A blog declares no audience at all — the gating markers are in the page, so it is
+ * `unknown` for a different reason and by the same rule.
  */
 const DISCOVERED_AUDIENCE: Record<Platform, Audience> = {
   youtube: 'everyone',
   substack: 'unknown',
+  blog: 'unknown',
 };
 
 /** Who a scoped run is about. Both halves are needed: the rows key on one, the reports on the other. */
@@ -209,6 +212,16 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
 
   for (const source of due) {
     if (stopHere()) break;
+
+    // A blog can be followed before it can be read: registration prices it from its
+    // declared feed or its sitemap, and the walk that turns those into Items is not here
+    // yet. Skipping it out loud is the honest gap — the retrieval below is a two-way
+    // branch, and letting a blog fall down the YouTube side of it would be worse than a
+    // Source that visibly does nothing.
+    if (source.platform === 'blog') {
+      log(`braintrust: ${source.handle} is followed, but braintrust cannot read a blog yet.`);
+      continue;
+    }
 
     const report = await runSource(source, { ...deps, now, log, stopping });
     reports.push(report);

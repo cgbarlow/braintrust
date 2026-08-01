@@ -45,9 +45,9 @@ comment on column braintrust_people.paused_at is
 create table if not exists braintrust_sources (
   id                   uuid primary key default gen_random_uuid(),
   person_id            uuid not null references braintrust_people(id) on delete cascade,
-  platform             text not null check (platform in ('substack', 'youtube')),
+  platform             text not null check (platform in ('substack', 'youtube', 'blog')),
   handle               text not null,        -- publication host, or channel id
-  discovery_url        text not null,        -- the RSS/Atom feed; discovery is generic across platforms
+  discovery_url        text not null,        -- the RSS/Atom feed, or a blog's sitemap where it has none
   cursor_published_at  timestamptz,          -- newest publish date seen; "new since last check"
   backfill_floor       date not null,        -- how far back backfill reaches (12 months by default)
   backfill_complete    boolean not null default false,

@@ -20,6 +20,8 @@ export type NameSignals = {
   substackTitle?: string | undefined;
   youtubeAuthor?: string | undefined;
   youtubeTitle?: string | undefined;
+  blogAuthor?: string | undefined;
+  blogTitle?: string | undefined;
 };
 
 /** Brand fragments a publication name accretes and a person's name does not. */
@@ -33,16 +35,28 @@ const SEGMENT_SEPARATOR = /\s*[|•·–—]\s*|\s+-\s+/;
  * is the common shape and the Person half is the half that matters.
  */
 export function proposeDisplayName(signals: NameSignals, fallback: string): string {
-  const { substackAuthor, substackTitle, youtubeAuthor, youtubeTitle } = signals;
+  const { substackAuthor, substackTitle, youtubeAuthor, youtubeTitle, blogAuthor, blogTitle } =
+    signals;
 
-  if (substackAuthor && looksLikePersonName(substackAuthor)) return substackAuthor;
+  // A blog's `dc:creator` is a person's name by construction for the same reason
+  // Substack's is: the author tag on a personal blog is the author.
+  for (const author of [substackAuthor, blogAuthor]) {
+    if (author && looksLikePersonName(author)) return author;
+  }
 
-  for (const title of [youtubeAuthor, youtubeTitle, substackTitle]) {
+  for (const title of [youtubeAuthor, youtubeTitle, substackTitle, blogTitle]) {
     const segment = personSegment(title);
     if (segment) return segment;
   }
 
-  for (const candidate of [youtubeAuthor, substackAuthor, youtubeTitle, substackTitle]) {
+  for (const candidate of [
+    youtubeAuthor,
+    substackAuthor,
+    blogAuthor,
+    youtubeTitle,
+    substackTitle,
+    blogTitle,
+  ]) {
     const stripped = candidate?.replace(PUBLICATION_SUFFIX, '').trim();
     if (stripped) return stripped;
   }
@@ -55,11 +69,14 @@ export function nameSignals(surveys: { platform: string; survey: SourceSurvey }[
   const of = (platform: string) => surveys.find((entry) => entry.platform === platform)?.survey;
   const substack = of('substack');
   const youtube = of('youtube');
+  const blog = of('blog');
   return {
     substackAuthor: substack?.feedAuthor,
     substackTitle: substack?.feedTitle,
     youtubeAuthor: youtube?.feedAuthor,
     youtubeTitle: youtube?.feedTitle,
+    blogAuthor: blog?.feedAuthor,
+    blogTitle: blog?.feedTitle,
   };
 }
 

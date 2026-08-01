@@ -10,7 +10,7 @@
 import { monthsBefore, parseDate, toDateOnly } from '../dates.js';
 import { BraintrustError } from '../errors.js';
 import { fetchJson, fetchText, type Fetcher } from '../net/fetch.js';
-import { allTags, channelPart, firstTag } from '../net/xml.js';
+import { channelPart, firstTag, mostCommonTag } from '../net/xml.js';
 import { PAGE_SPACING_MS, type ResolvedSource, type SourceSettings, type SourceSurvey } from './types.js';
 
 /**
@@ -125,7 +125,7 @@ export async function surveySubstack(
     feedTitle: firstTag(head, 'title'),
     // `dc:creator` is per item and it is a person's name by construction, which
     // makes it the best display-name signal either platform offers.
-    feedAuthor: mostCommon(allTags(feed, 'dc:creator')),
+    feedAuthor: mostCommonTag(feed, 'dc:creator'),
     itemsInWindow: inWindow,
     basis: 'measured',
     how: `counted from the archive API, ${toDateOnly(floor)} onward`,
@@ -134,23 +134,6 @@ export async function surveySubstack(
     // Every dated post carries its date in the archive record already.
     dateFetches: 0,
   };
-}
-
-function mostCommon(values: string[]): string | undefined {
-  const counts = new Map<string, number>();
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (trimmed) counts.set(trimmed, (counts.get(trimmed) ?? 0) + 1);
-  }
-  let best: string | undefined;
-  let bestCount = 0;
-  for (const [value, count] of counts) {
-    if (count > bestCount) {
-      best = value;
-      bestCount = count;
-    }
-  }
-  return best;
 }
 
 function defaultPause(ms: number): Promise<void> {

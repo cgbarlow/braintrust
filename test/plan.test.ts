@@ -14,6 +14,16 @@ import { describe, it } from 'node:test';
 import { buildPlan, estimateDuration } from '../src/follow/plan.js';
 import { DEFAULT_SETTINGS, REQUEST_SPACING_SECONDS } from '../src/sources/types.js';
 import {
+  FEED_BLOG_AUTHOR,
+  FEED_BLOG_HOST,
+  FEED_BLOG_OLDER,
+  FEED_BLOG_POSTS,
+  SITEMAP_BLOG_HOST,
+  SITEMAP_BLOG_URLS,
+  feedBlogRoutes,
+  sitemapBlogRoutes,
+} from './support/blogs.js';
+import {
   CHANNEL_ID,
   NOW,
   SUBSTACK_FREE,
@@ -133,6 +143,47 @@ describe('the plan', () => {
     assert.equal(priced.minutes, 1);
     assert.equal(Math.ceil((BLUESKY_POSTS * 4) / 60), 102);
     assert.match(priced.how, /16 post-page requests at 1s each/);
+  });
+
+  /**
+   * Two blogs, two different things the Plan has to admit to. Neither is `measured`, and
+   * a human should be able to tell from the sentence which kind of not-measured it is.
+   */
+  it('offers a feed-bearing blog as one request, and says the archive is not enumerable', async () => {
+    const fetcher = fakeFetcher(feedBlogRoutes());
+    const { plan } = await buildPlan([`https://${FEED_BLOG_HOST}/`], [], deps(fetcher));
+    const blog = plan.sources[0]!;
+
+    assert.equal(blog.platform, 'blog');
+    assert.equal(blog.items.basis, 'estimated');
+    assert.match(blog.items.how!, /the archive cannot be enumerated/);
+    // The whole backfill is the one request that read the feed. "Nothing to retrieve"
+    // would have described a different source entirely.
+    assert.equal(plan.estimated_duration_min, 0);
+    assert.match(
+      plan.estimated_duration_how,
+      new RegExp(`${FEED_BLOG_POSTS - FEED_BLOG_OLDER} post bodies arriving with discovery`),
+    );
+    // The name comes from the feed, not from the hostname the human happened to paste.
+    assert.equal(plan.person, FEED_BLOG_AUTHOR);
+  });
+
+  it('quotes a feedless blog as at most N, at the page rate it will actually pay', async () => {
+    const fetcher = fakeFetcher(sitemapBlogRoutes());
+    const { plan } = await buildPlan([`https://${SITEMAP_BLOG_HOST}/`], [], deps(fetcher));
+    const blog = plan.sources[0]!;
+
+    assert.equal(blog.items.basis, 'estimated');
+    assert.equal(blog.items.count, SITEMAP_BLOG_URLS);
+    // An upper bound braintrust can defend beats a midpoint it cannot: the sitemap
+    // includes the homepage, and its dates cannot place a URL in the window.
+    assert.match(blog.items.how!, new RegExp(`at most ${SITEMAP_BLOG_URLS}\\b`));
+    // Every candidate is a page fetch on somebody's own hosting, at 4s each.
+    assert.equal(
+      plan.estimated_duration_min,
+      Math.ceil((SITEMAP_BLOG_URLS * REQUEST_SPACING_SECONDS.blog) / 60),
+    );
+    assert.match(plan.estimated_duration_how, new RegExp(`${SITEMAP_BLOG_URLS} page requests at 4s each`));
   });
 
   it('keeps the link as pasted, so a wrong resolution is visible here', async () => {

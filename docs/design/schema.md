@@ -73,9 +73,9 @@ below — one is the user's choice, the other is the source refusing braintrust.
 create table braintrust_sources (
   id                   uuid primary key default gen_random_uuid(),
   person_id            uuid not null references braintrust_people(id) on delete cascade,
-  platform             text not null check (platform in ('substack', 'youtube')),
+  platform             text not null check (platform in ('substack', 'youtube', 'blog')),
   handle               text not null,        -- publication host, or channel id
-  discovery_url        text not null,        -- the RSS/Atom feed; discovery is generic across platforms
+  discovery_url        text not null,        -- the RSS/Atom feed, or a blog's sitemap where it has none
   cursor_published_at  timestamptz,          -- newest publish date seen; "new since last check"
   backfill_floor       date not null,        -- how far back backfill reaches (12 months by default)
   backfill_complete    boolean not null default false,
@@ -381,11 +381,13 @@ because `create table if not exists` leaves an existing table alone and a user's
 to be able to accept a value added later.
 
 ```sql
--- Two more platforms. Discovery is generic where the platform has a feed; Bluesky
--- is read through the public AppView, so 'bluesky' is a platform rather than a feed.
+-- Two more platforms, and they arrive one at a time. 'blog' landed in schema.sql with
+-- the blog build; the alter is what a database that already exists needs. Bluesky is
+-- read through the public AppView rather than through a feed, and its own ticket
+-- restates this constraint with 'bluesky' in it — a drop-and-restate re-run is a no-op.
 alter table braintrust_sources drop constraint if exists braintrust_sources_platform_check;
 alter table braintrust_sources add constraint braintrust_sources_platform_check
-  check (platform in ('substack', 'youtube', 'bluesky', 'blog'));
+  check (platform in ('substack', 'youtube', 'blog'));
 
 -- One more skip, and it is braintrust's own decision like the other two policy skips.
 alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
