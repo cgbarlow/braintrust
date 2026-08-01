@@ -1232,7 +1232,14 @@ export function summarise(report: CycleReport): string {
 
   if (notes) {
     const read = [`${notes.items_read} items read as ${notes.generation}`, `${notes.claims_kept} claims`];
-    if (notes.claims_dropped > 0) read.push(`${notes.claims_dropped} unquotable, dropped`);
+    if (notes.claims_dropped > 0) {
+      read.push(
+        `${notes.claims_dropped} unquotable, dropped` +
+          // The whole reason this number is here: it is the difference between "the model
+          // is inventing quotes" and "the model punctuated an unpunctuated transcript".
+          (notes.claims_nearly > 0 ? ` (${notes.claims_nearly} only punctuation and case)` : ''),
+      );
+    }
     if (notes.items_failed > 0) read.push(`${notes.items_failed} failed`);
     if (notes.error) read.push(`error: ${notes.error}`);
     lines.push(`  notes: ${read.join(', ')}`);

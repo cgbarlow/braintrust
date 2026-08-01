@@ -16,6 +16,7 @@ import {
   chatUrl,
   createExtractor,
   locate,
+  locateLoosely,
   PROMPT_VERSION,
   readNoteContent,
   SYSTEM_PROMPT,
@@ -82,6 +83,53 @@ describe('verifying claims', () => {
 
     assert.equal(claims[0]!.chunk_id, 'chunk-b');
     assert.equal(claims[0]!.start_ms, 42_000);
+  });
+
+  /**
+   * **The drop rate is the signal the design says to watch, and it was not diagnosable.**
+   * The rejected quotes are deliberately never stored, so a run reporting "20 dropped" gave
+   * nobody anything to act on. Measured at the moment of rejection, it separates the two
+   * possibilities that matter: a model inventing quotes, and a model punctuating a
+   * transcript that has no punctuation.
+   *
+   * A live run made the question urgent — 42% dropped on auto-captions against 10% on
+   * prose. Nothing here accepts a looser quote; it only counts one.
+   */
+  it('counts a quote that differs only in punctuation and case, and still drops it', () => {
+    const captions = 'so here is the prompt i paste in and here is why it works';
+    const { claims, dropped, nearly } = verifyClaims(
+      [{ statement: 'Tidied.', quote: 'So here is the prompt I paste in, and here is why it works.' }],
+      captions,
+      [{ id: 'chunk-a', char_start: 0, char_end: captions.length, start_ms: 0 }],
+    );
+
+    assert.equal(claims.length, 0, 'the rule has not moved: this is still not a quote');
+    assert.equal(dropped, 1);
+    assert.equal(nearly, 1, 'and braintrust can now say why');
+  });
+
+  it('does not count a changed word as nearly right', () => {
+    const { dropped, nearly } = verifyClaims(
+      [{ statement: 'Repaired.', quote: 'the prices keep on dropping' }],
+      BODY,
+      CHUNKS,
+    );
+
+    assert.equal(dropped, 1);
+    assert.equal(nearly, 0, 'a changed word is a changed word however it is punctuated');
+  });
+
+  /**
+   * The property that would make accepting it safe, were it ever accepted: the span maps
+   * back to the real body, so the stored quote stays the author's characters rather than
+   * the model's rendering of them.
+   */
+  it('maps a loose match back to the body’s own characters', () => {
+    const captions = 'so here is the prompt i paste in and here is why it works';
+    const span = locateLoosely('So here is the prompt I paste in,', captions)!;
+
+    assert.ok(span);
+    assert.equal(captions.slice(span.start, span.end), 'so here is the prompt i paste in');
   });
 
   it('drops a claim it cannot quote, and counts it', () => {

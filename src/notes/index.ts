@@ -43,6 +43,13 @@ export type ReadReport = {
   claims_kept: number;
   /** Claims whose quote was not in the body. The number worth watching. */
   claims_dropped: number;
+  /**
+   * Of those, how many differ from the body only in punctuation and case — which is the
+   * shape a quote from an unpunctuated auto-caption takes. Counted at the moment of
+   * rejection because the rejected quotes are deliberately not stored, so this is the only
+   * place the question can be asked at all.
+   */
+  claims_nearly: number;
   items_failed: number;
   stopped_early: boolean;
   error?: string;
@@ -57,6 +64,7 @@ export async function readCorpus(deps: ReadDeps): Promise<ReadReport> {
     items_read: 0,
     claims_kept: 0,
     claims_dropped: 0,
+    claims_nearly: 0,
     items_failed: 0,
     stopped_early: false,
   };
@@ -135,12 +143,17 @@ async function readItem(
   report.items_read += 1;
   report.claims_kept += verified.claims.length;
   report.claims_dropped += verified.dropped;
+  report.claims_nearly += verified.nearly;
 
   if (verified.dropped > 0) {
     log(
       `braintrust: ${verified.dropped} of ${raw.claims.length} claim(s) about ${item.external_id} ` +
         'quoted words that are not in it. Dropped rather than stored — a claim braintrust ' +
-        'cannot cite is a claim it does not have.',
+        `cannot cite is a claim it does not have.${
+          verified.nearly > 0
+            ? ` ${verified.nearly} of them differ only in punctuation and case, which is what a quote from an auto-caption looks like.`
+            : ''
+        }`,
     );
   }
 }

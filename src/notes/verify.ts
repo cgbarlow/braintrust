@@ -69,6 +69,16 @@ export type Verification = {
   claims: VerifiedClaim[];
   /** Claims whose quote is not in the body. Reported, never stored. */
   dropped: number;
+  /**
+   * Of those, how many differ from the body **only in punctuation and case**.
+   *
+   * A measurement rather than a policy: these are dropped exactly as the rest are. It
+   * exists because the drop rate is the signal the design says to watch, and a signal
+   * nobody can drill into cannot be acted on — the rejected quotes are not stored, by
+   * design, so without counting this at the moment of rejection the number is a mystery
+   * every time.
+   */
+  nearly: number;
 };
 
 export function verifyClaims(
@@ -79,11 +89,13 @@ export function verifyClaims(
 ): Verification {
   const verified: VerifiedClaim[] = [];
   let dropped = 0;
+  let nearly = 0;
 
   for (const claim of claims) {
     const span = locate(claim.quote, body);
     if (!span) {
       dropped += 1;
+      if (locateLoosely(claim.quote, body)) nearly += 1;
       continue;
     }
 
@@ -98,7 +110,7 @@ export function verifyClaims(
     });
   }
 
-  return { claims: verified, dropped };
+  return { claims: verified, dropped, nearly };
 }
 
 export type Span = { start: number; end: number };
@@ -125,6 +137,70 @@ export function locate(quote: string, body: string): Span | undefined {
 
   const match = new RegExp(pattern).exec(body);
   return match ? { start: match.index, end: match.index + match[0].length } : undefined;
+}
+
+/**
+ * The same search with punctuation and case set aside. **Nothing accepts this yet** — it
+ * exists to count how many dropped claims differ from the body only in the ways a
+ * transcript has no opinion about, so the question of whether to accept it is settled by
+ * measurement rather than by argument.
+ *
+ * The case for asking at all: most of what braintrust reads is auto-generated captions,
+ * which arrive unpunctuated and uncased — *"so here is the prompt i paste in"*. A model
+ * quoting that writes *"So here is the prompt I paste in,"*, which is not a repair of the
+ * words but a rendering of something the transcript never contained. The first live run
+ * dropped 42% of claims on transcripts against 10% on prose, which is what made the
+ * question worth measuring.
+ *
+ * The words must still be identical and in order, so a changed word still fails — and were
+ * this ever promoted, the stored quote would remain the body's own characters at the span,
+ * because that is read off `body.slice()` and not off what the model wrote.
+ */
+export function locateLoosely(quote: string, body: string): Span | undefined {
+  const wanted = flatten(quote);
+  if (wanted.text === '') return undefined;
+
+  const found = flatten(body);
+  const at = found.text.indexOf(wanted.text);
+  if (at < 0) return undefined;
+
+  return { start: found.index[at]!, end: found.index[at + wanted.text.length - 1]! + 1 };
+}
+
+/**
+ * Lowercased, punctuation removed, whitespace collapsed — with every surviving character
+ * remembering where it came from, which is what lets a match map back to a span of the
+ * real body rather than of the flattened copy.
+ */
+function flatten(text: string): { text: string; index: number[] } {
+  const out: string[] = [];
+  const index: number[] = [];
+  let space = true;
+
+  for (let at = 0; at < text.length; at += 1) {
+    const character = text[at]!;
+
+    if (/\s/.test(character)) {
+      if (!space) {
+        out.push(' ');
+        index.push(at);
+        space = true;
+      }
+      continue;
+    }
+    if (!/[\p{L}\p{N}]/u.test(character)) continue;
+
+    out.push(character.toLowerCase());
+    index.push(at);
+    space = false;
+  }
+
+  while (out.length > 0 && out[out.length - 1] === ' ') {
+    out.pop();
+    index.pop();
+  }
+
+  return { text: out.join(''), index };
 }
 
 /**
