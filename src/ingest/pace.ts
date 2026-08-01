@@ -1,13 +1,14 @@
 /**
  * Pace. The one thing braintrust does that makes an unattended crawl defensible.
  *
- * 4s between fetches is not a tuning knob: it is the spacing under which caption
- * extraction tested clean where per-video metadata failed every time, and the
- * difference between reading a feed and hammering a service. braintrust crawls from
- * one host at one address with nothing to rotate, so pace is the whole of its good
- * behaviour.
+ * Spacing between requests is not a tuning knob. Each rate is attached to something
+ * measured about the Source it applies to — 4s is the spacing under which caption
+ * extraction tested clean where per-video metadata failed every time; 1s is what an
+ * open, CDN-served AppView that answers in 548ms and states no limit is owed — and the
+ * table is in `sources/types.ts`. braintrust crawls from one host at one address with
+ * nothing to rotate, so pace is the whole of its good behaviour.
  *
- * See docs/research/source-terms-and-consent.md §7 and docs/design/ingestion.md §5.
+ * See docs/research/source-terms-and-consent.md §7 and docs/design/ingestion.md §5–6.
  */
 
 import { BraintrustError } from '../errors.js';

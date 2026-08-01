@@ -327,7 +327,7 @@ export function buildServer({
           'saying so, and that is a normal answer rather than a failure — the persona already ' +
           'reflects everything braintrust holds.\n\n' +
           'Fetching is time-boxed, because a first backfill is around half an hour of polite ' +
-          '4-second spacing and this is one request. A call that runs out returns what it did ' +
+          'spacing and this is one request. A call that runs out returns what it did ' +
           'and how much is `still_owed`; nothing is wasted, and the daily job continues from ' +
           'the same rows.\n\n' +
           'It has a second answer — **`already_running`, with the time that rebuild started** — ' +

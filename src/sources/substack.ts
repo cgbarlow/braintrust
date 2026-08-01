@@ -11,7 +11,7 @@ import { monthsBefore, parseDate, toDateOnly } from '../dates.js';
 import { BraintrustError } from '../errors.js';
 import { fetchJson, fetchText, type Fetcher } from '../net/fetch.js';
 import { allTags, channelPart, firstTag } from '../net/xml.js';
-import type { ResolvedSource, SourceSettings, SourceSurvey } from './types.js';
+import { PAGE_SPACING_MS, type ResolvedSource, type SourceSettings, type SourceSurvey } from './types.js';
 
 /**
  * `handle` is the publication host, not the subdomain.
@@ -73,8 +73,6 @@ export type SubstackDeps = {
   pause?: (ms: number) => Promise<void>;
 };
 
-const PAGE_PAUSE_MS = 200;
-
 export async function surveySubstack(
   source: ResolvedSource,
   settings: SourceSettings,
@@ -88,7 +86,7 @@ export async function surveySubstack(
   let paywalled = 0;
 
   for (let page = 0; page < MAX_ARCHIVE_PAGES; page += 1) {
-    if (page > 0) await pause(PAGE_PAUSE_MS);
+    if (page > 0) await pause(PAGE_SPACING_MS);
 
     const url =
       `https://${source.handle}${ARCHIVE_PATH}` +
