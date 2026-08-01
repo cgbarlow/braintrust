@@ -20,7 +20,7 @@
 
 import type { ExtractorConfig } from '../config.js';
 import { BraintrustError } from '../errors.js';
-import type { Fetcher } from '../net/fetch.js';
+import { fetchPatiently, type Fetcher } from '../net/fetch.js';
 
 /**
  * Bumping this is a re-read of the Corpus, not a migration: `extractor` is in the
@@ -104,7 +104,11 @@ export function chatUrl(baseUrl: string): string {
   return trimmed.endsWith('/chat/completions') ? trimmed : `${trimmed}/chat/completions`;
 }
 
-export function createExtractor(config: ExtractorConfig, fetcher: Fetcher): Extractor {
+export function createExtractor(
+  config: ExtractorConfig,
+  fetcher: Fetcher,
+  pause?: (ms: number) => Promise<void>,
+): Extractor {
   const url = chatUrl(config.baseUrl);
 
   return {
@@ -119,7 +123,7 @@ export function createExtractor(config: ExtractorConfig, fetcher: Fetcher): Extr
 
       let response;
       try {
-        response = await fetcher(url, {
+        response = await fetchPatiently(fetcher, url, {
           json: {
             model: config.model,
             // Nothing here wants variety: two runs over the same immutable item should
@@ -139,7 +143,7 @@ export function createExtractor(config: ExtractorConfig, fetcher: Fetcher): Extr
             ],
           },
           ...(config.apiKey ? { headers: { authorization: `Bearer ${config.apiKey}` } } : {}),
-        });
+        }, pause);
       } catch (error) {
         throw new BraintrustError(
           `braintrust could not reach the note extractor at ${url}: ${(error as Error).message}. ` +

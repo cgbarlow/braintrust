@@ -65,6 +65,56 @@ export function createFetcher({ timeoutMs = 20_000 }: FetcherOptions = {}): Fetc
     });
 }
 
+/** Longest braintrust will wait on a `Retry-After` before treating it as a failure. */
+export const MAX_BACKOFF_MS = 60_000;
+
+const DEFAULT_BACKOFF_MS = 10_000;
+
+export const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * How long a 429 asked braintrust to wait.
+ *
+ * Seconds, per the common form. A date is also legal; a source that sends one gets the
+ * default rather than a parse braintrust would have to be careful about.
+ */
+export function retryAfterMs(response: FetchResponse): number {
+  const header = response.headers?.get('retry-after');
+  if (!header) return DEFAULT_BACKOFF_MS;
+
+  const seconds = Number(header.trim());
+  if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_BACKOFF_MS;
+  return Math.min(seconds * 1000, MAX_BACKOFF_MS);
+}
+
+/**
+ * One request, and one honoured 429.
+ *
+ * **Rate limiting is the other end asking braintrust to slow down, and slowing down is
+ * compliance rather than a workaround.** This lives at the network seam rather than in the
+ * ingest path because it turned out not to be an ingest concern: it was written for
+ * sources, and then a live run watched the operator's *own* model endpoint answer 429 and
+ * braintrust drop the item on the floor — items are re-read next run so nothing was lost,
+ * but a rate-limited endpoint could never finish a backfill, because each run would burn a
+ * few more items against the same wall.
+ *
+ * Once, not repeatedly. A second 429 is an endpoint that means it, and the caller's own
+ * backlog is what tries again tomorrow.
+ */
+export async function fetchPatiently(
+  fetcher: Fetcher,
+  url: string,
+  init?: FetchInit | undefined,
+  pause: (ms: number) => Promise<void> = sleep,
+): Promise<FetchResponse> {
+  const first = await fetcher(url, init);
+  if (first.status !== 429) return first;
+
+  await pause(retryAfterMs(first));
+  return fetcher(url, init);
+}
+
 /**
  * Fetches text, or fails with a message worth showing a human. `what` names the
  * thing being fetched in the human's terms ("the YouTube channel page"), because

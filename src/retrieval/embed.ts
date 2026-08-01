@@ -16,7 +16,7 @@
 
 import type { EmbeddingsConfig } from '../config.js';
 import { BraintrustError } from '../errors.js';
-import type { Fetcher } from '../net/fetch.js';
+import { fetchPatiently, type Fetcher } from '../net/fetch.js';
 
 /**
  * How many Chunks go in one request. The spec leaves batching and concurrency
@@ -46,7 +46,11 @@ export function embeddingsUrl(baseUrl: string): string {
   return trimmed.endsWith('/embeddings') ? trimmed : `${trimmed}/embeddings`;
 }
 
-export function createEmbedder(config: EmbeddingsConfig, fetcher: Fetcher): Embedder {
+export function createEmbedder(
+  config: EmbeddingsConfig,
+  fetcher: Fetcher,
+  pause?: (ms: number) => Promise<void>,
+): Embedder {
   const url = embeddingsUrl(config.baseUrl);
 
   return {
@@ -58,10 +62,10 @@ export function createEmbedder(config: EmbeddingsConfig, fetcher: Fetcher): Embe
 
       let response;
       try {
-        response = await fetcher(url, {
+        response = await fetchPatiently(fetcher, url, {
           json: { model: config.model, input: inputs },
           ...(config.apiKey ? { headers: { authorization: `Bearer ${config.apiKey}` } } : {}),
-        });
+        }, pause);
       } catch (error) {
         throw new BraintrustError(
           `braintrust could not reach the embeddings endpoint at ${url}: ${

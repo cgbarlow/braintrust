@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BraintrustError } from '../src/errors.js';
+import type { Fetcher } from '../src/net/fetch.js';
 import {
   chatUrl,
   createExtractor,
@@ -214,9 +215,57 @@ describe('the extractor', () => {
   it('names the model when the endpoint rejects the request', async () => {
     const endpoint = fakeExtractor({ status: 429 });
     await assert.rejects(
-      createExtractor(testExtractorConfig, endpoint.fetcher).read({ text: BODY }),
+      createExtractor(testExtractorConfig, endpoint.fetcher, async () => {}).read({ text: BODY }),
       /HTTP 429 for model "test-reader"/,
     );
+  });
+
+  /**
+   * **A 429 from the operator's own model endpoint is it asking braintrust to slow down**,
+   * and slowing down is compliance rather than a workaround — the same rule that has always
+   * applied to a source, applied where it turned out to matter more.
+   *
+   * Found live: a rate-limited extractor dropped item after item, one per run. Nothing was
+   * lost, because an unread Item stays in the Backlog — but a backfill against that endpoint
+   * could never finish, since every run burned a few more items against the same wall.
+   */
+  it('waits out a 429 from the model endpoint and reads the item on the retry', async () => {
+    const waited: number[] = [];
+    let attempts = 0;
+
+    const endpoint: Fetcher = async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return {
+          ok: false,
+          status: 429,
+          headers: { get: (name: string) => (name.toLowerCase() === 'retry-after' ? '2' : null) },
+          text: async () => '',
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({ claims: [], argument: 'nothing asserted', assumptions: [] }),
+                },
+              },
+            ],
+          }),
+      };
+    };
+
+    const note = await createExtractor(testExtractorConfig, endpoint, async (ms) => {
+      waited.push(ms);
+    }).read({ text: BODY });
+
+    assert.equal(attempts, 2, 'the same item is asked again rather than dropped for the run');
+    assert.deepEqual(waited, [2000], 'it waits exactly as long as it was asked to');
+    assert.equal(note.argument, 'nothing asserted');
   });
 
   it('reports an unreachable endpoint as this run only', async () => {
