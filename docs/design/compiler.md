@@ -128,6 +128,45 @@ is connected**. It could only serve a hand-triggered refresh, which is the cheap
 expensive one, and a Compile declares a **single** extractor generation, so mixing in whatever model a caller
 happened to be using would break an assumption several layers rest on.
 
+### Which model reads, and how that is decided
+
+`npm run eval` — the third entry point, beside the server and the job. An operator's tool rather than a
+client's, because choosing the model that reads someone's published work is a decision about money and about
+where that work is sent, which is not the kind the MCP surface makes. The incumbent and the candidates are
+recorded in [`extractor-models.md`](../research/extractor-models.md).
+
+**braintrust was most of an eval harness already and only lacked the report.** Three things it has anyway do
+the work: the **Corpus is the eval set**, so the benchmark cannot drift away from the job and there are no
+fixtures anybody has to keep honest; a Note keyed `(item_id, extractor)` means a candidate's Notes sit
+**beside** the incumbent's rather than over them, so trying one disturbs no live Persona and adopting one
+later re-reads nothing it has already read; and the **verifier is an objective scorer** — a quote is in the
+body or it is not.
+
+**No model judges a model.** Every measure is a count, the same rule Voice and Coverage hold, and it matters
+more here than anywhere: a judge could fail in exactly the way the thing it judges fails, and quietly agree
+with it.
+
+**The sample is fixed, or two numbers cannot be put beside each other.** Ordered by `md5(item id)` — stable
+across runs, machines and databases, owing nothing to insertion order or to how far a backfill reached — so
+every model sees the same Items and nobody can re-sample until a favoured one wins. Stratified by length,
+because length is what the candidates differ on: an unstratified sample of this Corpus would settle the
+long-context question on whichever two or three long Items happened to be drawn.
+
+**The scorecard is deliberately not one number, because two failures pass every other measure.** A model
+quoting three words at a time scores a *perfect* fidelity and says nothing, so **median quote length** sits
+beside it. A model that reads the first ten minutes of a four-hour lecture looks healthy everywhere else, so
+**late-span share** — the share of quotes drawn from an Item's last third — is reported too. That one is the
+local answer to a question published long-context benchmarks cannot settle, because it is measured on this
+Corpus rather than on synthetic needles.
+
+**The incumbent costs nothing to score**, because its Notes are already written over those Items. Fidelity and
+the punctuation share need a live read — the rejected quotes were never stored — so a generation scored
+retroactively reports them as a dash rather than a guess.
+
+**The harness may keep the rejected quotes; production may not.** It is a diagnostic path rather than the
+product, so it writes them to a file and never to a row, which is the only place the drop rate stops being a
+number and becomes something a human can read.
+
 ---
 
 ## 2. Six layers: a bounded core and an indexed growing layer

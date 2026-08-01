@@ -35,6 +35,24 @@ A day is the Bluesky unit because 2,100 skeets a year would be 2,100 model calls
 
 The chat endpoint is the one job worth real money: it reads each item once, so following someone costs a few dollars up front and close to nothing thereafter.
 
+### What to point them at
+
+**No defaults, but recommendations — those are different things.** braintrust will not choose for you, because the choice sends someone's published work to a particular company or keeps it on your own hardware. It will tell you what works.
+
+| | Recommended | Why |
+|---|---|---|
+| **Embeddings** | `qwen3-embedding:0.6b`, 1024 dimensions | What `schema.sql`'s `vector(1024)` is sized for. Change both together — braintrust checks the width at boot and refuses to start on a mismatch rather than poisoning the index |
+| **Notes** | a **120B-class MoE** with a long context and strong verbatim copying | This is the one that decides persona quality |
+
+**What the notes model is actually doing** is narrow and unusual: read a whole item, and quote the exact words that assert each claim — **copied character for character**, out of what is often unpunctuated auto-generated captions, without tidying them. braintrust discards any quote it cannot find in the source, so a model that paraphrases loses you claims outright.
+
+That skill is not what general benchmarks measure. **Agentic and coding scores predict it poorly**, and a model tuned to be helpful is a model inclined to tidy a quote. Two properties do matter, and are worth checking before downloading anything:
+
+- **Long context that holds.** Items run to 40,000 words. A model that quotes only the opening of a long talk loses the rest of it silently.
+- **A size that fits your hardware at 4-bit or better.** Total parameters, not active ones, decide whether it fits. The aggressive quantisations that squeeze a large model in are the ones that damage precise copying — which is the whole capability you are choosing for.
+
+**Don't take any of that on faith, including from us** — see [Choosing the model that reads](#choosing-the-model-that-reads) below, which measures a candidate on your own corpus rather than on a benchmark.
+
 ## Getting started
 
 braintrust is a repo you deploy, not a package you install.
@@ -51,6 +69,22 @@ Add your first council member through your AI client, not the command line — `
 
 `npm test` runs the suite; the database tests skip without a Postgres.
 
+## Choosing the model that reads
+
+```bash
+npm run eval                                     the model you use now, scored for free
+npm run eval -- --model NAME                     a candidate, on the identical items
+npm run eval -- --model NAME --sample 100 --dry  a firmer number, writing nothing
+```
+
+**Nothing judges with a model.** Every measure is a count, because a judge could fail exactly where the model it is judging fails and quietly agree with it. The sample is fixed and stratified by length, so two models are always scored on the same items and nobody can re-sample until a favoured one wins.
+
+**The scorecard is deliberately not one number**, because two failures pass everything else. *Fidelity* — the share of claims whose quote braintrust could verify — is the headline; **median quote length** catches a model gaming it with three-word quotes, and **late-span share** catches one that stops reading a four-hour lecture after ten minutes.
+
+Trying a candidate is consequence-free: notes are keyed by model, so a candidate's sit beside the incumbent's, your live personas keep answering, and adopting one later re-reads nothing it has already read. The incumbent costs nothing at all — its notes are already written.
+
+[`docs/research/extractor-models.md`](docs/research/extractor-models.md) records what is currently running, the live candidates, and what was ruled out and why.
+
 ## The design
 
 braintrust is specified before it is built. These five documents are the spec — everything v1 does, and every cost it accepts:
@@ -61,7 +95,7 @@ braintrust is specified before it is built. These five documents are the spec �
 - [**Deployment**](docs/design/deployment.md) — server plus scheduled job, auth, configuration
 - [**The tables**](docs/design/schema.md) — the three-tier store everything above writes to
 
-Vocabulary is in [CONTEXT.md](CONTEXT.md); the choices a reader would find surprising are [ADRs](docs/adr/).
+Vocabulary is in [CONTEXT.md](CONTEXT.md); the choices a reader would find surprising are [ADRs](docs/adr/). What was measured before those choices were made — source terms, platform behaviour, and which model reads the corpus — is in [docs/research/](docs/research/).
 
 ## Honest limitations
 
