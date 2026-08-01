@@ -382,6 +382,22 @@ everything else here is written: `if not exists`, and a constraint dropped and r
 because `create table if not exists` leaves an existing table alone and a user's already-deployed database has
 to be able to accept a value added later.
 
+**Idempotent means idempotent against a database that already exists**, which is the only kind anybody
+re-pastes this file into — and that is not what "it runs twice cleanly" tests. A real paste into a real
+database failed on two counts at once, both invisible against a fresh one, where `create table if not exists`
+does the whole job and every `alter` is a no-op:
+
+- **A `comment on` a column runs *after* the alter that adds it, never before.** A comment on a column that is
+  not there yet is a hard `42703` rather than a skipped notice, so the file died partway through on every
+  deployed database and none at all in testing.
+- **Every column added after a table first shipped needs an `alter`, even though it also appears in the
+  `create table`.** Two Position columns had none — they reached fresh databases through the create and a
+  deployed one never, which is the quieter failure: the paste appears to succeed and a compile fails later on
+  a column that is simply absent.
+
+Both are now covered by a test that reconstructs the old shape — drops every column added since, narrows both
+check constraints back — and re-applies the file, which is exactly what a human does.
+
 ```sql
 -- Both landed in schema.sql, one build at a time; the alter is what a database that
 -- already exists needs, and re-running a drop-and-restate is a no-op.

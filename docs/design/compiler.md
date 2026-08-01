@@ -84,6 +84,50 @@ permanent verdict on the strength of one bad afternoon.
 **Chunks are a precondition, not a coincidence.** A claim carries the Chunk its quote came from, so the read
 pass runs after the index and an Item that has not been chunked is not yet readable.
 
+### What the first live corpus settled about the drop rate
+
+The first full read of a real corpus — **157 items, 1,093 claims** — put a number on the thing this section
+exists to catch:
+
+```
+notes: 157 items read, 1,093 claims, 291 unquotable, dropped (87 only punctuation and case)
+```
+
+**27% of claims quoted words that were not in the item.** Split by form on a smaller sample, transcripts ran
+about four times prose. That is a large number and it was, at first, an *undiagnosable* one.
+
+**A dropped quote is not stored, so the drop rate was a signal nobody could act on.** The count says how often
+it happened and nothing about why — and the two possible causes call for opposite responses. A model
+*punctuating* an unpunctuated auto-caption is braintrust being stricter than its own reasoning requires; a
+model *inventing* words is a model to replace. So rejection now also counts how many quotes differ from the
+body **only in punctuation and case**, measured at the moment of rejection because that is the only moment the
+rejected text exists. Nothing accepts a looser quote — this measures the question rather than answering it.
+
+**The answer was 87 of 291 — 30%.** The other 204 differ in words. A four-item sample had suggested the
+reverse, which is the whole reason the measurement was built rather than the change being made on the strength
+of a plausible argument.
+
+**So the quote rule does not move, and this is the decision.** Loosening it would recover 8% of claims and
+leave a 19% invented-quote rate untouched — the dominant cause is not strictness. The looser matcher is
+retained as a counter only; were it ever promoted, `locateLoosely` maps its match back to the body so a stored
+quote would still be the author's characters, which is the property that would make accepting it safe.
+
+**And the prompt has no headroom left.** It already says *COPIED EXACTLY, character for character*, forbids
+fixing spelling, punctuation, capitalisation and transcription errors, states that an unverifiable quote will
+be discarded, and separately warns that a transcript is unpunctuated speech. With the endpoint fixed, ~19% is
+this model's ceiling rather than a prompt defect. Changing the prompt changes the generation and re-reads the
+whole Corpus at real cost, so it is not done on a hunch.
+
+**The number is the guarantee working, not damage being taken.** Without verification roughly one citation in
+five would be fabricated, in a product whose whole claim is that a Persona cites what someone actually
+published. 802 claims survived and every one is checkable.
+
+*Rejected: reading through the MCP client's model.* MCP supports server-initiated sampling and the SDK
+implements it, so the capability is real — but the read-once pass runs in the scheduled job, where **no client
+is connected**. It could only serve a hand-triggered refresh, which is the cheap path rather than the
+expensive one, and a Compile declares a **single** extractor generation, so mixing in whatever model a caller
+happened to be using would break an assumption several layers rest on.
+
 ---
 
 ## 2. Six layers: a bounded core and an indexed growing layer
@@ -691,6 +735,8 @@ embedding cost.
 | **A genuinely intense week of real work grades `moderate`** until the person returns to the subject. The Position is served with its span visible rather than hidden. | §2 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
+| **About a fifth of what the extractor proposes is thrown away**, measured at 291 of 1,093 on the first real corpus. 87 of those differ from the body only in punctuation and case and are dropped anyway; the rest quote words that are not there. Stated rather than engineered around: the alternative is a Persona citing a model. | §1 |
+| **A quote drawn from an Item's title is always dropped.** The model is shown `Title: …` above the body and verified against the body alone, so a title quote has nowhere to resolve to. Small, and not worth a Corpus re-read to remove on its own. | §1 |
 
 ## Deliberately not decided
 

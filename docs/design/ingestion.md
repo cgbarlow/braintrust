@@ -567,6 +567,27 @@ backfill is precisely the one this exists to stop.
 rather than feeding it. The measurement is *did anything come back*, and `only_paid` came back; counting it
 would turn a publication that started charging into a publication that blocked braintrust.
 
+**And so is a Source that says *there is nothing here*.** The first live run blocked a real YouTube channel
+after five consecutive videos with no caption track — a channel that had answered every request perfectly and
+simply does not caption its videos. The Items stay `failed`, because the words could not be retrieved and no
+setting an operator changes brings them back; they no longer feed the counter, because the player response the
+refusal was read *from* arrived intact. The class of mistake is the one this whole section exists to avoid,
+committed one level down: braintrust had classified an answer as a refusal.
+
+**A probe has to be able to hear that answer too, or the block is permanent.** The same run exposed the other
+half: the probe asked its Item, the Item raised *no captions*, the probe read anything that was not a paywall
+as still-not-answering — and left the row `pending`, so the next day asked the identical question of the
+identical video. A Source whose entire Backlog answers that way could never clear. The answer now clears the
+block, and the Item is recorded so tomorrow reaches for a different one; without that second half a Source
+would clear and re-block on a loop.
+
+**A dropped connection is not an answer at all, and gets one retry before anything counts it.** Neither
+refusing nor serving, just a request that never happened — so reading it as a verdict is the same error again.
+Found on a model endpoint rather than a Source: a connection dropped mid-compile and cost a whole Persona its
+rebuild while the Notes it would have been built from sat already written. The retry lives at the network seam
+with the 429 rule, so every caller gets it, and it is **once** — a second failure is an endpoint that means
+it. See [`compiler.md` §1](./compiler.md#1-each-item-is-read-once-and-what-was-read-is-kept).
+
 **A blocked Source's pending Items are not owed, and that is the whole of "a Compile still runs".** They are
 real rows and Coverage counts them as a shortfall the Persona names — but waiting on them would freeze the
 Persona for as long as a platform cared to refuse, which is the veto this section exists to deny. This is one
