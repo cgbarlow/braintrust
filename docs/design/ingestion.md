@@ -1039,6 +1039,63 @@ alone — which over-captures rather than under-captures, the direction that los
 across the backfill batch and reused by later single posts, and recomputed on each backfill, which is also how
 a redesign gets picked up.
 
+### What the build settled about reading a blog on a schedule
+
+**The poll asks the document which kind it is, exactly as discovery does.** `discovery_url` is a feed on one
+blog and a sitemap on another, and reading a sitemap through the feed reader finds no entries — so a blog that
+publishes plenty would have been reported, every morning, as a blog that publishes nothing. The question costs
+a regular expression and is asked rather than left to fall out.
+
+**A feedless blog's archive walk *is* its poll, so it runs on every run and not only until the backfill
+completes.** `backfill_complete` gates the walk for every other Source, and on a sitemap-discovered blog that
+gate would have closed after the first run and left the Source deaf to everything published afterwards. The
+second condition costs nothing: the sitemap is the document the poll already fetched.
+
+***A feed entry is already a statement that this is a post, and it carries the date.*** Measured live and it
+changed the design: `karpathy.github.io` puts a `pubDate` on all ten of its feed entries and no date metadata
+anywhere in its markup — no `article:published_time`, no JSON-LD, no `<time datetime>` — so asking only the
+page filed **ten real essays as ten non-posts**. The page is asked first because it is the more precise
+statement, not because it is the only one allowed to answer. A URL is *not a post* when nothing at all dated
+it, which on a sitemap-only blog is still the ordinary case.
+
+**A blog's window is applied wherever the date was free, and never after.** The other two Sources filter by
+`backfill_floor` during the catalogue walk; a blog has no catalogue, so the question is asked in the retrieval
+pass instead — but only of an Item the feed already dated, which is a `skipped_window` row costing no request
+and reopened by `reopenWindow` like any other. An Item the sitemap found is undated until its page is in hand,
+and re-skipping it once that request has been spent would buy nothing and lose the words. Without this,
+`window_months` meant nothing at all on a blog.
+
+**This is the Source that made *per request* stop meaning *per Item*.** §6 already said the spacing is between
+requests; a blog is the first Source where the two differ, because a post whose body arrived with the feed
+costs no request at all. So the requests are counted and the wait happens after one — otherwise a twelve-post
+feed backfill that touches the network once would sit politely still for forty-four seconds, buying nobody
+anything.
+
+**The chrome is learned from the markup already stored, so the steady state costs no requests.** `body_raw.html`
+was kept so a better extractor would never mean a second fetch, and this is the first thing to collect on that:
+a run with one new post to read seeds the boilerplate pool from rows it already has and extracts that post as
+well as a backfill would. Only a blog's *first* backfill learns as it goes, and its first page or two get the
+densest container alone. The pool stops growing at twenty pages so the set is stable across a batch rather than
+drifting from post to post.
+
+**Cross-page repetition cannot tell a signature paragraph from a footer, and should not try.** A blog that ends
+every post with the same three sentences loses them, which is the same trade as a post's own title being
+stripped by the widget that lists it — the mechanism measures repetition and never decides what chrome *is*,
+and that is exactly why it is safe to apply always.
+
+**A blocked blog's one daily request is a page, not its feed.** A blog's Items are `unknown` by construction,
+and the probe only asks for Items it would ordinarily fetch — so the allow-list exemption that lets a blog be
+read at all had to reach the probe too, or every blocked blog would have re-proved that its feed works while
+the pages stayed refused.
+
+**Proven against the three reference blogs**, on a run that fetched them for real: 35 Items retrieved, 2
+`skipped_not_a_post`, 0 failed, 0 pending, in 57 seconds. `agentics.org.nz` — 12 posts, every body from
+`content:encoded`, **not one page fetched**. `karpathy.bearblog.dev` — 10 bodies from the feed's `<content>`
+and 3 more from pages the sitemap listed and the feed had aged out of, plus the homepage and `/now/` correctly
+recorded as pages rather than posts. `karpathy.github.io` — 10 posts, every body from the page because its
+`<description>` is a synopsis element that has to beat the extraction, and `backfill_complete` left false
+forever because it serves no sitemap.
+
 ---
 
 ## Accepted costs
@@ -1060,6 +1117,8 @@ a redesign gets picked up.
 | **A blog carrying no date metadata leaves its Items undated**, which costs it revision detection entirely. | §8 |
 | **A feed that carries the whole post only in `<description>` still pays for the page**, because the element does not declare itself whole and the alternative is storing a synopsis as a post. | §8 |
 | **The first page of a blog gets no boilerplate removal**, since one page cannot establish that anything repeats. It over-captures rather than under-captures. | §8 |
+| **The first page or two of a blog's *first* backfill are extracted against a smaller boilerplate set than the rest, and nothing re-extracts them.** Later runs seed the set from stored markup, so this is the first backfill only. | §8 |
+| **A paragraph a blog repeats on every post is removed from all of them**, because repetition is the only thing the extractor measures. The same trade as a post's title being stripped by the widget that lists it. | §8 |
 | **Every blog pays one wasted request at registration**, asking whether it is a Substack on a custom domain. The order is what stops a Substack resolving as a blog. | §8 |
 
 ## Deliberately not decided

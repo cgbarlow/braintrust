@@ -242,6 +242,31 @@ describe('judging one candidate', () => {
     const verdict = await judge(`https://${SITEMAP_BLOG_HOST}/post-2/`);
     assert.ok(verdict.kind === 'post' && verdict.raw.html?.includes('<article>'));
   });
+
+  /**
+   * **Measured live, and it filed a whole blog as pages.** `karpathy.github.io` puts a
+   * `pubDate` on all ten feed entries and no date metadata anywhere in the markup — no
+   * `article:published_time`, no JSON-LD, no `<time datetime>` — so asking only the page
+   * turned ten real essays into ten *"not a post"* rows. A feed entry is already a
+   * statement that this is a post and when it was published; the page is asked first
+   * because it is more precise, not because it is the only one allowed to answer.
+   */
+  it('takes the feed’s date when the page carries none, rather than calling it a page', async () => {
+    const published = new Date('2015-11-14T00:00:00Z');
+    const verdict = await retrieveBlogPost(source(), SITEMAP_BLOG_HOMEPAGE_URL, deps(sitemapBlogRoutes()), {
+      excludeShorts: false,
+      publishedAt: published,
+    });
+
+    assert.equal(verdict.kind, 'post');
+    assert.ok(verdict.kind === 'post' && verdict.raw.dated_by === 'feed');
+    assert.ok(verdict.kind === 'post' && verdict.publishedAt.getTime() === published.getTime());
+  });
+
+  it('is still not a post when neither the page nor a feed ever dated it', async () => {
+    const verdict = await judge(SITEMAP_BLOG_HOMEPAGE_URL);
+    assert.equal(verdict.kind, 'not_a_post');
+  });
 });
 
 describe('finding the publish date', () => {
