@@ -20,14 +20,26 @@ import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
 import { readCorpus, type Extractor, type ReadReport } from '../notes/index.js';
 import { indexCorpus, type Embedder, type IndexReport } from '../retrieval/index.js';
+import { documentKind } from '../sources/blog.js';
 import {
+  audienceKnownBeforeFetch,
   BLOCK_AFTER_FAILURES,
   requestSpacingMs,
   SHORT_MAX_SECONDS,
+  SHORT_MAX_WORDS,
   type Audience,
   type Platform,
 } from '../sources/types.js';
-import { feedSkippedAhead, newestPublished, readFeed } from './feed.js';
+import {
+  BOILERPLATE_PAGES,
+  boilerplateFrom,
+  feedBodies,
+  normaliseUrl,
+  retrieveBlogPost,
+  walkBlogArchive,
+  type FeedBody,
+} from './blog.js';
+import { feedSkippedAhead, newestPublished, readFeed, type FeedEntry } from './feed.js';
 import {
   activeSources,
   allSourcesForPerson,
@@ -38,6 +50,7 @@ import {
   dueSources,
   insertDiscovered,
   markFailed,
+  markSkippedNotAPost,
   markSkippedPaywall,
   markSkippedShort,
   markSkippedWindow,
@@ -50,6 +63,7 @@ import {
   reopenWindow,
   sourcesForPerson,
   storeBody,
+  storedPages,
   type CorpusCounts,
   type PendingItem,
   type SourceRow,
@@ -223,16 +237,6 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   for (const source of due) {
     if (stopHere()) break;
 
-    // A blog can be followed before it can be read: registration prices it from its
-    // declared feed or its sitemap, and the walk that turns those into Items is not here
-    // yet. Skipping it out loud is the honest gap — the retrieval below is a two-way
-    // branch, and letting a blog fall down the YouTube side of it would be worse than a
-    // Source that visibly does nothing.
-    if (source.platform === 'blog') {
-      log(`braintrust: ${source.handle} is followed, but braintrust cannot read a blog yet.`);
-      continue;
-    }
-
     const report = await runSource(source, { ...deps, now, log, stopping });
     reports.push(report);
     if (
@@ -335,6 +339,17 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   return report;
 }
 
+/**
+ * What the poll is asking for, in the words a human would use about it. A blog's
+ * `discovery_url` is a feed on one site and a sitemap on another, and a failure message
+ * naming the wrong one sends whoever reads it looking for a feed that never existed.
+ */
+function discoveryName(source: SourceRow): string {
+  return source.platform === 'blog'
+    ? `the feed or sitemap for ${source.handle}`
+    : `the feed for ${source.handle}`;
+}
+
 type SourceDeps = CycleDeps & {
   now: () => Date;
   log: (line: string) => void;
@@ -362,13 +377,22 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
   if (source.blocked_at) return probeSource(source, deps, report);
 
   try {
-    // 1. Poll. One feed fetch, generic across platforms.
-    const feed = readFeed(
-      await fetchPolitely(deps.fetcher, source.discovery_url, `the feed for ${source.handle}`, {
-        ...(deps.pause ? { pause: deps.pause } : {}),
-      }),
-      source.platform,
-    );
+    // 1. Poll. One fetch of `discovery_url`, generic across platforms.
+    const polled = await fetchPolitely(deps.fetcher, source.discovery_url, discoveryName(source), {
+      ...(deps.pause ? { pause: deps.pause } : {}),
+    });
+
+    // **A blog's discovery document is a feed or a sitemap, and the document says which.**
+    // That is what lets `discovery_url` stay one column with no flag beside it — but it
+    // has to be asked, because reading a sitemap as a feed finds no entries and would
+    // quietly report a blog that publishes nothing rather than one whose archive is the
+    // thing to walk.
+    const feed =
+      source.platform === 'blog' && documentKind(polled) !== 'feed'
+        ? { entries: [] }
+        : readFeed(polled, source.platform);
+
+    const blog = source.platform === 'blog' ? await blogPoll(source, deps, polled, feed.entries) : undefined;
 
     const discovered = await insertDiscovered(
       deps.db,
@@ -420,8 +444,10 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
     }
 
     // 3. Drain the Backlog: the catalogue first, so every body fetch knows its audience.
-    await catalogue({ ...source, backfill_complete: report.backfill_complete }, deps, report);
-    await retrieveBodies(source, deps, report);
+    const walked = { ...source, backfill_complete: report.backfill_complete };
+    if (blog) await catalogueBlog(walked, deps, report, blog, polled);
+    else await catalogue(walked, deps, report);
+    await retrieveBodies(source, deps, report, blog);
   } catch (error) {
     // One source's bad day is not another's. The two platforms share nothing but a
     // Person and they fail in opposite directions, so stopping the run would be a
@@ -463,15 +489,21 @@ async function probeSource(
   report.blocked_since = source.blocked_at!.toISOString();
 
   // Paywalled and unknown-audience rows are not requests braintrust would ever make, so
-  // they cannot answer the question this run is asking.
+  // they cannot answer the question this run is asking. A blog is the exception for the
+  // reason it is everywhere else: its Items are `unknown` by construction, and the page
+  // fetch is precisely the request that was refused.
   const askable = (await pendingItems(deps.db, source.id)).filter(
-    (item) => item.audience === 'everyone',
+    (item) => item.audience === 'everyone' || !audienceKnownBeforeFetch(source.platform),
   );
 
   try {
     if (askable[0]) {
       const item = askable[0];
-      if (source.platform === 'substack') {
+      if (source.platform === 'blog') {
+        // No feed and no walk on a probe — just the one page, extracted against whatever
+        // this blog's stored pages already say its chrome is.
+        await retrieveBlogItem(source, item, deps, report, await blogPoll(source, deps));
+      } else if (source.platform === 'substack') {
         await retrieveSubstackItem(source, item, deps, report);
       } else {
         await retrieveYoutubeItem(source, item, deps, report);
@@ -481,7 +513,7 @@ async function probeSource(
       // becomes a row and waits: discovery is free, and the Backlog stays suppressed until
       // the block is gone.
       const feed = readFeed(
-        await fetchPolitely(deps.fetcher, source.discovery_url, `the feed for ${source.handle}`, {
+        await fetchPolitely(deps.fetcher, source.discovery_url, discoveryName(source), {
           ...(deps.pause ? { pause: deps.pause } : {}),
         }),
         source.platform,
@@ -622,6 +654,103 @@ async function resolveUndescribed(
 }
 
 /**
+ * Everything about one blog that the poll already paid for, carried to the retrieval pass.
+ *
+ * A blog is the one Source whose *body* arrives with discovery, so the document read to
+ * find out what is new is also the document holding what to store — and throwing it away
+ * between the two halves of a run would make braintrust fetch every post it had already
+ * been given. That is the whole reason this exists.
+ */
+type BlogPoll = {
+  /** Bodies the feed carried, by normalised URL. Empty when the poll read a sitemap. */
+  feeds: Map<string, FeedBody>;
+  /** Publish dates the feed carried, by normalised URL. */
+  dates: Map<string, Date>;
+  /** The `<lastmod>` this run's walk saw, by URL. Empty when no walk ran. */
+  lastmods: Map<string, Date>;
+  /** Markup of pages read from this blog — seeded from the rows, grown by this run. */
+  pages: string[];
+  /** What repeats across those pages. Undefined until there are two of them. */
+  boilerplate?: ReadonlySet<string> | undefined;
+};
+
+async function blogPoll(
+  source: SourceRow,
+  deps: SourceDeps,
+  polled?: string,
+  entries: FeedEntry[] = [],
+): Promise<BlogPoll> {
+  const dates = new Map<string, Date>();
+  for (const entry of entries) {
+    if (entry.publishedAt) dates.set(normaliseUrl(entry.url), entry.publishedAt);
+  }
+
+  const pages = await storedPages(deps.db, source.id, BOILERPLATE_PAGES);
+
+  return {
+    feeds: polled !== undefined && documentKind(polled) === 'feed' ? feedBodies(polled) : new Map(),
+    dates,
+    lastmods: new Map(),
+    pages,
+    boilerplate: boilerplateFrom(pages),
+  };
+}
+
+/**
+ * A blog's catalogue pass, which is its archive walk.
+ *
+ * **Two conditions rather than one, and the second is what keeps a feedless blog alive.**
+ * `!backfill_complete` is the ordinary repair walk every Source has. But for a blog whose
+ * discovery document *is* the sitemap, the walk is the poll — it is how that Source learns
+ * anything was published at all — so it runs on every run, at no cost beyond the document
+ * already in hand. Without it a feedless blog would walk its archive once, set the flag,
+ * and never notice another post as long as it ran.
+ */
+async function catalogueBlog(
+  source: SourceRow,
+  deps: SourceDeps,
+  report: SourceReport,
+  blog: BlogPoll,
+  polled: string,
+): Promise<void> {
+  const pollIsSitemap = documentKind(polled) === 'sitemap';
+  if (source.backfill_complete && !pollIsSitemap) return;
+
+  const outcome = await walkBlogArchive(
+    source,
+    deps.db,
+    { fetcher: deps.fetcher, ...(deps.pause ? { pause: deps.pause } : {}), polled },
+    async (item) => {
+      await recordCatalogued(deps.db, source, item);
+      report.catalogued += 1;
+    },
+  );
+
+  blog.lastmods = outcome.lastmods;
+
+  if (outcome.reopened > 0) {
+    report.reopened_not_posts = outcome.reopened;
+    deps.log(
+      `braintrust: ${outcome.reopened} URL(s) braintrust had decided were not posts on ` +
+        `${source.handle} have changed since, so they are pending again. Nobody performed ` +
+        'this reopen; the sitemap did.',
+    );
+  }
+
+  // A blog with no sitemap never reaches the floor and never claims the flag, on every
+  // run, forever. That is the honest state rather than a failure: it knows it is behind
+  // and the Persona's Coverage says so.
+  if (outcome.reachedFloor && !source.backfill_complete) {
+    await completeBackfill(deps.db, source);
+    report.backfill_complete = true;
+    deps.log(
+      `braintrust: ${source.handle} has ${outcome.seen} URL(s) in ${outcome.sitemap}, every ` +
+        'one of them a candidate until the page says otherwise.',
+    );
+  }
+}
+
+/**
  * The expensive half, newest first, spaced at whatever this Source's rate is.
  *
  * **The wait is between requests, not between Items.** This comment used to say the
@@ -634,11 +763,28 @@ async function resolveUndescribed(
  * Substack and YouTube are unaffected: 4s per request is 4s per Item on both.
  * See docs/design/ingestion.md §6.
  */
-async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: SourceReport): Promise<void> {
+async function retrieveBodies(
+  source: SourceRow,
+  deps: SourceDeps,
+  report: SourceReport,
+  blog?: BlogPoll,
+): Promise<void> {
   const pause = deps.pause ?? sleep;
   const pending = await pendingItems(deps.db, source.id);
 
-  let fetched = 0;
+  // **Counted rather than assumed.** Substack and YouTube spend exactly one request per
+  // Item, so counting changes nothing for them — but a blog post whose body came with the
+  // feed spends none, and charging it four seconds for a fetch that never happened would
+  // make a whole backfill sleep for a quarter of an hour to be polite about no traffic.
+  let issued = 0;
+  const counted: SourceDeps = {
+    ...deps,
+    fetcher: (url, init) => {
+      issued += 1;
+      return deps.fetcher(url, init);
+    },
+  };
+  let paced = 0;
   // Consecutive failures across *distinct* Items. Reset by anything that comes back —
   // a body, a caption track, even a paywall, because a Source that says no is a Source
   // that answered. Held in memory rather than a column: a run is the only span over
@@ -663,19 +809,37 @@ async function retrieveBodies(source: SourceRow, deps: SourceDeps, report: Sourc
       report.skipped_paywall += 1;
       continue;
     }
-    if (item.audience !== 'everyone') {
+    // A blog has no catalogue that could ever describe its audience, so `unknown` there
+    // means *nobody has been asked yet* rather than *the answer was withheld*. The line
+    // does not move; it is enforced one step later, on the page this is about to fetch.
+    if (item.audience !== 'everyone' && audienceKnownBeforeFetch(source.platform)) {
       await resolveUndescribed(source, item, deps, report);
       continue;
     }
 
-    if (fetched > 0) await pause(requestSpacingMs(source.platform));
-    fetched += 1;
+    // **A blog's window is applied wherever the date was free, and never after.** The
+    // other two Sources filter by it during the catalogue walk; a blog has no catalogue,
+    // so this is where the same question gets asked — but only of an Item the feed already
+    // dated. An Item the sitemap found is undated until its page is in hand, and re-
+    // skipping it once that request has been spent would buy nothing and lose the words.
+    if (blog && outsideWindow(source, item.published_at)) {
+      await markSkippedWindow(deps.db, item.id);
+      report.skipped_window += 1;
+      continue;
+    }
+
+    if (issued > paced) {
+      await pause(requestSpacingMs(source.platform));
+      paced = issued;
+    }
 
     try {
-      if (source.platform === 'substack') {
-        await retrieveSubstackItem(source, item, deps, report);
+      if (blog) {
+        await retrieveBlogItem(source, item, counted, report, blog);
+      } else if (source.platform === 'substack') {
+        await retrieveSubstackItem(source, item, counted, report);
       } else {
-        await retrieveYoutubeItem(source, item, deps, report);
+        await retrieveYoutubeItem(source, item, counted, report);
       }
       inARow = 0;
     } catch (error) {
@@ -724,6 +888,84 @@ async function retrieveSubstackItem(
   const body = await retrieveSubstackPost(source, item.external_id, deps);
   await storeBody(deps.db, item.id, body);
   report.retrieved += 1;
+}
+
+/**
+ * One blog candidate, and the four things it can turn out to be.
+ *
+ * **Three of the four are braintrust reporting rather than failing**, and they are
+ * separate states because Coverage says different things to a reader about each. *"3 URLs
+ * in the archive turned out not to be posts"* is braintrust doing its job on a sitemap
+ * that enumerates URLs; *"1 post is members-only"* is a publisher's decision respected;
+ * *"1 post was too brief to read"* is a setting the operator owns. Rendering any of them
+ * as `failed` would be a lie about a source that answered perfectly — and the retrieval
+ * loop treats all four as an answer, so none of them counts toward a block.
+ */
+async function retrieveBlogItem(
+  source: SourceRow,
+  item: PendingItem,
+  deps: SourceDeps,
+  report: SourceReport,
+  blog: BlogPoll,
+): Promise<void> {
+  const key = normaliseUrl(item.url);
+  const verdict = await retrieveBlogPost(source, item.url, deps, {
+    excludeShorts: source.exclude_shorts,
+    feed: blog.feeds.get(key),
+    // The feed's own date where the poll read one, the row's where the feed has since
+    // dropped the entry. Either spares the page fetch a declared body would not need.
+    publishedAt: blog.dates.get(key) ?? dateOf(item.published_at),
+    boilerplate: blog.boilerplate,
+  });
+
+  if (verdict.kind === 'not_a_post') {
+    // This walk's `<lastmod>`, never the row's — see `BlogWalkOutcome.lastmods`.
+    await markSkippedNotAPost(deps.db, item.id, blog.lastmods.get(item.external_id));
+    report.skipped_not_a_post += 1;
+    deps.log(`braintrust: ${verdict.why}.`);
+    return;
+  }
+
+  if (verdict.kind === 'paywalled') {
+    await markSkippedPaywall(deps.db, item.id);
+    report.skipped_paywall += 1;
+    deps.log(`braintrust: ${verdict.why}.`);
+    return;
+  }
+
+  // Dated by the page, where the feed or the sitemap could not. Recorded before the
+  // Shorts rule is applied, because a skipped post that keeps its date is one the
+  // operator gets back in the right place when they change their mind.
+  if (!item.published_at) {
+    await recordPublished(deps.db, item.id, verdict.publishedAt);
+    report.dated += 1;
+  }
+
+  if (verdict.kind === 'short') {
+    await markSkippedShort(deps.db, item.id, { platform: 'blog', words: verdict.words });
+    report.skipped_short += 1;
+    deps.log(
+      `braintrust: ${item.external_id} is ${verdict.words} words, under the ${SHORT_MAX_WORDS}-word ` +
+        'line. Recorded as short rather than read; turn exclude_shorts off to include it.',
+    );
+    return;
+  }
+
+  await storeBody(deps.db, item.id, { text: verdict.text, raw: verdict.raw });
+  report.retrieved += 1;
+
+  // The page joins the pool the *next* post is extracted against, which is why a backfill
+  // gets better as it goes and a steady-state run starts good. It stops growing at the
+  // cap so the set is stable across a batch rather than drifting post to post.
+  if (verdict.raw.html !== undefined && blog.pages.length < BOILERPLATE_PAGES) {
+    blog.pages.push(verdict.raw.html);
+    blog.boilerplate = boilerplateFrom(blog.pages);
+  }
+}
+
+/** A row's `published_at` is a date, and the feed's is the better answer where there is one. */
+function dateOf(published: string | null): Date | undefined {
+  return published ? new Date(`${published}T00:00:00Z`) : undefined;
 }
 
 /**

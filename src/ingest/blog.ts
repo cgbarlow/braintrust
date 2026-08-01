@@ -44,8 +44,10 @@ import {
   agreement,
   blogBodyText,
   countWords,
+  densestContainer,
   gatedBy,
   gatedByFeed,
+  repeatedLines,
   type FeedBody,
   type GateMarker,
 } from './blog-body.js';
@@ -82,6 +84,16 @@ export type BlogWalkOutcome = {
   sitemap?: string;
   /** Rows braintrust had decided were not posts, whose `<lastmod>` has since moved. */
   reopened: number;
+  /**
+   * The `<lastmod>` this walk saw, by URL. Empty when there was no sitemap.
+   *
+   * **The retrieval pass needs *this* walk's value rather than the one on the row.** A
+   * `skipped_not_a_post` decision is made against the page as it is now, so it has to be
+   * recorded against the `<lastmod>` the sitemap is serving now — record an older one and
+   * the next walk sees a change that has already been accounted for, refetches, decides
+   * the same thing, and does it again every day.
+   */
+  lastmods: Map<string, Date>;
 };
 
 /**
@@ -114,7 +126,7 @@ export async function walkBlogArchive(
   onRecord: (item: ArchiveItem) => Promise<void>,
 ): Promise<BlogWalkOutcome> {
   const { sitemap, pages } = await findSitemap(source, deps);
-  if (!sitemap) return { seen: 0, reachedFloor: false, pages, reopened: 0 };
+  if (!sitemap) return { seen: 0, reachedFloor: false, pages, reopened: 0, lastmods: new Map() };
 
   const entries = sitemapEntries(sitemap.document);
   const lastmods = new Map<string, Date>();
@@ -140,7 +152,7 @@ export async function walkBlogArchive(
     });
   }
 
-  return { seen: entries.length, reachedFloor: true, pages, sitemap: sitemap.url, reopened };
+  return { seen: entries.length, reachedFloor: true, pages, sitemap: sitemap.url, reopened, lastmods };
 }
 
 type SitemapSearch = { sitemap?: { url: string; document: string }; pages: number };
@@ -311,7 +323,17 @@ export async function retrieveBlogPost(
     ...(deps.pause ? { pause: deps.pause } : {}),
   });
 
-  const dated = publishedFrom(html);
+  // The page describing itself first, and the feed entry that listed it second.
+  //
+  // **A feed entry is already a statement that this is a post, and it carries the date.**
+  // Measured live: `karpathy.github.io` puts a `pubDate` on all ten entries and no date
+  // metadata whatsoever in the pages — no `article:published_time`, no JSON-LD, no
+  // `<time datetime>` — so asking only the page filed the whole blog as *not a post*.
+  // The date test exists to tell a post from an about page; where a feed has already
+  // answered that, re-asking the markup can only take the answer away.
+  const dated =
+    publishedFrom(html) ??
+    (options.publishedAt ? { at: options.publishedAt, from: 'feed' as const } : undefined);
   if (!dated) {
     return {
       kind: 'not_a_post',
@@ -419,6 +441,32 @@ function feedOnly(url: string, options: BlogRetrieveOptions): BlogVerdict | unde
 function longerOf(page: string, feed: FeedBody | undefined): { text: string; from: BodySource } {
   if (!feed || feed.words === 0) return { text: page, from: 'page' };
   return feed.words > countWords(page) ? { text: feed.text, from: 'feed' } : { text: page, from: 'page' };
+}
+
+/**
+ * How many pages of one blog braintrust learns its chrome from.
+ *
+ * More is not better past a point: a line has to appear on at least half the pages, so
+ * twenty is already a comfortable majority to measure against, and the pool stops growing
+ * there so the set is *stable* for the rest of a backfill rather than drifting from post
+ * to post. It also bounds the work — the pool is re-measured each time it grows.
+ */
+export const BOILERPLATE_PAGES = 20;
+
+/**
+ * What this blog puts on every page, learned from the pages braintrust already has.
+ *
+ * **The markup is kept on the Item for exactly this**, so the steady state costs no
+ * requests at all: a run with one new post seeds the pool from what is already stored and
+ * extracts that post as well as a backfill would have. A first backfill has nothing
+ * stored, so it learns as it goes and its first page or two get the densest container
+ * alone — over-capturing rather than under-capturing, the direction that loses no prose.
+ *
+ * Undefined below two pages, because one page cannot establish that anything repeats.
+ */
+export function boilerplateFrom(pages: readonly string[]): ReadonlySet<string> | undefined {
+  if (pages.length < 2) return undefined;
+  return repeatedLines(pages.map((page) => densestContainer(page).text));
 }
 
 /** `feed` is the entry's own `pubDate`/`published`, on the path that fetches no page. */

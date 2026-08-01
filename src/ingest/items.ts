@@ -346,6 +346,29 @@ export async function pendingItems(db: Db, sourceId: string): Promise<PendingIte
   return rows;
 }
 
+/**
+ * The markup of pages this Source has already been read from, newest first.
+ *
+ * **This is the one place the stored HTML earns its keep.** `body_raw.html` exists so a
+ * better extractor never means a second fetch, and the blog extractor needs several pages
+ * of the same blog to tell chrome from prose — so a run with one new post to read learns
+ * that blog's furniture from rows it already has, at the cost of a query.
+ *
+ * Only the page path stores markup, so a blog whose feed carries every body returns
+ * nothing here and needs nothing: no page was fetched, so there is no chrome to remove.
+ */
+export async function storedPages(db: Db, sourceId: string, limit: number): Promise<string[]> {
+  const { rows } = await db.query<{ html: string }>(
+    `select body_raw->>'html' as html
+       from braintrust_items
+      where source_id = $1 and retrieval = 'retrieved' and body_raw->>'html' is not null
+      order by retrieved_at desc nulls last
+      limit $2`,
+    [sourceId, limit],
+  );
+  return rows.map((row) => row.html);
+}
+
 export async function storeBody(
   db: Db,
   itemId: string,

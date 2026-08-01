@@ -51,7 +51,9 @@ export const FEED_BLOG_RSS = `<?xml version="1.0" encoding="UTF-8"?>
       <pubDate>${published.toUTCString()}</pubDate>
       <link>https://${FEED_BLOG_HOST}/blog/post-${index}/</link>
       <guid>https://${FEED_BLOG_HOST}/blog/post-${index}/</guid>
-      <content:encoded><![CDATA[<p>The whole of post ${index}, which the feed carries.</p>]]></content:encoded>
+      <content:encoded><![CDATA[<p>The whole of post ${index}, which the feed carries. ${'A paragraph about what it takes to run a team that ships, written at the length a real post is written at. '.repeat(
+        4,
+      )}</p>]]></content:encoded>
     </item>`;
     }).join('\n    ')}
   </channel>
@@ -111,9 +113,13 @@ export const SITEMAP_BLOG_NOT_POSTS = 1;
 /** `article:published_time` — the signal that survived every custom theme measured. */
 export function sitemapBlogPost(index: number, options: { short?: boolean } = {}): string {
   const published = new Date(NOW.getTime() - (2 + index * 9) * 86_400_000).toISOString();
+  // Each post says something different, as posts do. That matters rather than being
+  // decoration: cross-page repetition is how chrome is told from prose, so a fixture whose
+  // every post carried the same paragraph would have that paragraph removed from all of
+  // them — correctly, and for a reason no real blog would give it.
   const body = options.short
-    ? '<p>A note to self about the thing I read this morning, which I will expand later.</p>'
-    : `<p>${'Something worth saying about the way software is actually built, at length. '.repeat(6)}</p>`;
+    ? `<p>A note to self about item ${index}, which I read this morning and will expand later.</p>`
+    : `<p>${`Something worth saying about the ${index}th way software is actually built, at length. `.repeat(6)}</p>`;
 
   return `<!DOCTYPE html><html><head><title>Post ${index}</title>
 <meta property="article:published_time" content="${published}">
@@ -230,6 +236,61 @@ export function ghostFeed(entries: { index: number; empty?: boolean }[]): string
     .join('\n  ')}
   </channel>
 </rss>`;
+}
+
+/**
+ * The Ghost blog as a whole Source: a posts-only sitemap and six pages behind it.
+ *
+ * **No feed.** The measured Ghost site publishes one, and the fixture withholds it on
+ * purpose — it is the only way to put the page half of the ingest under a full run, since
+ * a feed that declares its bodies means no page is ever fetched. What this shape proves is
+ * everything the page path owes: chrome learned across pages, a container found on some
+ * themes and not others, and both page-level gates refused before a word is stored.
+ *
+ * A posts-only sitemap carries no homepage, which is the difference from Bear Blog's and
+ * the reason the two fixtures are not one.
+ */
+export const GHOST_URLS = 6;
+export const GHOST_GATED = 2;
+export const GHOST_POSTS = GHOST_URLS - GHOST_GATED;
+
+/** Posts 4 and 5 are members-only, one behind each marker the page can carry. */
+function ghostPageOptions(index: number): GhostPageOptions {
+  return {
+    // The default-family theme wraps two of them; the customised one does not.
+    ...(index % 3 === 0 ? { container: true } : {}),
+    ...(index === 4 ? { gate: 'widget' as const } : {}),
+    ...(index === 5 ? { gate: 'copy' as const } : {}),
+  };
+}
+
+export function ghostSitemap(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  ${Array.from(
+    { length: GHOST_URLS },
+    (_, index) =>
+      `<url><loc>https://${GHOST_HOST}/post-${index}/</loc><lastmod>${lastmod(3 + index * 11)}</lastmod></url>`,
+  ).join('\n  ')}
+</urlset>`;
+}
+
+/** Declares no feed, so discovery falls through to the sitemap Ghost really does serve. */
+export const GHOST_HOME = `<!DOCTYPE html><html><head><title>Ghosted</title></head>
+<body><h1>Ghosted</h1></body></html>`;
+
+export function ghostRoutes(): Route[] {
+  return [
+    { match: (url) => url === `https://${GHOST_HOST}/sitemap-posts.xml`, body: ghostSitemap() },
+    { match: (url) => url === `https://${GHOST_HOST}/` || url === `https://${GHOST_HOST}`, body: GHOST_HOME },
+    {
+      match: (url) => url.startsWith(`https://${GHOST_HOST}/post-`),
+      body: (url: string) => {
+        const index = Number(/post-(\d+)/.exec(url)![1]);
+        return ghostPost(index, ghostPageOptions(index));
+      },
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------
