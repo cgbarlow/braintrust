@@ -43,7 +43,7 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
 
   return {
     generation: options.generation ?? 'test-model@core-1',
-    clusterer: options.clusterer ?? 'test-model@positions-1',
+    clusterer: options.clusterer ?? 'test-model@positions-2',
     judge: options.judge ?? 'test-model@revisions-1',
     model: 'test-model',
     url: 'https://example.test/v1/chat/completions',

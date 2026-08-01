@@ -33,8 +33,13 @@ export const SYNTHESIS_VERSION = 'core-1';
  * Versioned apart from the Core's prompts, because it answers a different question and
  * changes for different reasons. Both travel in `compiler_version`, so a Persona says
  * which prompt wrote its Core prose *and* which one grouped its Positions.
+ *
+ * **It covers how a Position is built, not only the prompt that grouped it** — the
+ * per-call bound and the confidence thresholds ride here too, which is what makes tuning
+ * any of them a rebuild rather than a silent change of meaning. `positions-2` is the burst
+ * cap: the same claims, the same clustering, a grade that now reads the dates.
  */
-export const POSITION_VERSION = 'positions-1';
+export const POSITION_VERSION = 'positions-2';
 
 /**
  * Versioned apart again, for the same reason and a sharper one: this is the only prompt

@@ -16,6 +16,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
 import {
+  BURST_WINDOW_DAYS,
   buildPositions,
   claimDigest,
   claimIndex,
@@ -23,6 +24,7 @@ import {
   compilePositions,
   confidenceFor,
   CONFIDENCE_HIGH_ITEMS,
+  CONFIDENCE_MODERATE_ITEMS,
   positionMergeDigest,
   slugify,
 } from '../src/compile/positions.js';
@@ -219,11 +221,33 @@ describe('building positions from what the model grouped', () => {
 });
 
 describe('the confidence grade', () => {
-  it('is a function of the item count and nothing else', () => {
-    assert.equal(confidenceFor(1), 'low');
-    assert.equal(confidenceFor(2), 'moderate');
-    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS), 'high');
-    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS + 40), 'high');
+  /** Long enough that nothing here trips the burst cap; the cap has its own tests. */
+  const SUSTAINED = BURST_WINDOW_DAYS + 1;
+
+  it('is a function of the item count, and the thresholds did not move', () => {
+    assert.equal(confidenceFor(1, SUSTAINED), 'low');
+    assert.equal(confidenceFor(2, SUSTAINED), 'moderate');
+    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS, SUSTAINED), 'high');
+    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS + 40, SUSTAINED), 'high');
+  });
+
+  it('caps at moderate when every citation falls inside one week', () => {
+    // Five separate pieces of work is the same signal however much someone publishes —
+    // but five of them inside a week are one occasion wearing five dates.
+    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS, 0), 'moderate');
+    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS, BURST_WINDOW_DAYS), 'moderate');
+    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS, BURST_WINDOW_DAYS + 1), 'high');
+
+    // A ceiling, not a retune: nothing below `high` is touched, so a two-item position
+    // published on one afternoon still grades exactly what it graded before.
+    assert.equal(confidenceFor(CONFIDENCE_MODERATE_ITEMS, 0), 'moderate');
+    assert.equal(confidenceFor(1, 0), 'low');
+  });
+
+  it('cannot cap what it cannot date, and says so rather than defaulting either way', () => {
+    // The same rule that has revisions refuse to judge a pair they cannot place in time:
+    // braintrust does not penalise what it cannot measure, it declines to claim it.
+    assert.equal(confidenceFor(CONFIDENCE_HIGH_ITEMS, null), 'high');
   });
 
   it('never removes a position — a thin one is returned graded, not hidden', async () => {
@@ -251,7 +275,7 @@ describe('compiling the growing layer', () => {
     assert.equal(set.passes, 1);
     assert.equal(set.merged, false);
     assert.equal(set.claims_read, 6);
-    assert.equal(set.clusterer, 'test-model@positions-1');
+    assert.equal(set.clusterer, 'test-model@positions-2');
     assert.deepEqual(
       synthesiser.calls.map((call) => call.mode),
       ['pass'],

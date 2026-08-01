@@ -324,6 +324,8 @@ create table braintrust_positions (
   slug        text not null,
   statement   text not null,
   held_since  date,
+  held_until  date,
+  days_spanned int,
   basis       text not null default 'measured' check (basis in ('measured', 'inferred')),
   confidence  text not null check (confidence in ('high', 'moderate', 'low')),
   item_count  int not null,
@@ -403,7 +405,8 @@ alter table braintrust_items add column if not exists lastmod timestamptz;
 alter table braintrust_sources add column if not exists generator text;
 
 -- A position reports its span, not only its beginning. Derived from the citations at
--- every compile exactly as held_since is, so nothing here is carried forward.
+-- every compile exactly as held_since is, so nothing here is carried forward. Landed in
+-- schema.sql as well; the alter is what a database that already exists needs.
 alter table braintrust_positions add column if not exists held_until date;
 alter table braintrust_positions add column if not exists days_spanned int;
 ```

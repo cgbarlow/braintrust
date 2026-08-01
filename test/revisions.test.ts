@@ -42,6 +42,8 @@ function position(slug: string, held: string | null): BuiltPosition {
     slug,
     statement: `What ${slug} says.`,
     held_since: held,
+    held_until: held,
+    days_spanned: held === null ? null : 0,
     item_count: 2,
     confidence: 'moderate',
     citations: [],
