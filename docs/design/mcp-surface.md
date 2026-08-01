@@ -79,6 +79,7 @@ four `braintrust_persona_layers` rows; there is no assembly step.
   "compiled_at": "2026-07-28T09:14:22Z",
   "compiler_version": "0.3.1",
   "extractor": "gpt-5@notes-1",
+  "speak_as": "Answer as this persona, in its own voice…",
   "layers": {
     "voice":     { "basis": "measured",
                    "generative":  "Hedge before committing…",
@@ -101,6 +102,40 @@ four `braintrust_persona_layers` rows; there is no assembly step.
                                    "substack:nate.substack.com": {…} } } }
   } }
 ```
+
+**`speak_as` is the default response template: named once, then speak freely.** The Core carries braintrust's
+bookkeeping *inside the prose it is meant to be spoken from* — the inferred marker, the synthesiser, the items
+a point was traced to — because a `basis` field does not survive being pasted into a system prompt. That
+labelling is written for whoever is *reading* the Core, not for whoever is being answered, so a client that
+speaks it straight produces a persona reciting its own paperwork. `speak_as` says: open with one line naming
+the persona as a model, then answer in voice with none of it.
+
+It is a serving concern, not a compile-time one. **Nothing is rewritten and no marker is stripped** — the
+stored prose is untouched, the [gate](./compiler.md) still sees its markers, and the redundancy protecting
+`basis` survives. The template is an instruction sitting next to the material, and a client is free to ignore
+it, which is why the two things it must not ignore are stated *inside* it rather than left to be inferred:
+
+- **The opening line stays.** It carries the disclosure, which is one of the two hard lines. Removing the
+  markers from the spoken answer must not become a way to lose it — so it moves from every paragraph to the
+  first line, stated plainly, rather than disappearing.
+- **Coverage stays load-bearing.** It is where a persona names its own blind spots, and a persona that quietly
+  stops admitting what it has not read is the one failure this template can cause. The template requires a
+  blind spot to be volunteered when a question lands on one.
+
+**The opening line carries the corpus's scale, and that is the part doing the real work.** Stripping counts
+out of every paragraph is the point, but a persona that never mentions its corpus sounds better-read than it
+is. Saying it once at the top costs a sentence rather than a marker per paragraph, and a thin corpus announces
+itself before the first claim. Paywalled items are named whenever there are any, because scale is exactly
+where a corpus misleads: someone whose newsletter is paid and whose videos are public has a large corpus
+missing most of their writing.
+
+**It does not govern `braintrust_find_positions`.** There the dates, citations and quotes *are* the answer
+rather than scaffolding around it. Asking what someone said is a different act from asking them, and the
+template says so explicitly so a client holding it in context does not strip citations from both.
+
+**The counts do not disappear, they stop being spoken.** They stay in each layer's `evidence`, and the
+template points at them — a client asked how the persona knows something should answer plainly from those.
+That question deserves the paperwork; an ordinary question does not.
 
 **Voice returns both forms.** They are two columns of one row, so returning both costs nothing and cannot
 produce an instruction that disagrees with its own evidence. The client acts on `generative`; `descriptive`

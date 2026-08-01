@@ -581,6 +581,12 @@ export type LoadedPersona = {
   compiled_at: Date | null;
   compiler_version: string;
   extractor: string | null;
+  /**
+   * The same snapshot `braintrust_list_personas` reports, read here so the response
+   * template can say how much was read in its opening line. Unvalidated on purpose — the
+   * boundary decides what counts as a usable corpus block, in one place, for both tools.
+   */
+  corpus_stats: Record<string, unknown> | null;
   layers: LoadedLayer[];
 };
 
@@ -595,6 +601,7 @@ export async function loadCurrent(db: Db, slug: string): Promise<LoadedPersona |
     compiled_at: Date | null;
     compiler_version: string;
     extractor: string | null;
+    corpus_stats: Record<string, unknown> | null;
     layer: string | null;
     basis: string | null;
     descriptive_md: string | null;
@@ -602,6 +609,7 @@ export async function loadCurrent(db: Db, slug: string): Promise<LoadedPersona |
     evidence: unknown;
   }>(
     `select p.display_name, c.finished_at as compiled_at, c.compiler_version, c.extractor,
+            c.corpus_stats,
             l.layer, l.basis, l.descriptive_md, l.generative_md, l.evidence
        from braintrust_people p
        join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
@@ -619,6 +627,7 @@ export async function loadCurrent(db: Db, slug: string): Promise<LoadedPersona |
     compiled_at: first.compiled_at,
     compiler_version: first.compiler_version,
     extractor: first.extractor,
+    corpus_stats: first.corpus_stats ?? null,
     layers: rows
       .filter((row) => row.layer !== null)
       .map((row) => ({

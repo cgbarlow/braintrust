@@ -129,6 +129,14 @@ export function buildServer({
         'The core of one persona, whole: how they sound, and what braintrust has and has not ' +
         'read of them. This is what you load to answer *as* a braintrust model of someone, ' +
         'rather than to look something up.\n\n' +
+        '**Read `speak_as` first.** It is the default response template: name the persona as a ' +
+        'model once, in the opening line, then answer in voice without narrating braintrust. ' +
+        "The layers carry braintrust's bookkeeping inside their own prose — how a layer was " +
+        'derived, by which model, from how many items — because that label has to survive ' +
+        'being pasted into a prompt. It is written for you, not for whoever you are answering, ' +
+        'and speaking it back produces a persona reciting its own paperwork. The counts stay ' +
+        "available in each layer's `evidence` for when someone actually asks how the persona " +
+        'knows something.\n\n' +
         'Every layer says whether it was measured or inferred. `voice` is measured — counted ' +
         'over what the person actually published, with no model in the path — and comes back in ' +
         'two forms: `generative` is the instruction to follow, and `descriptive` plus `evidence` ' +

@@ -10,6 +10,7 @@ import { loadCurrent, personExists } from './compile/store.js';
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
+import { speakAs } from './speak.js';
 
 export type CorpusSummary = {
   items_retrieved: number;
@@ -223,6 +224,15 @@ export type LoadedPersonaPayload = {
   compiler_version: string;
   /** Which generation of Notes this Persona was built from. Declared, never inferred. */
   extractor: string | null;
+  /**
+   * How to speak what follows. A default rather than a rule: a client is free to ignore
+   * it, which is why the two things it must not ignore — the disclosure and the blind
+   * spots — are stated inside it rather than left to be inferred from the layers.
+   *
+   * Top-level rather than per-layer because it governs the whole answer, and it sits
+   * before `layers` so it is read before the material it is about.
+   */
+  speak_as: string;
   layers: Record<string, LoadedLayerPayload>;
 };
 
@@ -270,11 +280,14 @@ export async function loadPersona(db: Db, person: string): Promise<LoadedPersona
     };
   }
 
+  const subject = subjectFor(loaded.display_name);
+
   return {
-    subject: subjectFor(loaded.display_name),
+    subject,
     compiled_at: loaded.compiled_at?.toISOString() ?? null,
     compiler_version: loaded.compiler_version,
     extractor: loaded.extractor,
+    speak_as: speakAs(subject, asCorpusSummary(loaded.corpus_stats)),
     layers,
   };
 }
