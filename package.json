@@ -2,7 +2,7 @@
   "name": "braintrust",
   "version": "0.1.0",
   "private": true,
-  "description": "A living council of the minds you follow. Nothing here ships on npm — braintrust is a repo you clone, configure and deploy.",
+  "description": "A living council of the minds you follow. Nothing here ships on npm \u2014 braintrust is a repo you clone, configure and deploy.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -13,8 +13,10 @@
     "typecheck": "tsc --project tsconfig.test.json",
     "start": "node dist/server/index.js",
     "job": "node dist/job/index.js",
+    "eval": "node dist/eval/index.js",
     "dev": "tsx watch src/server/index.ts",
     "job:dev": "tsx src/job/index.ts",
+    "eval:dev": "tsx src/eval/index.ts",
     "test": "node --import tsx --test --test-concurrency=1 \"test/**/*.test.ts\""
   },
   "dependencies": {
