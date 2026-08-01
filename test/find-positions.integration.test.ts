@@ -21,8 +21,15 @@ import { readFile } from 'node:fs/promises';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { compileCorpus } from '../src/compile/index.js';
+import { MAX_POSITIONS } from '../src/compile/synthesis.js';
 import { createDb, type PostgresDb } from '../src/db.js';
-import { DEFAULT_CITATIONS, DEFAULT_PASSAGES, findPositions, MATCH_FLOOR } from '../src/find.js';
+import {
+  DEFAULT_CITATIONS,
+  DEFAULT_PASSAGES,
+  findPositions,
+  MATCH_FLOOR,
+  MATCH_ITEMS,
+} from '../src/find.js';
 import {
   chunkItem,
   createEmbedder,
@@ -522,6 +529,119 @@ describe('finding positions, against real Postgres', { skip }, () => {
     const one = await find({ query: await chunkTextOf('evals'), limit: 1 });
     assert.equal(one.positions.length, 1);
     assert.ok((one.more_available?.positions ?? 0) >= 1);
+  });
+
+  /**
+   * The crowding-out fixture: one Item long enough to fill the candidate pool on its own,
+   * and a spread of short Items around it.
+   *
+   * Every text here is built from the same three query words plus filler, because the
+   * corpus is indexed with a bag of words and that makes the similarities arithmetic
+   * rather than hopeful. The sharp Item is the query and nothing else, so it scores 1.0;
+   * every Chunk of the lecture carries one filler word, so it scores 0.87; the fair Items
+   * carry six, so they score 0.58 — above the floor, and behind every Chunk the lecture
+   * has. Which is the whole trap: they lose to the *lecture's length*, not to its
+   * relevance.
+   */
+  const QUERY_WORDS = 'harness evaluation specification';
+  const SHARP = 'sharp-and-short';
+  const LECTURE = 'four-hour-lecture';
+  /**
+   * Kept low enough that every claim in the fixture becomes a Position: the compiler bounds
+   * one clustering pass to `MAX_POSITIONS`, and a fixture that tripped *that* would be
+   * measuring the wrong layer. Fourteen is plenty — under the old ordering not one of them
+   * survived.
+   */
+  const FAIR_ITEMS = MAX_POSITIONS - CLAIMS_PER_ITEM * ITEMS.length - 2;
+
+  async function seedOneLongItemAndManyShort(): Promise<number> {
+    // ~70 paragraphs, which the windower turns into ~70 overlapping Chunks — more than
+    // MATCH_ITEMS on its own, so under the old ordering it alone exhausted the pool.
+    const paragraph = `${QUERY_WORDS} alongside `.repeat(12).trim();
+    await addItem(
+      {
+        external_id: LECTURE,
+        published_at: '2025-02-02',
+        title: 'Four hours on the same subject',
+        body: Array.from({ length: 70 }, () => paragraph).join('\n\n'),
+      },
+      [{ statement: 'The lecture holds forth.', quote: QUERY_WORDS, chunk_id: null, start_ms: null }],
+    );
+
+    await addItem(
+      {
+        external_id: SHARP,
+        published_at: '2025-03-03',
+        title: 'One line, exactly on it',
+        body: `${QUERY_WORDS}.`,
+      },
+      [{ statement: 'The short one nails it.', quote: QUERY_WORDS, chunk_id: null, start_ms: null }],
+    );
+
+    for (let index = 0; index < FAIR_ITEMS; index += 1) {
+      await addItem(
+        {
+          external_id: `fair-${index}`,
+          published_at: '2025-04-04',
+          title: `A short post, number ${index}`,
+          body: `${QUERY_WORDS}, considered against notebook drafting alongside pricing.`,
+        },
+        [
+          {
+            statement: `Something the ${index}th short post holds.`,
+            quote: QUERY_WORDS,
+            chunk_id: null,
+            start_ms: null,
+          },
+        ],
+      );
+    }
+
+    const { rows } = await db.query<{ chunks: string }>(
+      `select count(*)::text as chunks from braintrust_chunks c
+         join braintrust_items i on i.id = c.item_id
+        where i.external_id = $1`,
+      [LECTURE],
+    );
+    return Number(rows[0]!.chunks);
+  }
+
+  it('ranks items rather than passages, so one long item cannot crowd out a corpus', async () => {
+    const lectureChunks = await seedOneLongItemAndManyShort();
+    assert.ok(
+      lectureChunks > MATCH_ITEMS,
+      `the fixture only tests anything if the lecture alone can fill the pool: ${lectureChunks} chunks`,
+    );
+    // One Position per claim, named after the claim rather than its place in the batch —
+    // which Items survived retrieval is only observable if no two Positions share a slug,
+    // and the default naming restarts its numbering on every fold.
+    await compile((claims) =>
+      claims.map((claim) => ({
+        slug: `holds-${claim}`,
+        statement: `What braintrust says ${claim} asserts.`,
+        claims: [claim],
+      })),
+    );
+
+    const answer = await find({ query: QUERY_WORDS, limit: 50 });
+    const cited = new Set(
+      answer.positions.flatMap((position) => position.citations.map((citation) => citation.url)),
+    );
+
+    // The bug, stated as an assertion. Truncating to 60 *chunks* before collapsing to
+    // Items left one slot for the sharp post and 59 for the lecture, and every fair post
+    // fell off the end — not for being a worse match than the lecture, but for being
+    // shorter than it.
+    for (let index = 0; index < FAIR_ITEMS; index += 1) {
+      assert.ok(
+        cited.has(`https://example.test/fair-${index}`),
+        `fair-${index} clears the floor, so no amount of lecture may evict it`,
+      );
+    }
+
+    // And relevance still decides the order: the one-line post beats four hours of
+    // adjacent material, on its single best passage against the lecture's single best.
+    assert.equal(answer.positions[0]!.citations[0]!.url, `https://example.test/${SHARP}`);
   });
 
   it('refuses for a person who has never been compiled rather than serving passages', async () => {
