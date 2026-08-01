@@ -26,7 +26,7 @@ import { recordCatalogued, type SourceRow } from '../src/ingest/items.js';
 import { createExtractor } from '../src/notes/index.js';
 import { loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
-import { requestSpacingMs } from '../src/sources/types.js';
+import { BLOCK_AFTER_FAILURES, requestSpacingMs } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeExtractor, TEST_GENERATION, testExtractorConfig } from './support/notes.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
@@ -45,8 +45,10 @@ import {
   captionText,
   fakeFetcher,
   natesRoutes,
+  playerResponse,
   videoId,
   type FakeFetcher,
+  type Route,
 } from './support/sources.js';
 
 const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
@@ -348,6 +350,46 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     // Terminal: the next run leaves it alone rather than asking again forever.
     const { fetcher } = await run({ now: new Date(NOW.getTime() + 25 * 3600_000) });
     assert.ok(!fetcher.sent.some((request) => request.json?.videoId === videoId(YOUTUBE_NO_CAPTIONS)));
+  });
+
+  /**
+   * **A channel that does not caption its videos has not stopped serving braintrust.**
+   *
+   * Found live: five uncaptioned videos in a row blocked a real channel as though it had
+   * refused, and a block costs that source one request a day forever. The player response
+   * the refusal is read from arrived perfectly every time — so the source answered, and
+   * *there is nothing here* is an answer. The Items stay `failed`, because the words could
+   * not be retrieved and nothing an operator changes brings them back.
+   */
+  it('never blocks a channel for videos that simply have no captions', async () => {
+    await follow();
+
+    const silent: Route[] = [
+      {
+        match: (request, sent) => request.endsWith('/youtubei/v1/player') && sent?.context?.client,
+        body: (_request, sent) => {
+          const answer = JSON.parse(playerResponse(sent.videoId, sent.context.client.clientName));
+          delete answer.captions;
+          return JSON.stringify(answer);
+        },
+      },
+      ...natesRoutes(),
+    ];
+
+    const { report } = await run({ fetcher: fakeFetcher(silent) });
+    const youtube = report.sources.find((source) => source.platform === 'youtube')!;
+
+    assert.ok(youtube.failed > BLOCK_AFTER_FAILURES, `${youtube.failed} failures is well past the line`);
+    assert.equal(youtube.blocked_since, undefined, 'the channel answered every request it was sent');
+
+    const { rows } = await db.query<{ blocked_at: Date | null }>(
+      "select blocked_at from braintrust_sources where platform = 'youtube'",
+    );
+    assert.equal(rows[0]!.blocked_at, null);
+
+    // And the backlog was worked to the end rather than abandoned at the fifth failure.
+    const pending = await items("i.retrieval = 'pending' and s.platform = 'youtube'", []);
+    assert.equal(pending.length, 0, 'a block would have left the rest of the backlog untouched');
   });
 
   it('advances the cursor and marks the backfill done', async () => {

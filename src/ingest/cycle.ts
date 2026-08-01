@@ -948,12 +948,26 @@ async function retrieveBodies(
       }
       await markFailed(deps.db, item.id);
       report.failed += 1;
-      inARow += 1;
       deps.log(
         `braintrust: ${item.external_id} failed — ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+
+      // **A video with no caption track is the source answering, not declining.** It is
+      // still `failed` — the words could not be retrieved and nothing an operator changes
+      // brings them back — but it is not evidence that the platform has stopped serving
+      // braintrust, because the player response it was read from arrived perfectly. The
+      // same reasoning that resets the counter on a paywall: a Source that says *there is
+      // nothing here* is a Source that answered.
+      //
+      // Found live. A channel of five uncaptioned videos in a row was blocked as though it
+      // had refused braintrust, and then probed once a day forever.
+      if (error instanceof NoCaptions) {
+        inARow = 0;
+        continue;
+      }
+      inARow += 1;
 
       // The measurement, and the only place a block is ever set. braintrust has not
       // classified a single response to get here — it has counted requests against
