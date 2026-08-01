@@ -624,9 +624,12 @@ async function probeSource(
       });
     }
   } catch (error) {
-    // A `PaywallChanged` reaches here as an answer, not a refusal — the Source served
-    // braintrust and said no. It falls through to the clear below, like any other reply.
-    if (!(error instanceof PaywallChanged)) {
+    // **Two errors reach here as answers rather than refusals**, and both fall through to
+    // the clear below. A `PaywallChanged` is the Source serving braintrust and saying no.
+    // A `NoCaptions` is the Source serving braintrust a video with no words in it — the
+    // player response it was read from arrived perfectly, which is the whole question a
+    // probe is asking.
+    if (!(error instanceof PaywallChanged) && !(error instanceof NoCaptions)) {
       report.error = error instanceof BraintrustError ? error.message : String(error);
       deps.log(
         `braintrust: ${source.platform} ${source.handle} has been blocked since ` +
@@ -635,8 +638,17 @@ async function probeSource(
       return report;
     }
     if (askable[0]) {
-      await markSkippedPaywall(deps.db, askable[0].id);
-      report.skipped_paywall += 1;
+      if (error instanceof PaywallChanged) {
+        await markSkippedPaywall(deps.db, askable[0].id);
+        report.skipped_paywall += 1;
+      } else {
+        // Recorded, so tomorrow reaches for a different Item rather than this one forever.
+        // A probe that leaves its Item pending asks the identical question every day, and
+        // a Source whose whole backlog answers this way could never clear — which is how a
+        // channel of uncaptioned videos stayed blocked permanently.
+        await markFailed(deps.db, askable[0].id);
+        report.failed += 1;
+      }
     }
   }
 

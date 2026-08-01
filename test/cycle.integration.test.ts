@@ -392,6 +392,61 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.equal(pending.length, 0, 'a block would have left the rest of the backlog untouched');
   });
 
+  /**
+   * **A block a probe can never clear is a permanent block**, and that is what an already
+   * blocked channel of uncaptioned videos had. The probe asks its Item, the Item answers
+   * *there are no words here*, the old code read that as still-not-answering and left the
+   * row `pending` — so the next day asked the identical question, forever.
+   *
+   * The answer clears the block, and the Item is recorded so tomorrow reaches for a
+   * different one. Both halves are needed: without the second, a Source whose whole backlog
+   * answers this way would clear and re-block on an endless loop.
+   */
+  it('clears a block when the probe’s video answers that it has no captions', async () => {
+    await follow();
+
+    const silent: Route[] = [
+      {
+        match: (request, sent) => request.endsWith('/youtubei/v1/player') && sent?.context?.client,
+        body: (_request, sent) => {
+          const answer = JSON.parse(playerResponse(sent.videoId, sent.context.client.clientName));
+          delete answer.captions;
+          return JSON.stringify(answer);
+        },
+      },
+      ...natesRoutes(),
+    ];
+
+    await run({ fetcher: fakeFetcher(silent) });
+
+    // The stuck state as it exists on a real database: blocked, with work still owed.
+    await db.query(
+      `update braintrust_sources set blocked_at = now() where platform = 'youtube';
+       update braintrust_items set retrieval = 'pending'
+        where id = (select i.id from braintrust_items i
+                      join braintrust_sources s on s.id = i.source_id
+                     where s.platform = 'youtube' and i.retrieval = 'failed' limit 1)`,
+    );
+
+    const { report } = await run({
+      fetcher: fakeFetcher(silent),
+      now: new Date(NOW.getTime() + 25 * 3600_000),
+    });
+    const youtube = of(report, 'youtube');
+
+    assert.equal(youtube.probed, true);
+    assert.equal(youtube.unblocked, true, 'the source answered, so the block is gone');
+
+    const { rows } = await db.query<{ blocked_at: Date | null }>(
+      "select blocked_at from braintrust_sources where platform = 'youtube'",
+    );
+    assert.equal(rows[0]!.blocked_at, null);
+
+    // And the probe made progress rather than asking the same question tomorrow.
+    const pending = await items("i.retrieval = 'pending' and s.platform = 'youtube'", []);
+    assert.equal(pending.length, 0);
+  });
+
   it('advances the cursor and marks the backfill done', async () => {
     await follow();
     await run();
