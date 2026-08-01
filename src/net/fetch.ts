@@ -88,8 +88,11 @@ export function retryAfterMs(response: FetchResponse): number {
   return Math.min(seconds * 1000, MAX_BACKOFF_MS);
 }
 
+/** After a dropped connection, not after a 429. Long enough to outlast a blip, short enough to be free. */
+export const TRANSPORT_RETRY_MS = 2_000;
+
 /**
- * One request, and one honoured 429.
+ * One request, one honoured 429, and one retry of a connection that never completed.
  *
  * **Rate limiting is the other end asking braintrust to slow down, and slowing down is
  * compliance rather than a workaround.** This lives at the network seam rather than in the
@@ -99,8 +102,15 @@ export function retryAfterMs(response: FetchResponse): number {
  * but a rate-limited endpoint could never finish a backfill, because each run would burn a
  * few more items against the same wall.
  *
- * Once, not repeatedly. A second 429 is an endpoint that means it, and the caller's own
- * backlog is what tries again tomorrow.
+ * **A throw is retried for a different reason: it is not an answer at all.** A dropped
+ * connection is neither the other end refusing braintrust nor serving it — it is the
+ * request never having happened, and treating it as a verdict is the same mistake as
+ * reading *this video has no captions* as a channel refusing. Found live twice in one day:
+ * a synthesiser connection dropped mid-compile and cost a whole Persona its rebuild, while
+ * the notes it would have been built from sat already written in the database.
+ *
+ * Once each, not repeatedly. A second failure is an endpoint that means it, and the
+ * caller's own backlog is what tries again tomorrow.
  */
 export async function fetchPatiently(
   fetcher: Fetcher,
@@ -108,7 +118,15 @@ export async function fetchPatiently(
   init?: FetchInit | undefined,
   pause: (ms: number) => Promise<void> = sleep,
 ): Promise<FetchResponse> {
-  const first = await fetcher(url, init);
+  let first: FetchResponse;
+  try {
+    first = await fetcher(url, init);
+  } catch {
+    await pause(TRANSPORT_RETRY_MS);
+    // The second throw is the caller's to report: it has the words for what this URL was.
+    return fetcher(url, init);
+  }
+
   if (first.status !== 429) return first;
 
   await pause(retryAfterMs(first));
