@@ -135,7 +135,11 @@ describe('the inferred marker', () => {
     // The serialiser returns `basis` as well, but it must not manufacture the prose
     // marker: if it did, a layer compiled without one would be served as though it had
     // been labelled all along.
-    for (const file of ['personas.ts', 'mcp.ts']) {
+    // speak.ts is here because it is the boundary file most tempted to quote the marker:
+    // it exists to tell a client not to speak it, and naming it exactly would be the
+    // obvious way to do that. It describes the labelling instead, so this stays a rule
+    // about prose the boundary emits rather than one with a documented exception.
+    for (const file of ['personas.ts', 'mcp.ts', 'speak.ts']) {
       const source = await readFile(new URL(`../src/${file}`, import.meta.url), 'utf8');
       assert.doesNotMatch(source, /Inferred across/, `src/${file} synthesises the marker`);
     }
