@@ -240,7 +240,7 @@ describe('judging one candidate', () => {
 
   it('stores the markup, so a better extractor never costs a second fetch', async () => {
     const verdict = await judge(`https://${SITEMAP_BLOG_HOST}/post-2/`);
-    assert.ok(verdict.kind === 'post' && verdict.raw.html.includes('<article>'));
+    assert.ok(verdict.kind === 'post' && verdict.raw.html?.includes('<article>'));
   });
 });
 

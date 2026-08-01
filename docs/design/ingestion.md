@@ -983,6 +983,62 @@ homepage; 40 sits between them. Like the consecutive-failure threshold it is lef
 behaviour, and like the video line it is governed by `exclude_shorts` — so an operator who wants the brief ones
 gets them back through the reopen that already exists, and nothing loops.
 
+### What the build settled about taking the body
+
+**The element name decides whether a feed body is the body, and it does not decide it alone.** This document
+said the feed carries the whole post, which is true of both blogs measured and not true of every element they
+carry it in. Measured on the live feeds: Bear Blog's Atom `<summary>` is **36 characters** beside a `<content>`
+of **44,699** — a teaser next to the post — while the Jekyll blog publishes RSS 2.0 with **no
+`content:encoded` at all** and a `<description>` of **135,277 characters**, which *is* the whole post. So
+`content:encoded` and Atom `<content>` are **declared** whole and are stored on the feed's word alone, at no
+request; `<description>` and `<summary>` are the synopsis elements and are treated as a candidate that has to
+beat the page before it is stored.
+
+That is the safeguard this section already specified, applied where it is actually needed rather than
+everywhere. **A declared body ends the matter and a blog backfill stays one request.** A synopsis-only feed
+costs the page fetch it was always going to cost on a sitemap walk, and braintrust stores the longer of the
+two — a truncated feed loses to the page, an over-capturing extraction loses to the feed. The agreement figure
+is recorded on the Item and **acted on by nothing**: a threshold on a length-shaped number is the mistake
+density already made once.
+
+**A gated post is refused from the feed for free, where the feed is the one enforcing the gate.** `<content:encoded>`
+empty on an item that is listed and dated is the fully-gated case, and braintrust records `skipped_paywall`
+without spending the request the page would cost — so the "one wasted fetch per gated Ghost post" below is
+paid only by a blog whose feed braintrust never read. **A feed that declares no body for anybody is not a
+gate**: that is a headlines-only feed, a statement about the feed rather than about the post, and reading it as
+a gate would refuse every post on it.
+
+**The gate is checked after the date and before the body.** Before the body because the entire point of the
+state is that what a gated page carries is never stored, and no `exclude_shorts` setting may overrule it.
+After the date because a members-only post is dated and a *listing* page is not — a homepage teasing three
+gated posts is a page braintrust could not read, not a paywall it respected, and Coverage says different
+things about the two.
+
+**The members-CTA marker is matched narrowly enough to survive an author.** *"This post is for …"* on its own
+would refuse a post opening *"this post is for anyone who has ever explained a migration to a board"*, so the
+subscriber noun is required rather than merely the opening. It remains the weak marker, editable and
+translatable, and it is there to catch what the other two miss.
+
+**The extractor needs a line break the body reader does not.** `htmlToText` breaks on the elements a *post
+body* is built from — paragraphs, headings, list items — which is right for a Substack body and not enough for
+a whole page: a nav is a run of anchors with no paragraph anywhere in it, so the menu and the first sentence of
+the post arrive on one line and a mechanism that removes repeated **lines** would have to choose between
+keeping the chrome and losing the prose. The fallback extractor breaks on the page's furniture elements
+(`nav`, `header`, `footer`, `aside`, `main`, `section`, `article`, lists, tables) first, and deliberately not
+on `<a>` or `<span>`, which would fragment any paragraph containing a link.
+
+**Container selection is a greedy walk inwards and the 80% constant is load-bearing.** A container only wins if
+it holds at least 80% of the text it replaces, which is why it succeeded on the two long posts and fell
+through to the page chrome on the four short ones: the same theme, the same markup, a different ratio of post
+to furniture. That is not a flaw to tune out — it is the measurement, and the boilerplate pass is what answers
+it.
+
+**Boilerplate removal cannot run on the first page of a blog.** A line must appear on at least half the pages
+and never on fewer than two, so a blog braintrust has read exactly one page of gets the densest container
+alone — which over-captures rather than under-captures, the direction that loses no prose. The set is computed
+across the backfill batch and reused by later single posts, and recomputed on each backfill, which is also how
+a redesign gets picked up.
+
 ---
 
 ## Accepted costs
@@ -1002,6 +1058,8 @@ gets them back through the reopen that already exists, and nothing loops.
 | **A blog with a feed and no sitemap spends two requests a day looking for one, forever.** One per path braintrust knows to try. The alternative is refusing to follow a real blog over a missing XML file. | §8 |
 | **A rewritten members CTA on a long free intro escapes all three gating markers**, and braintrust stores public words as a whole post. Not a consent breach; bounded to blogs that both sell subscriptions and run a custom theme. | §8 |
 | **A blog carrying no date metadata leaves its Items undated**, which costs it revision detection entirely. | §8 |
+| **A feed that carries the whole post only in `<description>` still pays for the page**, because the element does not declare itself whole and the alternative is storing a synopsis as a post. | §8 |
+| **The first page of a blog gets no boilerplate removal**, since one page cannot establish that anything repeats. It over-captures rather than under-captures. | §8 |
 | **Every blog pays one wasted request at registration**, asking whether it is a Substack on a custom domain. The order is what stops a Substack resolving as a blog. | §8 |
 
 ## Deliberately not decided
