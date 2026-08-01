@@ -39,17 +39,21 @@ The chat endpoint is the one job worth real money: it reads each item once, so f
 
 **No defaults, but recommendations — those are different things.** braintrust will not choose for you, because the choice sends someone's published work to a particular company or keeps it on your own hardware. It will tell you what works.
 
-| | Recommended | Why |
-|---|---|---|
-| **Embeddings** | `qwen3-embedding:0.6b`, 1024 dimensions | What `schema.sql`'s `vector(1024)` is sized for. Change both together — braintrust checks the width at boot and refuses to start on a mismatch rather than poisoning the index |
-| **Notes** | a **120B-class MoE** with a long context and strong verbatim copying | This is the one that decides persona quality |
+**Embeddings:** `qwen3-embedding:0.6b` at **1024 dimensions**, which is what `schema.sql`'s `vector(1024)` is sized for. Change the two together — braintrust checks the width at boot and refuses to start on a mismatch rather than quietly poisoning the index.
+
+**Notes:** a 120B-class MoE with long context and strong verbatim copying. Three that fit a 128GB machine, **as of August 2026** — the date matters, because this table ages faster than anything else here:
+
+| Model | Total / active | Context | Fits as | |
+|---|---|---|---|---|
+| [`gpt-oss-120b`](https://huggingface.co/openai/gpt-oss-120b) | 120B / 5.1B | 128k | ~60 GB MXFP4 | The one braintrust has been run on, and the fastest of the three (~53 t/s on a Ryzen AI MAX+ 395). **No successor since August 2025**, and the class has moved on around it |
+| [`Qwen3.5-122B-A10B`](https://huggingface.co/unsloth/Qwen3.5-122B-A10B-GGUF) | 122B / 10B | 262k | GGUF, several quants | Holds long context far better, and the fewest active parameters of the two newer ones — so the quicker upgrade on a bandwidth-limited box |
+| [`Nemotron 3 Super 120B-A12B`](https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Super-120B-A12B-GGUF) | 120B / 12B | 1M | 64.5 GB `UD-IQ4_XS` | Hybrid Mamba-2 + MoE, so the KV cache is far cheaper than its size suggests. **Needs a llama.cpp built with Mamba SSM support** — check before downloading |
+
+Bigger models exist and mostly do not fit. **Total parameters decide that, not active ones** — and the aggressive quantisations that squeeze a large model into memory are the ones that damage precise copying, which is the whole capability you are choosing for.
 
 **What the notes model is actually doing** is narrow and unusual: read a whole item, and quote the exact words that assert each claim — **copied character for character**, out of what is often unpunctuated auto-generated captions, without tidying them. braintrust discards any quote it cannot find in the source, so a model that paraphrases loses you claims outright.
 
-That skill is not what general benchmarks measure. **Agentic and coding scores predict it poorly**, and a model tuned to be helpful is a model inclined to tidy a quote. Two properties do matter, and are worth checking before downloading anything:
-
-- **Long context that holds.** Items run to 40,000 words. A model that quotes only the opening of a long talk loses the rest of it silently.
-- **A size that fits your hardware at 4-bit or better.** Total parameters, not active ones, decide whether it fits. The aggressive quantisations that squeeze a large model in are the ones that damage precise copying — which is the whole capability you are choosing for.
+That skill is not what general benchmarks measure. **Agentic and coding scores predict it poorly**, and a model tuned to be helpful is a model inclined to tidy a quote. The property that does matter is **long context that holds**: items run to 40,000 words, and a model that quotes only the opening of a long talk loses the rest of it silently.
 
 **Don't take any of that on faith, including from us** — see [Choosing the model that reads](#choosing-the-model-that-reads) below, which measures a candidate on your own corpus rather than on a benchmark.
 
