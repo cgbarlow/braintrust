@@ -233,9 +233,12 @@ export type ArchiveItem = {
  * otherwise would make Coverage lie about what was read. A `failed` Item is not
  * resurrected: a terminal recorded outcome is not a pending item.
  *
- * `skipped_short` is the exception that proves the rule — it is the one skip made by
- * *braintrust's own policy* rather than by a source, so `reopenShorts` can undo it
- * when the operator changes their mind. Nothing a source decided is revisited here.
+ * The line those two sit on: **`failed` means the source declined or could not answer,
+ * and everything braintrust *decided* is `skipped_<reason>`** — a row of its own,
+ * carrying what would have to change, reopened when it changes. `skipped_short` and
+ * `skipped_window` are both braintrust's own policy, so `reopenShorts` and
+ * `reopenWindow` undo them when the operator changes their mind. Nothing a source
+ * decided is revisited here.
  */
 export async function recordCatalogued(db: Db, source: SourceRow, item: ArchiveItem): Promise<Retrieval> {
   const decided = decide(source, item);
@@ -356,6 +359,58 @@ export async function markSkippedShort(
 }
 
 /**
+ * Older than the window the operator asked braintrust to read.
+ *
+ * The Item is in the feed and braintrust knows it exists; what it does not know is
+ * whether the post is paid, because the archive walk stopped at the floor before
+ * describing it, and the paywall allow-list means an undescribed Item is never fetched.
+ *
+ * That is **braintrust declining to look**, not a source declining to answer, so it is
+ * a skip rather than a failure — which is the difference between a window an operator
+ * can widen and a decision they cannot take back.
+ */
+export async function markSkippedWindow(db: Db, itemId: string): Promise<void> {
+  await db.query(
+    `update braintrust_items set retrieval = 'skipped_window' where id = $1 and retrieval = 'pending'`,
+    [itemId],
+  );
+}
+
+/**
+ * Is this Item outside the window as the Source is configured *now*?
+ *
+ * An Item with no date is never outside it. braintrust would be guessing, and a guess
+ * that lands here writes a reversible skip over what may be a real failure — so an
+ * undated Item keeps whatever outcome the caller was going to record anyway.
+ *
+ * Both sides are `YYYY-MM-DD`, which orders correctly as text; `backfill_floor` is read
+ * as `::text` for exactly this reason.
+ */
+export function outsideWindow(source: SourceRow, publishedAt: string | null): boolean {
+  return publishedAt !== null && publishedAt < source.backfill_floor;
+}
+
+/**
+ * **This is what makes `window_months` a setting rather than a one-way door**, and it
+ * is the same sentence `reopenShorts` writes about `exclude_shorts`.
+ *
+ * There is no "the window widened" flag to thread through: the predicate *is* the
+ * current floor, so a wider window reopens exactly the Items that came back into range
+ * and a narrower one reopens nothing. Re-following with the same `window_months` moves
+ * the floor forward as time passes, and this correctly does nothing then too.
+ */
+export async function reopenWindow(db: Db, sourceId: string, floor: string): Promise<number> {
+  const { rows } = await db.query<{ id: string }>(
+    `update braintrust_items
+        set retrieval = 'pending'
+      where source_id = $1 and retrieval = 'skipped_window' and published_at >= $2::date
+      returning id`,
+    [sourceId, floor],
+  );
+  return rows.length;
+}
+
+/**
  * **This is what makes `exclude_shorts` a setting rather than a one-way door.**
  *
  * Turn it off and the Items braintrust declined to read become pending again on the
@@ -393,6 +448,7 @@ export type CorpusCounts = {
   retrieved: number;
   skipped_paywall: number;
   skipped_short: number;
+  skipped_window: number;
   failed: number;
 };
 
@@ -403,6 +459,7 @@ export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCou
             count(*) filter (where retrieval = 'retrieved')       as retrieved,
             count(*) filter (where retrieval = 'skipped_paywall') as skipped_paywall,
             count(*) filter (where retrieval = 'skipped_short')   as skipped_short,
+            count(*) filter (where retrieval = 'skipped_window')  as skipped_window,
             count(*) filter (where retrieval = 'failed')          as failed
        from braintrust_items
       where ($1::uuid is null or source_id = $1::uuid)`,
@@ -415,6 +472,7 @@ export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCou
     retrieved: Number(row.retrieved),
     skipped_paywall: Number(row.skipped_paywall),
     skipped_short: Number(row.skipped_short),
+    skipped_window: Number(row.skipped_window),
     failed: Number(row.failed),
   };
 }

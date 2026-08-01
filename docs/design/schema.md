@@ -124,7 +124,7 @@ create table braintrust_items (
                   check (audience in ('everyone', 'paid', 'unknown')),
   retrieval     text not null default 'pending'
                   check (retrieval in ('pending', 'retrieved', 'skipped_paywall',
-                                       'skipped_short', 'failed')),
+                                       'skipped_short', 'skipped_window', 'failed')),
   body_text     text,                 -- null until retrieved; null forever if skipped
   body_raw      jsonb,                -- caption events, feed entry — whatever the platform actually gave
   retrieved_at  timestamptz,
@@ -150,9 +150,12 @@ Four things this shape is deliberately doing:
   date stored as if measured would poison every position built on it.
 - **A skip is a row, not an absence.** `audience` is known before fetching, so braintrust records exactly
   what it declined to read, which is what lets a persona state its own blind spots instead of silently
-  having them. The two skips are different facts and stay separate columns of the same vocabulary:
-  `skipped_paywall` is a source's decision braintrust is respecting, and `skipped_short` is braintrust's own
-  policy — so it is the only one that turning `exclude_shorts` off undoes, without a second crawl.
+  having them. The line the vocabulary draws is **whose decision it was**: `failed` means the source
+  declined or could not answer, and everything braintrust *decided* is `skipped_<reason>` — a row of its
+  own, carrying what would have to change, reopened when it changes. `skipped_paywall` is a source's
+  decision braintrust is respecting and nothing undoes it; `skipped_short` is undone by turning
+  `exclude_shorts` off; `skipped_window` is undone by widening `window_months`. Both reopen without a
+  second crawl, and both exist so a setting stays a setting rather than becoming a one-way door.
 
 **No separate transcript-segment table.** `body_raw` holds the caption lines with one start time each, so a
 citation can name a moment rather than gesture at a 20-minute video; timestamps reach a citation via chunks.

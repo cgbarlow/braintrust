@@ -164,6 +164,7 @@ type CoverageRow = {
   retrieved: string;
   skipped_paywall: string;
   skipped_short: string;
+  skipped_window: string;
   failed: string;
   pending: string;
   words_retrieved: string;
@@ -186,6 +187,7 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
             count(i.id) filter (where i.retrieval = 'retrieved')::text        as retrieved,
             count(i.id) filter (where i.retrieval = 'skipped_paywall')::text  as skipped_paywall,
             count(i.id) filter (where i.retrieval = 'skipped_short')::text    as skipped_short,
+            count(i.id) filter (where i.retrieval = 'skipped_window')::text   as skipped_window,
             count(i.id) filter (where i.retrieval = 'failed')::text           as failed,
             count(i.id) filter (where i.retrieval = 'pending')::text          as pending,
             coalesce(sum(array_length(regexp_split_to_array(btrim(i.body_text), '\\s+'), 1))
@@ -202,7 +204,15 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
   );
 
   const by_source: Record<string, SourceCoverage> = {};
-  const totals = { retrieved: 0, skipped_paywall: 0, skipped_short: 0, failed: 0, pending: 0, words: 0 };
+  const totals = {
+    retrieved: 0,
+    skipped_paywall: 0,
+    skipped_short: 0,
+    skipped_window: 0,
+    failed: 0,
+    pending: 0,
+    words: 0,
+  };
   const dates: string[] = [];
 
   for (const row of rows) {
@@ -212,6 +222,7 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
       retrieved: Number(row.retrieved),
       skipped_paywall: Number(row.skipped_paywall),
       skipped_short: Number(row.skipped_short),
+      skipped_window: Number(row.skipped_window),
       failed: Number(row.failed),
       pending: Number(row.pending),
       words_retrieved: Number(row.words_retrieved),
@@ -225,6 +236,7 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
     totals.retrieved += source.retrieved;
     totals.skipped_paywall += source.skipped_paywall;
     totals.skipped_short += source.skipped_short;
+    totals.skipped_window += source.skipped_window;
     totals.failed += source.failed;
     totals.pending += source.pending;
     totals.words += source.words_retrieved;
@@ -238,6 +250,7 @@ export async function measureCoverage(db: Db, personId: string): Promise<Coverag
     retrieved: totals.retrieved,
     skipped_paywall: totals.skipped_paywall,
     skipped_short: totals.skipped_short,
+    skipped_window: totals.skipped_window,
     failed: totals.failed,
     pending: totals.pending,
     words_retrieved: totals.words,
@@ -343,6 +356,7 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
        count(*) filter (where i.retrieval = 'retrieved')::text       as retrieved,
        count(*) filter (where i.retrieval = 'skipped_paywall')::text as skipped_paywall,
        count(*) filter (where i.retrieval = 'skipped_short')::text   as skipped_short,
+       count(*) filter (where i.retrieval = 'skipped_window')::text  as skipped_window,
        count(*) filter (where i.retrieval = 'failed')::text          as failed,
        count(*) filter (where i.retrieval = 'pending')::text         as pending
        from braintrust_items i
@@ -392,6 +406,7 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
       retrieved: Number(counts.retrieved),
       skipped_paywall: Number(counts.skipped_paywall),
       skipped_short: Number(counts.skipped_short),
+      skipped_window: Number(counts.skipped_window),
       failed: Number(counts.failed),
       pending: Number(counts.pending),
     },

@@ -167,6 +167,16 @@ nothing.
 **`poll_interval_hours` does not create a second scheduler.** There is one daily job; the interval only
 decides whether a Source is *due* when it runs.
 
+**A window is a setting, so widening one has to reach the Items it was widened for.** An Item the feed
+carries but the archive walk stopped short of is written `retrieval = 'skipped_window'`, not `failed`:
+nobody asked the source for it, so a terminal outcome would be recording braintrust's own decision as a
+source's refusal — and terminal outcomes are never revisited, which made `window_months` a number you could
+change and not feel. Widening it makes those rows pending again on the next run, without a second crawl, the
+same way turning `exclude_shorts` off brings the Shorts back. There is no *"the window widened"* flag to keep
+in step with the setting: the reopen asks whether each skipped Item is inside the floor as it stands now, so
+a narrower window correctly reopens nothing. Found live, on a Person who publishes rarely — five posts across
+seventeen months, of which the default window catalogued one.
+
 **Accepted cost:** two Personas with different windows have Coverage numbers that are not directly comparable.
 Tolerable because Coverage states its own window, so each is self-describing rather than silently different.
 

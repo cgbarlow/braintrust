@@ -196,6 +196,18 @@ describe('schema.sql against real Postgres', { skip }, () => {
       ),
       /retrieval/,
     );
+
+    // Every skip braintrust decides for itself. `create table if not exists` leaves an
+    // existing table alone, so the re-stated constraint below the DDL is the only thing
+    // that lets an already-deployed database accept a state added later — and this is
+    // where that idempotent restatement is proved rather than assumed.
+    for (const [index, skip] of ['skipped_paywall', 'skipped_short', 'skipped_window'].entries()) {
+      await db.query(
+        `insert into braintrust_items (source_id, external_id, url, retrieval)
+         values ($1, $2, 'https://example.com/p/skip', $3)`,
+        [source[0]!.id, `skip-${index}`, skip],
+      );
+    }
   });
 
   it('serves list_personas from real rows', async () => {

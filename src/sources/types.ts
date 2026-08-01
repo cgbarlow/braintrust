@@ -58,7 +58,22 @@ export type Basis = 'measured' | 'estimated';
  * value that is not in these unions is a constraint violation rather than a bad row.
  */
 export type Audience = 'everyone' | 'paid' | 'unknown';
-export type Retrieval = 'pending' | 'retrieved' | 'skipped_paywall' | 'skipped_short' | 'failed';
+
+/**
+ * **`failed` means the source declined or could not answer. Everything braintrust
+ * *decided* is `skipped_<reason>`** — a row of its own, carrying what would have to
+ * change, reopened when it changes.
+ *
+ * That line is why there are three skips rather than one catch-all: each names a
+ * different thing an operator could do about it, and each is undone by doing it.
+ */
+export type Retrieval =
+  | 'pending'
+  | 'retrieved'
+  | 'skipped_paywall'
+  | 'skipped_short'
+  | 'skipped_window'
+  | 'failed';
 
 /**
  * **The paywall line, as an allow-list.** Anything that is not exactly `everyone` is
