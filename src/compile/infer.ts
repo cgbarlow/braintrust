@@ -32,11 +32,15 @@ import {
 } from './synthesis.js';
 
 /**
- * How much of the digest one pass may carry. Well inside a modern context window, and
- * the reason a 400-Item Corpus compiles at all: it is folded in passes and then merged,
- * rather than sent whole and refused.
+ * How much of the digest one pass may carry. The reason a 400-Item Corpus compiles at all:
+ * it is folded in passes and then merged, rather than sent whole and refused.
+ *
+ * **Sized by how long a pass may generate rather than by the context window** — see
+ * `CLAIM_BUDGET_CHARS` in positions.ts, which is the same number for the same live-found
+ * reason. A pass that fits the window comfortably can still spend longer than
+ * SYNTHESIS_TIMEOUT_MS writing its answer, and that is what actually loses a rebuild.
  */
-export const DIGEST_BUDGET_CHARS = 120_000;
+export const DIGEST_BUDGET_CHARS = 40_000;
 
 /** How much of one Note's argument a digest carries. Long enough to show the moves. */
 export const ARGUMENT_MAX_CHARS = 1_200;

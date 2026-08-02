@@ -50,6 +50,11 @@ async function main(): Promise<void> {
     const synthesiser = createSynthesiser(
       config.extractor,
       createFetcher({ timeoutMs: SYNTHESIS_TIMEOUT_MS }),
+      undefined,
+      // The job is the run nobody watches, so it is the one that has to say how long each
+      // model call took. A Compile reports one outcome over many calls, and without this a
+      // rebuild lost to a time limit names its stage and nothing about which call spent it.
+      (line) => console.log(line),
     );
     console.log(
       `${SERVER_NAME}: reading items as ${extractor.generation}, compiling as ` +

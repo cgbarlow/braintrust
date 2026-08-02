@@ -291,6 +291,18 @@ export function createSynthesiser(
   config: ExtractorConfig,
   fetcher: Fetcher,
   pause?: (ms: number) => Promise<void>,
+  /**
+   * One line per call, for a job nobody is watching.
+   *
+   * **What it exists to answer is which call is slow, not that the compile was.** A Compile
+   * makes many model calls and reports one outcome, so a rebuild that dies against a time
+   * limit names the stage — `positions` — and nothing else. That stage is several passes
+   * *and* the merge that follows them, and those two fail for opposite reasons: a pass is
+   * long because the Corpus is large, and the merge is long because the passes were many.
+   * Cutting the digest budget helps the first and hurts the second, so guessing between
+   * them costs a rebuild each time. A duration and a size per call settles it in one run.
+   */
+  log?: (line: string) => void,
 ): Synthesiser {
   const url = chatUrl(config.baseUrl);
 
@@ -301,6 +313,8 @@ export function createSynthesiser(
    */
   async function ask(system: string, digest: string, job: string): Promise<string> {
     let response;
+    let body: string;
+    const started = Date.now();
     try {
       response = await fetchPatiently(fetcher, url, {
         json: {
@@ -344,7 +358,29 @@ export function createSynthesiser(
       );
     }
 
-    return readContent(await response.text(), url, job);
+    /**
+     * **Reading the body is where the waiting is now, so it is inside the same net.**
+     * A streamed request answers at the headers and then delivers for as long as the model
+     * takes, which moves every slow failure — the client's own timeout most of all — out of
+     * the call above and into this line. Found live: a pass aborted at SYNTHESIS_TIMEOUT_MS
+     * and the run reported bare words with no endpoint, no stage, and no word about the
+     * notes being safe, because this was the one step outside the wrapping.
+     */
+    try {
+      body = await response.text();
+    } catch (error) {
+      throw new BraintrustError(
+        `braintrust lost the synthesiser at ${url} while compiling ${job} after ` +
+          `${Math.round((Date.now() - started) / 1000)}s of a ${digest.length.toLocaleString()}-character ` +
+          `digest: ${(error as Error).message}. The notes are already written; the next run rebuilds.`,
+      );
+    }
+
+    log?.(
+      `braintrust: ${job} — ${digest.length.toLocaleString()} chars in, ` +
+        `${body.length.toLocaleString()} out, ${Math.round((Date.now() - started) / 1000)}s.`,
+    );
+    return readContent(body, url, job);
   }
 
   return {
@@ -354,20 +390,35 @@ export function createSynthesiser(
     model: config.model,
     url,
 
+    /**
+     * The mode travels into the job label because a pass and the merge that follows it are
+     * the two halves of one stage and fail for opposite reasons — a pass is long because the
+     * Corpus is large, the merge because the passes were many. A message naming only the
+     * stage cannot tell them apart, which is exactly the confusion that cost a live rebuild.
+     */
     async synthesise(kind, digest, mode): Promise<SynthesisedEntry[]> {
       const system = PROMPTS[kind] + (mode === 'merge' ? MERGE : '');
-      return readEntryContent(await ask(system, digest, kind), url);
+      return readEntryContent(await ask(system, digest, labelled(kind, mode)), url);
     },
 
     async cluster(digest, mode): Promise<ClusteredPosition[]> {
       const system = POSITION_PROMPT + (mode === 'merge' ? POSITION_MERGE : '');
-      return readClusterContent(await ask(system, digest, 'positions'), url);
+      return readClusterContent(await ask(system, digest, labelled('positions', mode)), url);
     },
 
     async judgePairs(digest): Promise<JudgedPair[]> {
       return readJudgementContent(await ask(REVISION_PROMPT, digest, 'revisions'), url);
     },
   };
+}
+
+/**
+ * The stage, and which half of it. A pass keeps the bare stage name so every existing
+ * message reads as it did; only the merge is marked, because that is the distinction
+ * nothing could previously see.
+ */
+function labelled(stage: string, mode: SynthesisMode): string {
+  return mode === 'merge' ? `${stage} (merge)` : stage;
 }
 
 export function chatUrl(baseUrl: string): string {

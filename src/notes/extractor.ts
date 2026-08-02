@@ -165,7 +165,20 @@ export function createExtractor(
         );
       }
 
-      return readNote(await response.text(), url);
+      // The streamed body is delivered for as long as the model takes, so this is where a
+      // slow failure now lands rather than on the call above. Same net, same sentence: an
+      // Item that could not be read is still retrieved, and the next run reads it.
+      let body: string;
+      try {
+        body = await response.text();
+      } catch (error) {
+        throw new BraintrustError(
+          `braintrust lost the note extractor at ${url}: ${(error as Error).message}. ` +
+            'The item is still retrieved; the next run reads it.',
+        );
+      }
+
+      return readNote(body, url);
     },
   };
 }
