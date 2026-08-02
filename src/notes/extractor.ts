@@ -21,6 +21,7 @@
 import type { ExtractorConfig } from '../config.js';
 import { BraintrustError } from '../errors.js';
 import { fetchPatiently, type Fetcher } from '../net/fetch.js';
+import { isEventStream, joinStream } from '../net/stream.js';
 
 /**
  * Bumping this is a re-read of the Corpus, not a migration: `extractor` is in the
@@ -137,6 +138,12 @@ export function createExtractor(
             // parsing its own model's `<|constrain|>json` marker, and answered cleanly
             // with this set.
             response_format: { type: 'json_object' },
+            // Streamed so the connection is never silent while an item is being read.
+            // Nothing here shows a token to anybody — the note is used whole — but an Item
+            // can run to 40,000 words, and a request that sends no bytes for that long is
+            // one a proxy read timeout cuts. See net/stream.ts for what that failure looks
+            // like from here, which is nothing an operator can act on.
+            stream: true,
             messages: [
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: user },
@@ -168,6 +175,14 @@ type ChatResponse = {
 };
 
 function readNote(body: string, url: string): RawNote {
+  if (isEventStream(body)) {
+    const streamed = joinStream(body);
+    if (streamed.trim() === '') {
+      throw new BraintrustError(`The note extractor at ${url} returned no content.`);
+    }
+    return readNoteContent(streamed, url);
+  }
+
   let parsed: ChatResponse;
   try {
     parsed = JSON.parse(body) as ChatResponse;
