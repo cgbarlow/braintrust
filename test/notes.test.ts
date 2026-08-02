@@ -416,6 +416,21 @@ describe('the extractor', () => {
     assert.equal((sent[0] as { stream?: unknown }).stream, true);
   });
 
+  it('says the item is still retrieved when the answer is lost mid-body', async () => {
+    const cutMidStream: Fetcher = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => {
+        throw new Error('The operation was aborted due to timeout');
+      },
+    });
+
+    await assert.rejects(
+      createExtractor(testExtractorConfig, cutMidStream).read({ text: BODY }),
+      /aborted due to timeout.*the next run reads it/s,
+    );
+  });
+
   it('reads a note back out of a streamed answer', async () => {
     const content = JSON.stringify({ claims: [], argument: 'held across the stream', assumptions: [] });
     const events: string[] = [];

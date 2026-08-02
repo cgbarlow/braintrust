@@ -37,8 +37,17 @@ import { MAX_POSITIONS, type ClusteredPosition, type Synthesiser } from './synth
  * How much of the claim digest one clustering pass may carry. The same budget the Core's
  * fold uses, for the same reason: a Corpus of 400 Items holds a couple of thousand claims,
  * and a single call over all of them would be refused.
+ *
+ * **The number is set by how long a pass may generate, not by the context window.** It was
+ * 120,000 — comfortably inside a modern context — and the largest Corpus in a council still
+ * could not be rebuilt, because one pass that size spent more than SYNTHESIS_TIMEOUT_MS
+ * generating and was aborted mid-answer. A budget chosen against the window bounds what the
+ * model can *read*; what fails a Compile is what it has to *write*, and that is the same
+ * ceiling for everybody. So this is the smaller of the two limits, and it is deliberately
+ * well under the window: a Corpus can grow without any pass getting slower, because growth
+ * adds passes rather than lengthening one.
  */
-export const CLAIM_BUDGET_CHARS = 120_000;
+export const CLAIM_BUDGET_CHARS = 40_000;
 
 /** How much of one claim's statement the digest carries. Long enough to tell two apart. */
 export const CLAIM_MAX_CHARS = 400;
@@ -250,7 +259,7 @@ export function buildPositions(
     const citations: PositionCitation[] = [];
     const seen = new Set<string>();
     for (const ref of cited) {
-      const key = `${ref.item_id} ${ref.claim.quote}`;
+      const key = `${ref.item_id}\u0000${ref.claim.quote}`;
       if (seen.has(key)) continue;
       seen.add(key);
       citations.push({
