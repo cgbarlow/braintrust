@@ -387,4 +387,51 @@ describe('the extractor', () => {
     assert.equal(endpoint.sent[0]!.responseFormat, 'json_object');
     assert.match(endpoint.sent[0]!.system, /Return a single JSON object, and nothing else/);
   });
+
+  /**
+   * The same live-found lesson as the synthesiser's, and the reason it is worth holding in
+   * two places: an Item can run to 40,000 words, and a request that sends no bytes while
+   * that is being read is one a proxy's read timeout cuts. What arrives here is
+   * `fetch failed` — no status, nothing to act on, and an Item that never gets read.
+   * See src/net/stream.ts.
+   */
+  it('asks for a stream, so reading a long item never goes silent on the wire', async () => {
+    const sent: unknown[] = [];
+    const wire: Fetcher = async (_url, init) => {
+      if (init) sent.push(init.json);
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [
+              { message: { content: JSON.stringify({ claims: [], argument: 'held', assumptions: [] }) } },
+            ],
+          }),
+      };
+    };
+
+    await createExtractor(testExtractorConfig, wire).read({ text: BODY });
+
+    assert.equal((sent[0] as { stream?: unknown }).stream, true);
+  });
+
+  it('reads a note back out of a streamed answer', async () => {
+    const content = JSON.stringify({ claims: [], argument: 'held across the stream', assumptions: [] });
+    const events: string[] = [];
+    for (let at = 0; at < content.length; at += 9) {
+      events.push(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: content.slice(at, at + 9) } }] })}\n\n`,
+      );
+    }
+    const streamed: Fetcher = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => `: keep-alive\n\n${events.join('')}data: [DONE]\n\n`,
+    });
+
+    const note = await createExtractor(testExtractorConfig, streamed).read({ text: BODY });
+
+    assert.equal(note.argument, 'held across the stream');
+  });
 });

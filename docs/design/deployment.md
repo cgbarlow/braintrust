@@ -84,6 +84,15 @@ never distils anything — the invisible failure the daily clock exists to preve
 variable. Both deployments read the same file, so the web service demands it too; it is one line and it means
 a misconfigured braintrust says so at the point where somebody is looking.
 
+**Both model calls are streamed, and it is the connection they are streaming for.** Nothing is displayed to
+anybody — a note and a synthesis pass are both used whole — but reading a 40,000-word Item, or grouping a
+whole Corpus of claims, can generate for minutes, and a request that sends no bytes for that long is one a
+reverse proxy cuts. nginx's `proxy_read_timeout` is 60 seconds by default. What reaches braintrust when that
+happens is `fetch failed`: no status, no refusal, nothing an operator can act on, and a Persona that never
+rebuilds. Found live — the largest Corpus in a council failed four runs running while every smaller Person
+compiled over the same endpoint in the same run. `stream: true` is a request braintrust makes rather than a
+promise the endpoint gives, so both answer shapes are read and an endpoint that ignores it still works.
+
 ### The embeddings endpoint
 
 **braintrust declares no embedding model. It takes any OpenAI-compatible `/v1/embeddings` endpoint** — Ollama,

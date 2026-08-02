@@ -20,6 +20,7 @@
 import type { ExtractorConfig } from '../config.js';
 import { BraintrustError } from '../errors.js';
 import { fetchPatiently, type Fetcher } from '../net/fetch.js';
+import { isEventStream, joinStream } from '../net/stream.js';
 
 /**
  * Bumping this changes the prose a Persona is built from, so it is part of
@@ -311,6 +312,17 @@ export function createSynthesiser(
           // The same declaration the extractor makes, for the same reason. All four
           // prompts on this surface ask for one JSON object; the request now says so too.
           response_format: { type: 'json_object' },
+          // **Streamed so the connection is never silent, not so anything is shown.**
+          // braintrust reads the whole answer before it does anything with it, so the
+          // deltas buy it nothing — but a synthesis pass carries up to CLAIM_BUDGET_CHARS
+          // and can spend minutes generating, and a non-streamed request sends no bytes at
+          // all for that whole span. Every reverse proxy has a read timeout (nginx's is 60s
+          // by default) and cuts a connection that quiet, which reaches braintrust as
+          // `fetch failed` — not a status, not a refusal, nothing to act on. Found live:
+          // the largest Corpus in a council failed its rebuild four runs running while
+          // every smaller one compiled over the same endpoint in the same run, because only
+          // its passes were long enough to trip the clock.
+          stream: true,
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: digest },
@@ -366,6 +378,14 @@ export function chatUrl(baseUrl: string): string {
 type ChatResponse = { choices?: { message?: { content?: unknown } }[] };
 
 function readContent(body: string, url: string, job: string): string {
+  if (isEventStream(body)) {
+    const streamed = joinStream(body);
+    if (streamed.trim() === '') {
+      throw new BraintrustError(`The synthesiser at ${url} returned no content for ${job}.`);
+    }
+    return streamed;
+  }
+
   let parsed: ChatResponse;
   try {
     parsed = JSON.parse(body) as ChatResponse;
