@@ -168,8 +168,21 @@ deploys, with no recompile.** No model is in the path.
   falling back to the paragraph. The failure mode is a thinner Script — visible and countable — rather than
   invented prose, which is neither.
 
-> **Required before this ships:** run the renderer over both reference Personas and count the omissions.
-> Verified by hand on `ethan-mollick` (8 of 8); **`nate-b-jones` is unverified.**
+> **Verified, and it fails on the thick Corpus.** `ethan-mollick`: **8 of 8** labels convert. `nate-b-jones`:
+> **0 of 8** — every `reasoning` label is a bare noun phrase (*"Infrastructure-first focus"*,
+> *"Bottleneck-oriented value framework"*) with no finite verb to inflect. Under omit-not-guess that Persona's
+> Script has **no *How they argue* section at all**: a manner with no mind, which is the failure
+> [#113](https://github.com/cgbarlow/braintrust/issues/113) kept `reasoning` in order to avoid.
+>
+> **The compiler does not constrain label grammar**, and is not consistent within one Persona — Nate's
+> `beliefs` labels are full sentences, his `reasoning` labels are noun phrases, Mollick's are verb-initial
+> clauses. Mollick's 8 of 8 was luck. **This makes the third Upstream item a prerequisite for the thick-corpus
+> case rather than a possible next effort.**
+>
+> *Open, and needing the operator's ear:* a **fixed carrier** would keep the section alive without
+> paraphrasing — non-convertible labels rendered verbatim under braintrust's own lead-in (*"Your habitual
+> frames:"*) rather than as imperatives. Permitted by both rules; worse prose than an imperative; better or
+> worse than silence is taste.
 
 #### The Script says nothing about length
 
@@ -698,9 +711,15 @@ wearing disposition's coat — *"Assumes continued exponential capability growth
 barriers as collapsing"*. Excluding `beliefs` removes most of the drag toward the one subject a Corpus covers;
 these keep some of it. Drawing the line is a Compile-time judgement.
 
-**3. Compiling labels to be spoken rather than read — contingent.** Fires only if §2's omission count comes
-back bad on a real Corpus. A `reasoning` label that is not verb-initial is dropped from the Script and no
-serving-side rule reaches it.
+**3. Compiling labels to be spoken rather than read — FIRED, and now a prerequisite.** This was recorded as
+contingent on §2's omission count. **The count came back 0 of 8 on `nate-b-jones`.** A `reasoning` label that
+is not verb-initial is dropped from the Script, no serving-side rule reaches it, and on the thick reference
+Corpus that is every label there is.
+
+The compiler emits at least three label grammars — verb-initial clauses, bare noun phrases, and full sentences
+— with no constraint and no consistency within a single Persona. **Constraining it is the smallest change that
+makes the Script whole for every Persona**, and it is the one thing on this list that the serving surface
+cannot substitute for.
 
 ---
 
