@@ -92,6 +92,31 @@ export const MATCH_PASSAGES = 60;
  */
 export const MATCH_FLOOR = 0.35;
 
+/**
+ * How far the best match has to stand clear of the Corpus's own middle before braintrust
+ * calls the question *answered by this Corpus* rather than merely *nearest to it*.
+ *
+ * **This is the gate. `MATCH_FLOOR` above is only a sanity check now.** Found live: on
+ * `ethan-mollick`, "the correct water temperature for poaching an egg" and "how to prune
+ * tomato plants" returned the **identical top three Positions in the same order** — two
+ * questions with nothing in common producing one answer. That is a query vector landing
+ * near the Corpus centroid rather than near any region of it, so the ranking degenerates to
+ * the Corpus's most central claims and carries no information about the question at all. A
+ * floor cannot see that: it asks *is the nearest thing near enough*, and on a topically
+ * monolithic Corpus the answer is yes for every question ever asked.
+ *
+ * A margin against the Corpus's own distribution is a **shape rather than a distance**, so
+ * unlike `MATCH_FLOOR` it does not belong to whichever embeddings model an operator points
+ * at. That is the whole reason it replaces one.
+ *
+ * **It still has to be calibrated, and calibration is a step rather than a guess.** Run a
+ * probe set of known-in and known-out questions against the operator's endpoint and put the
+ * threshold where the two groups separate; if they do not separate, the endpoint is wrong
+ * for the job. `BRAINTRUST_SELECTIVITY_MARGIN` exists so that is a measurement rather than a
+ * code change. The default below is a starting point and is **not** a measured value.
+ */
+export const SELECTIVITY_MARGIN = Number(process.env.BRAINTRUST_SELECTIVITY_MARGIN ?? 0.06);
+
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;
 
@@ -153,7 +178,18 @@ export type FoundPosition = {
   held_until: string | null;
   days_spanned: number | null;
   basis: string;
+  /**
+   * How well braintrust knows this Position. **Says nothing about the question asked** —
+   * which is exactly how `measured` + `high` + four dated quotes came to read as licence to
+   * answer a question about tomatoes. See `fit`.
+   */
   confidence: string;
+  /**
+   * How well this Position answers *this query*, against the Corpus's own distribution.
+   * The second grade exists because one grade was being asked to carry two facts, and a
+   * weakly-fitting Position must stay visibly weak however well evidenced it is.
+   */
+  fit: 'close' | 'partial' | 'distant';
   item_count: number;
   /** False only when this Position is the earlier side of a `revised` relation. */
   current: boolean;
@@ -187,7 +223,18 @@ export type FindPayload = {
    * configured model turns every question into an empty list, and an empty list on its own
    * is indistinguishable from an honest one.
    */
-  nothing_matched?: { nearest_similarity: number | null; floor: number };
+  nothing_matched?: {
+    nearest_similarity: number | null;
+    floor: number;
+    /**
+     * *Nothing came close* and *everything came equally close* are different facts about a
+     * Corpus and an operator reads them differently: the first is an honest empty answer,
+     * the second is a question that never selected this Corpus at all.
+     */
+     reason: 'below_floor' | 'did_not_select' | 'nothing_indexed';
+    /** What a Persona can put into its own words. Never braintrust's prose about braintrust. */
+    say: string;
+  };
 };
 
 type CurrentCompile = { id: string; display_name: string; compiled_at: Date | null };
@@ -230,14 +277,21 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
 
   const limit = bounded(args.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
   const window = { since: args.since ?? null, until: args.until ?? null };
-  const matched = await matchingPositions(deps.db, compile.id, vectorLiteral(vector), {
-    model: deps.embedder.model,
-    person: slug,
-    ...window,
-  });
+  const search = { model: deps.embedder.model, person: slug, ...window };
+
+  // The gate, before anything is ranked. A question that merely lands in this Corpus gets
+  // no answer at all — not a weakly-graded one — because the ranking behind a landed
+  // question is the Corpus's own centroid rather than anything about what was asked.
+  const field = await selectivity(deps.db, vectorLiteral(vector), search);
+  const selected =
+    field.top !== null && field.median !== null && field.top - field.median >= SELECTIVITY_MARGIN;
+
+  const matched = selected
+    ? await matchingPositions(deps.db, compile.id, vectorLiteral(vector), search)
+    : [];
 
   const shown = matched.slice(0, limit);
-  const positions = await withEvidence(deps.db, shown, args.full === true);
+  const positions = await withEvidence(deps.db, shown, args.full === true, field);
 
   const payload: FindPayload = {
     subject: subjectFor(compile.display_name),
@@ -261,12 +315,8 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // The fallback, and only the fallback. Passages alongside Positions would put a
   // conclusion and the raw material for one in the same answer with nothing but a key name
   // to tell a client which is which.
-  if (positions.length === 0) {
-    const found = await matchingPassages(deps.db, vectorLiteral(vector), {
-      model: deps.embedder.model,
-      person: slug,
-      ...window,
-    });
+  if (positions.length === 0 && selected) {
+    const found = await matchingPassages(deps.db, vectorLiteral(vector), search);
     const bound = args.full === true ? found.length : DEFAULT_PASSAGES;
     payload.passages = found.slice(0, bound);
     if (found.length > bound) more.passages = found.length - bound;
@@ -279,13 +329,18 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // question with `[]`, and no way to tell a corpus that does not cover the question from
   // a floor that does not suit the endpoint.
   if (payload.positions.length === 0 && payload.passages.length === 0) {
+    const nearest = await nearestSimilarity(deps.db, vectorLiteral(vector), search);
+    const reason =
+      nearest === null ? 'nothing_indexed' : selected ? 'below_floor' : 'did_not_select';
+
     payload.nothing_matched = {
-      nearest_similarity: await nearestSimilarity(deps.db, vectorLiteral(vector), {
-        model: deps.embedder.model,
-        person: slug,
-        ...window,
-      }),
+      nearest_similarity: nearest,
       floor: MATCH_FLOOR,
+      reason,
+      say:
+        reason === 'nothing_indexed'
+          ? 'braintrust has nothing indexed for this person in that window.'
+          : 'This is outside what braintrust has read of this person.',
     };
   }
 
@@ -319,6 +374,8 @@ type PositionRow = {
   basis: string;
   confidence: string;
   item_count: number;
+  /** Best chunk distance behind this Position. Turned into a `fit` grade, never served raw. */
+  distance: number;
 };
 
 /**
@@ -384,6 +441,7 @@ async function withEvidence(
   db: Db,
   rows: PositionRow[],
   full: boolean,
+  field: { top: number | null; median: number | null },
 ): Promise<FoundPosition[]> {
   if (rows.length === 0) return [];
 
@@ -451,6 +509,7 @@ async function withEvidence(
       days_spanned: row.days_spanned === null ? null : Number(row.days_spanned),
       basis: row.basis,
       confidence: row.confidence,
+      fit: fitOf(1 - Number(row.distance), field.top, field.median),
       item_count: row.item_count,
       current: !related.some((one) => one.side === 'from' && one.relation === 'revised'),
       relations: related.map((one) => ({
@@ -515,6 +574,64 @@ async function nearestSimilarity(db: Db, vector: string, search: Search): Promis
 
   const nearest = rows[0]?.similarity;
   return nearest === undefined ? null : Math.round(Number(nearest) * 1000) / 1000;
+}
+
+/**
+ * The Corpus's own distribution of similarity to this query: the best match, and the
+ * middle of the field.
+ *
+ * The margin between them is what says whether the question *selected* anything. On an
+ * off-corpus question every Chunk is roughly equidistant, so the best barely beats the
+ * median — which is why two unrelated questions could return the same answer. On a question
+ * the Corpus covers, the best stands well clear.
+ *
+ * Sampled rather than scanned: the median of the nearest few hundred Chunks is the shape
+ * that matters, and reading a 500-item Corpus end to end on every call would trade the
+ * latency this map spent a whole ticket recovering.
+ */
+async function selectivity(
+  db: Db,
+  vector: string,
+  search: Search,
+): Promise<{ top: number | null; median: number | null }> {
+  const { rows } = await db.query<{ top: number | null; median: number | null }>(
+    `with field as (
+       select 1 - (e.embedding <=> $1::vector) as similarity
+         from braintrust_embeddings e
+         join braintrust_chunks c on c.id = e.chunk_id
+         join braintrust_items i on i.id = c.item_id
+         join braintrust_sources s on s.id = i.source_id
+         join braintrust_people p on p.id = s.person_id
+        where p.slug = $2
+          and e.model = $3
+          and ($4::date is null or i.published_at >= $4::date)
+          and ($5::date is null or i.published_at <= $5::date)
+        order by e.embedding <=> $1::vector
+        limit 400
+     )
+     select max(similarity) as top,
+            percentile_cont(0.5) within group (order by similarity) as median
+       from field`,
+    [vector, search.person, search.model, search.since, search.until],
+  );
+
+  const row = rows[0];
+  return {
+    top: row?.top === null || row?.top === undefined ? null : Number(row.top),
+    median: row?.median === null || row?.median === undefined ? null : Number(row.median),
+  };
+}
+
+/**
+ * How well one Position answers the question, placed against the same distribution the gate
+ * used. A grade about *fit*, never about how well braintrust knows the Position.
+ */
+function fitOf(similarity: number, top: number | null, median: number | null): 'close' | 'partial' | 'distant' {
+  if (top === null || median === null || top <= median) return 'partial';
+  const relative = (similarity - median) / (top - median);
+  if (relative >= 0.66) return 'close';
+  if (relative >= 0.33) return 'partial';
+  return 'distant';
 }
 
 /**

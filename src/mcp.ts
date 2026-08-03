@@ -18,7 +18,7 @@ import type { ConfirmTokenStore } from './follow/tokens.js';
 import { unfollowPerson, type UnfollowArgs } from './follow/unfollow.js';
 import type { Fetcher } from './net/fetch.js';
 import type { Extractor } from './notes/index.js';
-import { listPersonas, loadPersona } from './personas.js';
+import { explainPersona, listPersonas, loadPersona } from './personas.js';
 import { refreshPersona, type RefreshArgs } from './refresh.js';
 import type { Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
@@ -126,33 +126,14 @@ export function buildServer({
     {
       title: 'Load a persona',
       description:
-        'The core of one persona, whole: how they sound, and what braintrust has and has not ' +
-        'read of them. This is what you load to answer *as* a braintrust model of someone, ' +
-        'rather than to look something up.\n\n' +
-        '**Read `speak_as` first.** It is the default response template: name the persona as a ' +
-        'model once, in the opening line, then answer in voice without narrating braintrust. ' +
-        "The layers carry braintrust's bookkeeping inside their own prose — how a layer was " +
-        'derived, by which model, from how many items — because that label has to survive ' +
-        'being pasted into a prompt. It is written for you, not for whoever you are answering, ' +
-        'and speaking it back produces a persona reciting its own paperwork. The counts stay ' +
-        "available in each layer's `evidence` for when someone actually asks how the persona " +
-        'knows something.\n\n' +
-        'Every layer says whether it was measured or inferred. `voice` is measured — counted ' +
-        'over what the person actually published, with no model in the path — and comes back in ' +
-        'two forms: `generative` is the instruction to follow, and `descriptive` plus `evidence` ' +
-        'are the counts it was derived from, so you can check the instruction rather than trust ' +
-        'it. `coverage` is measured too, and it is where a persona names its own blind spots: ' +
-        'what was paywalled and never fetched, what failed, what has not been read yet, and ' +
-        'any source that has stopped serving braintrust — which is the source refusing ' +
-        'braintrust, never the user choosing to stop following.\n\n' +
-        '`reasoning` and `beliefs` are inferred — synthesised across everything braintrust read, ' +
-        'because no single thing a person publishes states how they argue or what they take as ' +
-        'true. They carry that label in their own prose as well as in `basis`, so it survives ' +
-        'being pasted into a system prompt. Their `evidence` names the items each point was ' +
-        'traced to, which is a floor rather than a tally — treat it as where the point is ' +
-        'visible, not as how often it holds.\n\n' +
-        'A persona braintrust has never compiled returns an error rather than being built on ' +
-        'demand. Use braintrust_list_personas to see who exists and who has been compiled.',
+        'Talk to someone. Returns one persona, ready to speak: a `speak` block written to be ' +
+        'used as-is, and `receipts` — a few scalars saying which layers were measured, how much ' +
+        'braintrust read, and what it did not read.\n\n' +
+        '`speak` is the whole instruction. It is not material to summarise, quote or narrate — ' +
+        'use it and answer as the person. Say the opening line once and do not repeat it.\n\n' +
+        'Use braintrust_find_positions for *what did they say about X*, and ' +
+        'braintrust_explain_persona for *how does braintrust know any of this*. A persona ' +
+        'braintrust has never compiled returns an error rather than being built on demand.',
       inputSchema: {
         person: z
           .string()
@@ -175,6 +156,49 @@ export function buildServer({
     },
   );
 
+  server.registerTool(
+    'braintrust_explain_persona',
+    {
+      title: 'Explain how braintrust knows a persona',
+      description:
+        "How braintrust knows what it claims about someone. Returns the persona's four " +
+        'compiled layers whole and verbatim — nothing summarised, nothing reformatted.\n\n' +
+        'Call this when someone asks how a persona knows something, how much of a person ' +
+        'braintrust has actually read, or whether something was measured or guessed. Never ' +
+        'answer those from the persona itself.\n\n' +
+        'Every layer says whether it was `measured` or `inferred`. `voice` and `coverage` are ' +
+        'measured — counted over what the person published, with no model in the path — and ' +
+        'voice comes back in two forms, so the instruction can be checked rather than trusted. ' +
+        '`reasoning` and `beliefs` are inferred, synthesised across everything braintrust read, ' +
+        'because no single thing a person publishes states how they argue or what they take as ' +
+        'true. Their evidence names the items each point was traced to, which is a **floor ' +
+        'rather than a tally** — where the point is visible, not how often it holds.\n\n' +
+        '`coverage` is where a persona names its own blind spots: what was paywalled and never ' +
+        'fetched, what failed, what has not been read yet, and any source that has stopped ' +
+        'serving braintrust — which is the source refusing braintrust, never the user choosing ' +
+        'to stop following.',
+      inputSchema: {
+        person: z
+          .string()
+          .min(1)
+          .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ person }: { person: string }) => {
+      try {
+        return text(await explainPersona(db, person));
+      } catch (error) {
+        if (error instanceof BraintrustError) return failure(error.message);
+        console.error('braintrust: braintrust_explain_persona failed', error);
+        return failure(
+          'braintrust_explain_persona failed for a reason braintrust did not expect. The server ' +
+            'log has the detail.',
+        );
+      }
+    },
+  );
+
   if (embedder && retrieval) {
     const search = { db, embedder, retrieval };
 
@@ -183,27 +207,21 @@ export function buildServer({
       {
         title: 'Find what someone has said about something',
         description:
-          'Ask what a person holds on a topic, and get it back with dates and citations. This is ' +
-          'the tool for *what have they said about X*; braintrust_load_persona is the tool for ' +
-          'answering **as** them.\n\n' +
-          'Your question is embedded and matched against the passages braintrust indexed, and the ' +
-          'positions those items support come back — each with the item count behind it, a ' +
-          'confidence grade, the date braintrust can first cite it from, and quotes taken ' +
-          "verbatim from what the person published. **A one-mention position is returned like any " +
-          'other, labelled `low`, because what one mention is worth is your judgement and not ' +
-          "braintrust's.**\n\n" +
-          'When the compiler formed no position on a topic, `passages` comes back instead: the ' +
-          'raw indexed material, which is *what they said* rather than *what braintrust ' +
-          'concluded*. Most of it is auto-generated video captions — unpunctuated, sometimes ' +
-          'mishearing names — and it is returned as stored rather than tidied.\n\n' +
-          'Answers are trimmed for readability, not capped: `more_citations` and `more_available` ' +
-          'say what was held back and `full: true` returns all of it. An empty answer carries ' +
-          '`nothing_matched`, which is how close the nearest passage came and the floor it had to ' +
-          'clear — so *they never said this* is distinguishable from *this braintrust is tuned ' +
-          'wrong*. Rephrasing in the words the person would use is worth one retry.\n\n' +
-          '**This tool says nothing about what braintrust has not read.** An empty answer may mean ' +
-          'they never said it, or it may mean it is in a paywalled post braintrust never fetched. ' +
-          'braintrust_load_persona has the coverage layer, which names those blind spots.',
+          'What a person has said about a topic, with dates and citations. This is the tool for ' +
+          '*what have they said about X*; braintrust_load_persona is the tool for answering **as** ' +
+          'them.\n\n' +
+          'Each position carries two grades and they mean different things. `confidence` is how ' +
+          'well braintrust knows the position. `fit` is how well it answers the question you ' +
+          'asked. A `high` position with `distant` fit is well evidenced and not an answer.\n\n' +
+          '**Quotes are verbatim.** Most of the corpus is auto-generated video captions, so they ' +
+          'arrive unpunctuated and sometimes mishearing names. Tidy them for display if you like, ' +
+          'but the tidied version is not the quote.\n\n' +
+          'An empty answer carries `nothing_matched`, including which kind of empty it is: ' +
+          '`did_not_select` means the question never engaged this corpus at all, `below_floor` ' +
+          'means it did and nothing was close enough, `nothing_indexed` means there is nothing to ' +
+          'search. **An empty answer cannot tell you they never said it** — it may be in a ' +
+          'paywalled post braintrust never fetched. Rephrasing in the words the person would use ' +
+          'is worth one retry.',
         inputSchema: {
           person: z.string().min(1).describe('The slug from braintrust_list_personas.'),
           query: z

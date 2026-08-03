@@ -11,8 +11,25 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BraintrustError } from '../src/errors.js';
-import { loadPersona } from '../src/personas.js';
+import { explainPersona, loadPersona } from '../src/personas.js';
 import { fakeDb } from './support/fake-db.js';
+
+const REASONING = {
+  display_name: 'Nate B. Jones',
+  compiled_at: new Date('2026-07-31T09:14:22.000Z'),
+  compiler_version: '0.1.0+measured-1',
+  extractor: 'gpt-5@notes-1',
+  layer: 'reasoning',
+  basis: 'inferred',
+  descriptive_md: '**Inferred across 34 items — no single item asserts this.**\n\nTraced to 8 of 34 items.',
+  generative_md: null,
+  evidence: {
+    entries: [
+      { label: 'Treats prompting skill as the scarce resource', items_traced: 8 },
+      { label: 'Infrastructure-first focus', items_traced: 4 },
+    ],
+  },
+};
 
 const VOICE = {
   display_name: 'Nate B. Jones',
@@ -44,8 +61,10 @@ function compiledDb(rows: Record<string, unknown>[], exists = true) {
 }
 
 describe('loading a persona', () => {
+  const db = () => compiledDb([VOICE, REASONING, COVERAGE]);
+
   it('names it as a model of the person, never as the person', async () => {
-    const payload = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+    const payload = await loadPersona(db(), 'nate-b-jones');
 
     assert.equal(payload.subject, 'braintrust model of Nate B. Jones');
     // The real name stays in the row. The disclosure is a rendering at the boundary, so
@@ -53,31 +72,58 @@ describe('loading a persona', () => {
     assert.doesNotMatch(JSON.stringify(payload.subject), /^"Nate B\. Jones"$/);
   });
 
-  it('returns both forms of voice, because either alone is worse than useless', async () => {
-    const { layers } = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+  it('hands back a script rather than the layers and an instruction', async () => {
+    const payload = await loadPersona(db(), 'nate-b-jones');
 
-    // Only `generative` leaves the instruction unfalsifiable; only `descriptive` means
-    // two clients build two different personalities from identical data.
-    assert.equal(layers.voice!.generative, 'Hedge before committing.');
-    assert.equal(layers.voice!.descriptive, 'Hedges in 32 of 34 measured items.');
-    assert.deepEqual(layers.voice!.evidence, { items_measured: 34 });
+    // braintrust owns the voice: what used to be four layers a client assembled is now
+    // one block braintrust composed and is accountable for.
+    assert.ok(typeof payload.speak === 'string' && payload.speak.length > 0);
+    assert.ok(!('layers' in payload));
+    assert.ok(!('speak_as' in payload));
   });
 
-  it('puts basis on every layer, as a field as well as in the prose', async () => {
-    const { layers } = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+  it('keeps braintrust out of the prose it means to be spoken', async () => {
+    const { speak } = await loadPersona(db(), 'nate-b-jones');
 
-    assert.equal(layers.voice!.basis, 'measured');
-    assert.equal(layers.coverage!.basis, 'measured');
+    // The whole point of the script: nothing in it is written for whoever is reading the
+    // Core rather than for whoever is being answered.
+    assert.doesNotMatch(speak, /Inferred across/);
+    assert.doesNotMatch(speak, /Traced to \d+ of \d+/);
+    assert.doesNotMatch(speak, /measured in \d+ of \d+/);
+    assert.doesNotMatch(speak, /\blayers\./);
+    assert.doesNotMatch(speak, /basis/i);
   });
 
-  it('omits the generative form on a layer that has none rather than returning an empty one', async () => {
-    const { layers } = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+  it('discloses once, and says not to say it again', async () => {
+    const { speak } = await loadPersona(db(), 'nate-b-jones');
 
-    assert.ok(!('generative' in layers.coverage!));
+    assert.match(speak, /braintrust model of Nate B\. Jones/);
+    // The four words that make "a model of" unambiguous rather than a compliment.
+    assert.match(speak, /not the person/);
+    assert.match(speak, /Do not say it again/);
+  });
+
+  it('carries basis in receipts, where it cannot be spoken or paraphrased away', async () => {
+    const { receipts } = await loadPersona(db(), 'nate-b-jones');
+
+    // Prose redundancy only ever survived a paste. A scalar survives everything.
+    assert.equal(receipts.voice, 'measured');
+    assert.equal(receipts.reasoning, 'inferred');
+  });
+
+  it('counts the labels it had to carry, and never lets that go quiet', async () => {
+    const { receipts, speak } = await loadPersona(db(), 'nate-b-jones');
+
+    // Anything can be listed verbatim, so a carrier could absorb a broken compile without
+    // anything looking wrong. The count is the only instrument that catches it.
+    assert.equal(receipts.labels_carried, 1);
+    assert.match(speak, /Treat prompting skill as the scarce resource\./);
+    assert.match(speak, /You habitually frame things this way:/);
+    assert.match(speak, /Infrastructure-first focus/);
   });
 
   it('says which generation of notes the persona was built from', async () => {
-    const payload = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+    const payload = await loadPersona(db(), 'nate-b-jones');
 
     // Declared on the compile row, never inferred from whatever happens to be configured
     // now — two generations coexist while a prompt upgrade re-reads the corpus.
@@ -87,46 +133,48 @@ describe('loading a persona', () => {
     assert.equal(payload.compiled_at, '2026-07-31T09:14:22.000Z');
   });
 
-  it('serves the response template beside the layers it governs', async () => {
-    const payload = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+});
 
-    // A client that loads a Core and speaks it straight recites braintrust's bookkeeping,
-    // because that bookkeeping is deliberately inside the prose. The template is how the
-    // Core says how to be spoken, and it travels in the payload rather than in the tool
-    // description so it reaches the system prompt the layers are pasted into.
-    assert.match(payload.speak_as, /braintrust model of Nate B\. Jones/);
-    assert.match(payload.speak_as, /layers\.voice\.generative/);
-    assert.match(payload.speak_as, /layers\.coverage/);
+describe('explaining a persona', () => {
+  const db = () => compiledDb([VOICE, REASONING, COVERAGE]);
+
+  it('returns both forms of voice, because either alone is worse than useless', async () => {
+    const { layers } = await explainPersona(db(), 'nate-b-jones');
+
+    // Only `generative` leaves the instruction unfalsifiable; only `descriptive` means
+    // two clients build two different personalities from identical data.
+    assert.equal(layers.voice!.generative, 'Hedge before committing.');
+    assert.equal(layers.voice!.descriptive, 'Hedges in 32 of 34 measured items.');
+    assert.deepEqual(layers.voice!.evidence, { items_measured: 34 });
   });
 
-  it('reports the corpus in the template when the compile measured one', async () => {
-    const rows = [VOICE, COVERAGE].map((row) => ({
-      ...row,
-      corpus_stats: { items_retrieved: 515, items_skipped_paywall: 22, window: ['2023-04-02', '2026-07-30'] },
-    }));
+  it('puts basis on every layer', async () => {
+    const { layers } = await explainPersona(db(), 'nate-b-jones');
 
-    // Scale said once, at the top, is what stops a persona sounding better-read than it is
-    // now that the per-paragraph counts are gone.
-    assert.match((await loadPersona(compiledDb(rows), 'nate-b-jones')).speak_as, /515 things/);
+    assert.equal(layers.voice!.basis, 'measured');
+    assert.equal(layers.reasoning!.basis, 'inferred');
   });
 
-  it('still discloses in the template when the compile measured no corpus', async () => {
-    // corpus_stats is written by the compiler and may be absent or partial. A missing
-    // block drops the numbers, never the disclosure — reporting zeroes would read as a
-    // measurement, and dropping the naming would break the one line that must not go.
-    const payload = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+  it('omits the generative form on a layer that has none rather than returning an empty one', async () => {
+    const { layers } = await explainPersona(db(), 'nate-b-jones');
 
-    assert.match(payload.speak_as, /braintrust model of Nate B\. Jones/);
-    assert.doesNotMatch(payload.speak_as, /built from/);
+    assert.ok(!('generative' in layers.coverage!));
   });
 
   it('leaves the stored prose exactly as compiled, markers and all', async () => {
-    const { layers } = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+    const { layers } = await explainPersona(db(), 'nate-b-jones');
 
-    // The template is an instruction, not a rewrite. Stripping the markers at the boundary
-    // would defeat the redundancy that puts them in the prose as well as in `basis`.
+    // The script strips markers on the way out; the compiler contract behind this door is
+    // untouched, which is what keeps `basis` from ever being lost.
+    assert.match(layers.reasoning!.descriptive, /\*\*Inferred across 34 items/);
     assert.equal(layers.voice!.descriptive, 'Hedges in 32 of 34 measured items.');
-    assert.equal(layers.coverage!.descriptive, 'braintrust has read 34 items from this person.');
+  });
+
+  it('names the persona as a model here too', async () => {
+    assert.equal(
+      (await explainPersona(db(), 'nate-b-jones')).subject,
+      'braintrust model of Nate B. Jones',
+    );
   });
 
   it('refuses a person it follows but has not compiled, and says it resolves itself', async () => {

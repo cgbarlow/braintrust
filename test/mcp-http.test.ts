@@ -118,9 +118,11 @@ describe('the MCP surface', () => {
     assert.equal(instructions, DISCLOSURE);
     assert.match(instructions!, /is not that person/);
     assert.match(instructions!, /"braintrust model of X"/);
-    assert.match(instructions!, /measured or inferred/);
-    assert.match(instructions!, /Paywalled content is never ingested/);
-    assert.match(instructions!, /Quotes are verbatim/);
+    // Rules that span tools, and nothing else. The vocabulary lesson moved to
+    // braintrust_explain_persona, in front of the client that asked for the workings.
+    assert.match(instructions!, /Never answer a question about braintrust's own workings/);
+    assert.match(instructions!, /Never fill a gap from your own knowledge/);
+    assert.doesNotMatch(instructions!, /evidence floor/i);
     await client.close();
   });
 
@@ -132,6 +134,7 @@ describe('the MCP surface', () => {
     // neither a retrieval tool nor a refresh tool. A search that cannot search, or a
     // refresh that could fetch but never rebuild, is worse than one not offered.
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+      'braintrust_explain_persona',
       'braintrust_follow_person',
       'braintrust_list_personas',
       'braintrust_load_persona',
@@ -164,17 +167,25 @@ describe('the MCP surface', () => {
     await client.close();
   });
 
-  it('tells a client loading a persona which layers it can check and which it cannot', async () => {
+  it('tells a client what load_persona is for, and sends the paperwork elsewhere', async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    const description = tools.find((tool) => tool.name === 'braintrust_load_persona')!.description!;
+    const byName = new Map(tools.map((tool) => [tool.name, tool.description!]));
+    const load = byName.get('braintrust_load_persona')!;
 
-    assert.match(description, /measured or inferred/);
-    assert.match(description, /no model in the path/);
-    // The client acts on `generative`; `descriptive` and `evidence` are what make the
-    // instruction checkable rather than merely followed.
-    assert.match(description, /`generative` is the instruction to follow/);
-    assert.match(description, /never compiled/i);
+    // A description answers the choosing question. The ~400-word essay on basis and
+    // evidence floors described a payload that no longer exists.
+    assert.match(load, /ready to speak/);
+    assert.match(load, /braintrust_explain_persona/);
+    assert.match(load, /never compiled/i);
+    assert.doesNotMatch(load, /measured or inferred/);
+
+    // …and the essay lands where the client that wants it will be.
+    const explain = byName.get('braintrust_explain_persona')!;
+    assert.match(explain, /`measured` or `inferred`/);
+    assert.match(explain, /no model in the path/);
+    assert.match(explain, /floor\s*\n?\s*rather than a tally/);
+    assert.match(explain, /Never\s*\n?\s*answer those from the persona itself/);
     await client.close();
   });
 
@@ -226,13 +237,18 @@ describe('the retrieval tool, on a server that has an embeddings endpoint', () =
     const find = tools.find((tool) => tool.name === 'braintrust_find_positions')!;
     assert.equal(find.annotations?.readOnlyHint, true);
 
-    // Thinness is the client's judgement, and the tool has to say so rather than filter.
-    assert.match(find.description!, /one-mention position is returned like any other/);
-    // Raw material is labelled as raw material.
-    assert.match(find.description!, /what they said.*rather than.*what braintrust\s*\n?concluded/s);
-    // The accepted cost of having no coverage block is paid here, by pointing at the tool
-    // that does have one.
-    assert.match(find.description!, /braintrust_load_persona has the coverage layer/);
+    // Two grades, and the reason there are two: `measured` + `high` read as licence to
+    // answer a question the corpus never covered.
+    assert.match(find.description!, /`confidence` is how well braintrust knows the position/);
+    assert.match(find.description!, /`fit` is how well it answers the question you\s*\n?\s*asked/);
+    // Which kind of empty, because "nothing came close" and "everything came equally
+    // close" are different facts about a corpus.
+    assert.match(find.description!, /did_not_select/);
+    assert.match(find.description!, /below_floor/);
+    // An empty answer still cannot tell you they never said it.
+    assert.match(find.description!, /cannot tell you they never said it/);
+    // Quotes stay a must-not-get-wrong.
+    assert.match(find.description!, /the tidied version is not the quote/);
     await client.close();
   });
 

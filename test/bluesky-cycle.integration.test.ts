@@ -25,7 +25,7 @@ import { followPerson, type PlanResponse } from '../src/follow/index.js';
 import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { runCycle, summarise, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 import { createExtractor } from '../src/notes/index.js';
-import { loadPersona } from '../src/personas.js';
+import { explainPersona, loadPersona } from '../src/personas.js';
 import { createEmbedder, createQueryGate } from '../src/retrieval/index.js';
 import {
   BSKY_CLOSED_DAYS,
@@ -328,7 +328,7 @@ describe('reading Bluesky end to end, against real Postgres', { skip }, () => {
     });
 
     it('compiles a Persona from Bluesky alone and publishes it', async () => {
-      const persona = await loadPersona(db, 'ethan-mollick');
+      const persona = await explainPersona(db, 'ethan-mollick');
       assert.ok(persona.layers.voice, 'a Persona built only from short-form is still a Persona');
       // Nothing here clears the long-form floor, so voice says which population it measured
       // rather than refusing to describe a voice at all.
@@ -364,7 +364,7 @@ describe('reading Bluesky end to end, against real Postgres', { skip }, () => {
     });
 
     it('keeps the day as the unit the corpus counts', async () => {
-      const evidence = (await loadPersona(db, 'ethan-mollick')).layers.coverage!.evidence as {
+      const evidence = (await explainPersona(db, 'ethan-mollick')).layers.coverage!.evidence as {
         retrieved: number;
         by_form: { long_form: { items: number }; short_form: { items: number } };
       };
