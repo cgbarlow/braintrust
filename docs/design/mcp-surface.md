@@ -164,9 +164,26 @@ deploys, with no recompile.** No model is in the path.
   paragraphs are third-person prose *about* the author; converting one is a rewrite, and a rewrite needs a
   model. The labels are already verb-initial dispositions: all eight of `ethan-mollick`'s convert by dropping a
   third-person `-s`.
-- **A label that does not convert cleanly is omitted, not guessed.** No paraphrase, no half-transform, no
-  falling back to the paragraph. The failure mode is a thinner Script — visible and countable — rather than
-  invented prose, which is neither.
+- **A label that does not convert cleanly is carried verbatim, never guessed.** No paraphrase, no
+  half-transform, no falling back to the paragraph.
+
+**Three steps, in order, and the third is unreachable in practice:**
+
+1. **Inflect.** A verb-initial label becomes an imperative and joins the instruction list.
+2. **Carry.** A label with no finite verb to inflect is rendered **verbatim**, as a list item under a fixed
+   braintrust lead-in — indicatively *"You habitually frame things this way:"* — rather than as an
+   instruction. This is selection plus fixed boilerplate, both already permitted: the Script is braintrust's
+   own composition by construction, and the opening line is braintrust's own words.
+3. **Omit.** Only a label that is unusable in either form.
+
+**The carrier is worse than an imperative and better than silence.** It was added after verification found the
+alternative was a Persona with a manner and no mind — see the note below.
+
+> **The carrier must not become a silent cap.** Because anything can be listed verbatim, the carrier can
+> absorb a completely broken Corpus without anything looking wrong — and the count is the only instrument that
+> caught the defect it exists to survive. **So the omission count becomes the *carried* count, and stays just
+> as visible.** A Persona where every label had to be carried is a Persona whose Compile needs fixing, and the
+> serving surface has to keep saying so.
 
 > **Verified, and it fails on the thick Corpus.** `ethan-mollick`: **8 of 8** labels convert. `nate-b-jones`:
 > **0 of 8** — every `reasoning` label is a bare noun phrase (*"Infrastructure-first focus"*,
@@ -179,10 +196,9 @@ deploys, with no recompile.** No model is in the path.
 > clauses. Mollick's 8 of 8 was luck. **This makes the third Upstream item a prerequisite for the thick-corpus
 > case rather than a possible next effort.**
 >
-> *Open, and needing the operator's ear:* a **fixed carrier** would keep the section alive without
-> paraphrasing — non-convertible labels rendered verbatim under braintrust's own lead-in (*"Your habitual
-> frames:"*) rather than as imperatives. Permitted by both rules; worse prose than an imperative; better or
-> worse than silence is taste.
+> **Resolved by the carrier, above.** Nate's Script keeps a *How they argue* section — eight frames rendered
+> verbatim rather than eight instructions. Judged by the operator as better than silence. It does not make the
+> Compile-time fix unnecessary; it makes shipping possible without it.
 
 #### The Script says nothing about length
 
@@ -711,15 +727,16 @@ wearing disposition's coat — *"Assumes continued exponential capability growth
 barriers as collapsing"*. Excluding `beliefs` removes most of the drag toward the one subject a Corpus covers;
 these keep some of it. Drawing the line is a Compile-time judgement.
 
-**3. Compiling labels to be spoken rather than read — FIRED, and now a prerequisite.** This was recorded as
-contingent on §2's omission count. **The count came back 0 of 8 on `nate-b-jones`.** A `reasoning` label that
-is not verb-initial is dropped from the Script, no serving-side rule reaches it, and on the thick reference
-Corpus that is every label there is.
+**3. Compiling labels to be spoken rather than read — FIRED.** This was recorded as contingent on §2's
+count. **It came back 0 of 8 on `nate-b-jones`.** The compiler emits at least three label grammars —
+verb-initial clauses, bare noun phrases, and full sentences — with no constraint and no consistency within a
+single Persona, and `ethan-mollick`'s 8 of 8 was luck rather than design.
 
-The compiler emits at least three label grammars — verb-initial clauses, bare noun phrases, and full sentences
-— with no constraint and no consistency within a single Persona. **Constraining it is the smallest change that
-makes the Script whole for every Persona**, and it is the one thing on this list that the serving surface
-cannot substitute for.
+**The carrier stops this blocking the ship; it does not close the gap.** A Persona whose labels are all
+carried gets frames where another gets instructions — a real quality difference, showing up on the thick
+reference Corpus, and **the serving surface cannot substitute for it.** Constraining label grammar is the
+smallest change that makes the Script equally whole for every Persona, and the carried count (§2) is the
+number that says how much it is worth.
 
 ---
 
@@ -746,8 +763,11 @@ should not read permission into any of these:
 - **The Corpus-size threshold** at which the opening line's scope clause fires. The majority-unread-Source
   trigger is firm; this one is the operator's taste.
 - **The `layer` filter on `explain_persona`**, and whether it accepts a `compiled_at` for pinning.
-- **How an omitted `reasoning` label is surfaced to the operator.** That it is counted and visible is decided;
-  where it appears is not.
+- **How the carried-label count is surfaced to the operator.** That it is counted and stays visible is
+  decided — it is the instrument that caught the compiler defect and it must not be allowed to go quiet.
+  Where it appears is not decided.
+- **The carrier's exact lead-in wording**, and whether carried frames sit below the inflected instructions or
+  in their own block. Covered by the wording entry above, and called out because the carrier is new.
 - **Whether the Hermes surface follows.** [`hermes/SOUL.md.template`](../../hermes) and the README's documented
   expected first reply both encode today's opening line, which §2 replaces. Out of this document's scope and
   still open.
