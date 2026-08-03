@@ -8,16 +8,28 @@
 payload, not surface: no tool was added, renamed or removed.** Two new Sources, three more Plan shapes, and
 four more fields — and one correction, to what retrieval ranks (§3).
 
+**What [the talking-to-a-persona map](https://github.com/cgbarlow/braintrust/issues/105) changed is larger, and
+it is both.** One tool added (§4), one tool's payload replaced outright (§2), one tool's gate rebuilt (§3), and
+**six corrections to decisions previously recorded as settled** — collected in
+[What this map corrected](#what-this-map-corrected) so none of them has to be discovered by diffing. The
+premise underneath all of it: **braintrust owns the voice.** It stops being a supplier of materials a client is
+trusted to speak well and becomes accountable for how a Persona sounds.
+
+**Reach: the serving surface.** Nothing here changes a Compile or requires recompiling a Persona — every
+decision improves Personas that already exist, the moment it deploys. Where a decision hit a wall that only the
+Compile can move, it is recorded in [Upstream, and not decided here](#upstream-and-not-decided-here) rather
+than worked around.
+
 Vocabulary is in [`CONTEXT.md`](../../CONTEXT.md). Transport, auth and hosting are in
 [`deployment.md`](./deployment.md); what produces these payloads is in [`compiler.md`](./compiler.md). The
 reasoning behind each choice is in the resolution comments linked above — **this document is the surface.**
 
 ---
 
-## Six tools, split by what they are for
+## Seven tools, split by what they are for
 
-**Three read tools, two write tools, and one more spent deliberately.** The split is not incidental: the two
-read paths mirror the [bounded-core / growing-layer boundary](./compiler.md#2-six-layers-a-bounded-core-and-an-indexed-growing-layer),
+**Four read tools, two write tools, and one more spent deliberately.** The split is not incidental: the read
+paths mirror the [bounded-core / growing-layer boundary](./compiler.md#2-six-layers-a-bounded-core-and-an-indexed-growing-layer),
 so the tool list itself teaches a client the distinction rather than hiding it behind a mode parameter.
 
 | Tool | Kind | `readOnlyHint` |
@@ -25,15 +37,31 @@ so the tool list itself teaches a client the distinction rather than hiding it b
 | `braintrust_list_personas` | read | true |
 | `braintrust_load_persona` | read | true |
 | `braintrust_find_positions` | read | true |
+| `braintrust_explain_persona` | read | true |
 | `braintrust_follow_person` | write, **human-gated** | false |
 | `braintrust_refresh_persona` | write, AI-callable | false |
 | `braintrust_unfollow_person` | write | false |
 
 All tools are prefixed `braintrust_`. **Nothing is named `search` or `fetch`** — OB1 reserves those.
 
-Five was set as a ceiling requiring a reason, and `braintrust_unfollow_person` is the reason spent: the
-alternative was no path at all, and it sits unambiguously beside `follow_person`, so it adds none of the
-routing confusion the ceiling protects against. Noted as spent.
+Five was set as a ceiling requiring a reason. Two are now spent, and both are recorded:
+
+- `braintrust_unfollow_person` — the alternative was no path at all, and it sits unambiguously beside
+  `follow_person`, so it adds none of the routing confusion the ceiling protects against.
+- `braintrust_explain_persona` — spent by
+  [#111](https://github.com/cgbarlow/braintrust/issues/111). Once `load_persona` returns a Script rather than
+  the layers, **the layers need a door, and the door has to be visible at the moment someone asks.** A field on
+  `load_persona` defeats the purpose (the mass still arrives on every call); a parameter is worse, because the
+  client has already loaded and moved on, and *re-loading* a Persona to see its receipts is the wrong verb for
+  the act. A tool sits in the tool list for the whole conversation.
+
+**The read tools now answer three different questions, and the split is the point:**
+
+| Question | Tool | Evidence about |
+|---|---|---|
+| *Talk to them.* | `load_persona` | — |
+| *What did they say about X?* | `find_positions` | the **Person** |
+| *How does braintrust know any of this?* | `explain_persona` | **braintrust** |
 
 **Collapsing the read tools into one `ask_persona` was considered and rejected** — it makes *"give me a cited
 fact, not a synthesis"* impossible to express.
@@ -75,118 +103,158 @@ braintrust during the very first backfill.
 
 **`(person)`**
 
-The Core, whole. No query — this is what a client loads to *sound like* someone. Serving it is reading the
-four `braintrust_persona_layers` rows; there is no assembly step.
+**A Script, not a document.** No query — this is what a client loads to *sound like* someone. What comes back
+is one block of prose written to be spoken, plus a small block of scalars that cannot be spoken.
 
 ```jsonc
 { "subject": "braintrust model of Nate B. Jones",
   "compiled_at": "2026-07-28T09:14:22Z",
   "compiler_version": "0.3.1",
   "extractor": "gpt-5@notes-1",
-  "speak_as": "Answer as this persona, in its own voice…",
-  "layers": {
-    "voice":     { "basis": "measured",
-                   "generative":  "Hedge before committing…",
-                   "descriptive": "Hedges in 59 of 63 measured items…",
-                   // `measured_over` names the population, because voice is measured
-                   // over items long enough to argue in rather than over the corpus —
-                   // so `items_measured` *is* that population, not the corpus size
-                   "evidence": { "items_measured": 63,
-                                 "measured_over": { "min_words": 300, "items": 63,
-                                                    "median_words": 3200,
-                                                    "items_excluded": 349 }, … } },
-    "reasoning": { "basis": "inferred",
-                   "descriptive": "**Inferred across 412 items — no single item asserts this.**\n\n…",
-                   "evidence": { … } },
-    "beliefs":   { "basis": "inferred", "descriptive": "**Inferred…**\n\n…", "evidence": { … } },
-    "coverage":  { "basis": "measured", "descriptive": "…",
-                   "evidence": { "window": ["2025-08-01","2026-07-29"],
-                                 "retrieved": 412, "skipped_paywall": 304,
-                                 "skipped_short": 18, "skipped_window": 4,
-                                 "skipped_not_a_post": 3, "pending": 0, "failed": 3,
-                                 "words_retrieved": 1170000,
-                                 // what shape the corpus is, which one item total hides
-                                 "by_form": { "long_form": { "items": 63, "words": 1148000 },
-                                              "short_form": { "items": 349, "words": 22000 } },
-                                 "voice_measured_over": { "min_words": 300, "items": 63,
-                                                          "median_words": 3200,
-                                                          "items_excluded": 349 },
-                                 "by_source": {
-                                   // `blocked_since` present only while a source is refusing;
-                                   // `backfill_complete: false` is the separate fact that
-                                   // braintrust knows it is behind.
-                                   "youtube:UC0C…": { "backfill_complete": false,
-                                                      "blocked_since": "2026-07-14", … },
-                                   "substack:nate.substack.com": {…} } } }
-  } }
+
+  // The Script. Second person, system-prompt ready, nothing to interpret.
+  // No `basis`, no counts, no layer names, no braintrust vocabulary.
+  "speak": "You are a braintrust model of Nate B. Jones. You are not Nate B. Jones.\n\nOpen your first reply…",
+
+  // The Receipts. Scalars, never sentences — so they cannot be lifted into voice.
+  "receipts": { "voice": "measured", "reasoning": "inferred",
+                "items_read": 412, "words_read": 1170000,
+                "window": ["2025-08-01", "2026-07-29"],
+                "unread": ["substack:nate.substack.com — 304 paywalled, 1 read",
+                           "youtube:UC0C… — blocked since 2026-07-14"] } }
 ```
 
-**`speak_as` is the default response template: named once, then speak freely.** The Core carries braintrust's
-bookkeeping *inside the prose it is meant to be spoken from* — the inferred marker, the synthesiser, the items
-a point was traced to — because a `basis` field does not survive being pasted into a system prompt. That
-labelling is written for whoever is *reading* the Core, not for whoever is being answered, so a client that
-speaks it straight produces a persona reciting its own paperwork. `speak_as` says: open with one line naming
-the persona as a model, then answer in voice with none of it.
+**The layers are gone from this payload.** They are not deleted — `braintrust_explain_persona` (§4) returns
+them whole and verbatim. See [What this map corrected](#what-this-map-corrected) for what this replaces.
 
-It is a serving concern, not a compile-time one. **Nothing is rewritten and no marker is stripped** — the
-stored prose is untouched, the [gate](./compiler.md) still sees its markers, and the redundancy protecting
-`basis` survives. The template is an instruction sitting next to the material, and a client is free to ignore
-it, which is why the two things it must not ignore are stated *inside* it rather than left to be inferred:
+#### What is in the Script
 
-- **The opening line stays.** It carries the disclosure, which is one of the two hard lines. Removing the
-  markers from the spoken answer must not become a way to lose it — so it moves from every paragraph to the
-  first line, stated plainly, rather than disappearing.
-- **Coverage stays load-bearing.** It is where a persona names its own blind spots, and a persona that quietly
-  stops admitting what it has not read is the one failure this template can cause. The template requires a
-  blind spot to be volunteered when a question lands on one.
+Four sections, in this order. **`beliefs` is not among them.**
 
-**The opening line carries the corpus's scale, and that is the part doing the real work.** Stripping counts
-out of every paragraph is the point, but a persona that never mentions its corpus sounds better-read than it
-is. Saying it once at the top costs a sentence rather than a marker per paragraph, and a thin corpus announces
-itself before the first claim. Paywalled items are named whenever there are any, because scale is exactly
-where a corpus misleads: someone whose newsletter is paid and whose videos are public has a large corpus
-missing most of their writing.
+| Section | Rendered from |
+|---|---|
+| The opening line | corpus stats and `by_source` ratios |
+| How they write | `voice.generative` |
+| How they argue | `reasoning` **entry labels** |
+| What braintrust has not read | `coverage.evidence.by_source` |
 
-**It does not govern `braintrust_find_positions`.** There the dates, citations and quotes *are* the answer
-rather than scaffolding around it. Asking what someone said is a different act from asking them, and the
-template says so explicitly so a client holding it in context does not strip citations from both.
+**`beliefs` is excluded, and `reasoning` is not** ([#113](https://github.com/cgbarlow/braintrust/issues/113)).
+They are different kinds of thing. A Belief is a **claim** — which `find_positions` already returns dated and
+cited — so a standing uncited copy of it buys nothing retrieval does not buy better, and it drags every answer
+toward the one subject the Corpus covers. Reasoning is **disposition**: true of every sentence the way Voice
+is, applicable to a question no thesis covers, and the one thing a client cannot go and fetch, because it would
+have to already suspect the answer to know to ask.
 
-**The counts do not disappear, they stop being spoken.** They stay in each layer's `evidence`, and the
-template points at them — a client asked how the persona knows something should answer plainly from those.
-That question deserves the paperwork; an ordinary question does not.
+The consequence is a rule the Script relies on rather than merely states: **a Persona holds no standing
+Positions, so it cannot assert what someone thinks without retrieving it.** That is enforced by the shape of
+the payload, not by an instruction.
 
-**Voice returns both forms.** They are two columns of one row, so returning both costs nothing and cannot
-produce an instruction that disagrees with its own evidence. The client acts on `generative`; `descriptive`
-and `evidence` are what make the instruction checkable. Returning only `generative` leaves it unfalsifiable;
-returning only `descriptive` means two clients build two different personalities from identical data.
+#### The Script is rendered at serve time, deterministically
 
-**Coverage returns structured counts, not prose containing numbers.** A count buried in a sentence cannot be
-checked, filtered or displayed as a fact. The fields are fixed
-([compiler](./compiler.md#2-six-layers-a-bounded-core-and-an-indexed-growing-layer)), and Coverage is where a
-Blocked Source is named — when it stopped, and how much of that Source went unread.
+Rendering happens on every call from the stored layers, so **every existing Persona improves the moment this
+deploys, with no recompile.** No model is in the path.
 
-**Coverage leads with words rather than one item total, and `by_form` is why.** *"Read 963 items"* flatters a
-Corpus that is mostly one-liners; *"read 89,000 words — 63 long-form items and 900 short posts"* does not.
-`by_source` answers *who* and stays; `by_form` answers *what shape*, which is the question a Corpus spanning a
-34-word post and a 40,000-word lecture makes urgent.
+**The boundary may select and inflect. It may never paraphrase.**
+([#116](https://github.com/cgbarlow/braintrust/issues/116), which replaces the older and broader rule — see
+[What this map corrected](#what-this-map-corrected).)
 
-**Coverage names the Voice population as a blind spot**, which is what Coverage is for: *"Voice was measured
-from 63 items of 300 words or more. 900 shorter items were read for what they say, not for how they say
-it."* Those numbers appear in `voice_measured_over` for the same reason every other number does — the rule is
-that no figure lives only in the prose. See
-[`compiler.md` §2](./compiler.md#what-a-mixed-corpus-changed-about-voice-and-coverage).
+- **Voice** is already imperative prose. Strip the `— measured in N of M items.` suffixes; drop the length
+  clause (below).
+- **Reasoning** uses each entry's `label`, inflected to the imperative, and **never the paragraph**. The
+  paragraphs are third-person prose *about* the author; converting one is a rewrite, and a rewrite needs a
+  model. The labels are already verb-initial dispositions: all eight of `ethan-mollick`'s convert by dropping a
+  third-person `-s`.
+- **A label that does not convert cleanly is omitted, not guessed.** No paraphrase, no half-transform, no
+  falling back to the paragraph. The failure mode is a thinner Script — visible and countable — rather than
+  invented prose, which is neither.
 
-**Not compiled → this errors**, and the two ways of having no persona are two different sentences. *braintrust
+> **Required before this ships:** run the renderer over both reference Personas and count the omissions.
+> Verified by hand on `ethan-mollick` (8 of 8); **`nate-b-jones` is unverified.**
+
+#### The Script says nothing about length
+
+`voice.generative` currently ends *"Items run around 3165 words across 515 of them, so match that length, not a
+summary of it."* **That clause is deleted with no replacement**
+([#108](https://github.com/cgbarlow/braintrust/issues/108)).
+
+`words_per_item` measures how long someone's **articles** are. Nothing in the Corpus measures how long their
+**replies** are, because they do not publish replies — so *"match that length"* is an inference the measurement
+does not license. Re-rendering it as a disposition was considered and rejected: relative to a chat reply every
+long-form writer is expansive, so it would fire for every Persona and discriminate between none, and braintrust
+holds no cross-person baseline to be expansive *against*.
+
+**The moves all stay.** They are what makes someone recognisable; the length is what makes them exhausting, and
+the moves are also the part that transfers — someone who hedges before committing in an essay hedges before
+committing in a sentence. `words_per_item` stays in the measurement, where it is true, behind §4.
+
+On the operator's hardware this one clause costs **~65 seconds of generation per reply**. It is the largest
+single saving on this map.
+
+#### The opening line: once, and short
+
+**Default:**
+
+> *I'm a braintrust model of Ethan Mollick — not the person.*
+
+**When the Corpus would mislead by its absence, one clause more — scope, not statistics:**
+
+> *I'm a braintrust model of Nate B. Jones — not the person. braintrust has read his videos, not his writing.*
+
+**It fires once, at the top of the conversation, and not again.** braintrust asks rather than enforces — it
+cannot see a session — and that is acceptable because the *enforced* carrier is the subject string, which never
+stops (rule 1). A client that repeats the line is tedious, not in breach.
+
+**`— not the person` is the part that cannot be cut.** *"A braintrust model of"* alone can be read as homage or
+imitation; those four words are what make it unambiguous.
+
+**The corpus clause fires on two triggers**, both computable from `coverage.evidence.by_source`:
+
+1. **A followed Source is majority-unread.** Nate's Substack is 304 paywalled against 1 read — the Persona is
+   not a model of his output, it is a model of one channel of it.
+2. **The Corpus is small enough that *"a model of X"* oversells** what braintrust holds. *The threshold here is
+   the operator's taste and nothing downstream breaks if it moves.*
+
+Counts and dates leave the spoken line entirely. They are in `receipts`, speakable the moment anyone asks.
+
+#### The Receipts
+
+~40 words of scalars beside the Script. They exist so **a client that never calls §4 is still not answering
+from nothing**: it can say whether a layer was measured or inferred, how much braintrust read, and what it did
+not read, immediately.
+
+**The discipline that keeps this from becoming a document again: there are no sentences.** Nothing to lift,
+nothing to open a paragraph with, nothing that reads as material.
+
+**`receipts`, not `provenance`.** [`CONTEXT.md`](../../CONTEXT.md) reserves *provenance* against **Basis** by
+name, and this field carries Basis among other things. The resolution on
+[#111](https://github.com/cgbarlow/braintrust/issues/111) proposed `provenance` before that collision was
+noticed; the name is corrected here and the term is added to the glossary.
+
+#### Admitting a blind spot
+
+braintrust **cannot detect** that a question has landed on a blind spot: the only moment it sees a question is
+a `find_positions` call, so a Persona answering from its Script is not asking braintrust anything. There is no
+detector to build ([#112](https://github.com/cgbarlow/braintrust/issues/112)).
+
+What replaces one is the retrieval rule above, plus three rules on how the admission is spoken:
+
+- ***"I never wrote about that"* is forbidden.** It is the natural phrasing and it is a lie braintrust cannot
+  know it is telling: an empty result means *they never said it* **or** *braintrust never read it*, and nothing
+  in the payload distinguishes them. **The admission is always about the Persona's reach, never the Person's
+  output.** *"I haven't got a view on that I can stand behind"* is true under both readings.
+- **Structural skew leads; incidents follow.** A Source whose unread share dominates its read share is a
+  permanent fact about what the Persona *is*, and goes in the opening line. A single failed fetch is an
+  incident and surfaces only when a question lands on it.
+- **Never fill the gap from the client's own knowledge while wearing the Person's voice.** See rule 4.
+
+**Not compiled → this errors**, and the two ways of having no Persona are two different sentences. *braintrust
 has never heard of them* sends the caller to `braintrust_follow_person`, which only a human can complete;
 *braintrust follows them and has not built one yet* sends them nowhere, because the scheduled job resolves it
-without anyone doing anything. See the third rule below.
+without anyone doing anything. See rule 3.
 
-**`by_source` is keyed `platform:handle`.** One person may follow two publications on the same platform, and a
-key of `substack` alone would merge them into a count nobody could check.
-
-**`extractor` says which generation of notes the persona was built from.** It is on the compile row rather
-than read from whatever happens to be configured now, because two generations coexist while a prompt upgrade
-re-reads the corpus.
+**`extractor` says which generation of notes the Persona was built from.** It is on the compile row rather than
+read from whatever happens to be configured now, because two generations coexist while a prompt upgrade
+re-reads the Corpus.
 
 ### 3. `braintrust_find_positions`
 
@@ -301,13 +369,98 @@ window with nothing in it reports `nearest_similarity: null` — three states ra
 Persona built from twenty real posts answered every question with `[]`, and an empty list on its own cannot
 tell *they never said this* from *this braintrust is tuned wrong*.
 
+#### The floor was the wrong instrument — corrected by [#115](https://github.com/cgbarlow/braintrust/issues/115)
+
+The paragraph above is right that retrieval needs a gate, and wrong about what the gate should measure. Live
+against the deployed braintrust:
+
+| Persona | Query | Positions clearing the floor |
+|---|---|---:|
+| `ethan-mollick` (19 items) | *"the correct water temperature for poaching an egg"* | 8 |
+| `ethan-mollick` | *"how to prune tomato plants for a summer harvest"* | 7 |
+| `ethan-mollick` | *"how should a company evaluate which AI model to buy"* (in corpus) | 17 |
+| `nate-b-jones` (515 items) | *"the correct water temperature for poaching an egg"* | 2 |
+
+**Poaching an egg and pruning tomatoes returned the identical top three Positions, in the same order.** Two
+questions with nothing in common produced the same answer. That is the signature of a query vector landing near
+the Corpus centroid rather than near any region of it: the ranking degenerates to *the Corpus's most central
+claims* and **carries no information about the question at all.**
+
+A floor cannot detect that. It asks *is the nearest thing near enough*, and on a topically monolithic Corpus
+the answer is yes for every question ever asked. Raising `MATCH_FLOOR` starts cutting real answers before it
+cuts this one.
+
+**The gate becomes a selectivity test: did the question *select* this Corpus, or merely land in it?** Compare
+the top match's similarity against the Corpus's own distribution of similarity **to that same query**. When a
+question selects, the top stands clear of the median; when it lands, everything is roughly equidistant.
+
+**This also dissolves the unmeasurable-threshold problem.** A margin against the Corpus's own distribution is a
+*shape*, not a distance, so it does not belong to whichever embeddings model an operator points at.
+`MATCH_FLOOR` survives only as a cheap absolute sanity check; it stops being the thing that decides.
+
+**Calibration becomes a required step, not a chosen number.** A fixed probe set of known-in and known-out
+questions per reference Persona, run against the operator's endpoint; the threshold is set where the two groups
+separate, and **if they do not separate, the endpoint is wrong for the job.** The four probes above are the
+seed of that set.
+
+**`nothing_matched` keeps its shape and gains two things**: which failure it was — *nothing came close* and
+*everything came equally close* are different facts about the Corpus — and one plain sentence of fact the
+Script can put into its own words.
+
+#### Positions carry two grades, not one
+
+`confidence` grades **how well braintrust knows this Position**. It says nothing about whether the Position
+answers the question asked, and `measured` + `high` + four dated quotes reads as licence to answer anyway. **A
+second, per-result grade says how well the Position fits *this query***, so a weakly-fitting Position is
+visibly weak even when it is impeccably evidenced.
+
+**Correction to [#106](https://github.com/cgbarlow/braintrust/issues/106)**, which recorded *"thin and thick
+corpora do not differ here."* They differ in how loudly they fail. Nate's off-corpus top result came back
+`low` with `item_count: 1` — self-evidently thin. Mollick's came back `moderate` and `high` with five items
+behind it, because **on a 19-item Corpus the most central Positions are also the best-evidenced ones.** The
+counterfeit licence is a *thin*-corpus failure, and a thin Corpus is what braintrust serves first.
+
+#### The Corpus window does not become a filter
+
+Asked about a 2023 study, a Persona confabulated confidently. **This does not get a date rule.** Refusing every
+question whose reference predates the window would cut legitimate ones — raising an old study to ask what
+someone thinks *now* is an in-corpus question with an out-of-corpus reference. braintrust holds no Chunk about
+that study, so the question **lands rather than selects**, and the selectivity test catches it as the same
+failure as the tomatoes. One mechanism, not two.
+
+The window stays what it already is: a fact the Persona knows about itself, in `receipts.window`, speakable at
+any time.
+
 **Never compiled means answer nothing, including here.** The passages fallback applies to compiled Personas
 only: "here are some sentences" is not a Persona, and offering it as one would quietly redefine what braintrust
 serves. An unembedded Corpus is a refusal with a reason rather than an empty answer, and the tool is not
 registered at all in a deployment with no embeddings endpoint — a search that cannot search is worse than one
 that is not there.
 
-### 4. `braintrust_follow_person`
+### 4. `braintrust_explain_persona`
+
+**`(person, layer?)`**
+
+**Today's `load_persona` payload, verbatim.** All four layers, `descriptive` and `generative` and `evidence`,
+`basis` on each, the measured Voice table with its patterns and exemplars, Item ids, the per-Source Coverage
+breakdown. **Nothing is reformatted for the occasion and nothing is summarised** — checkability is preserved by
+being *the same bytes*, one call away.
+
+This is the door the Script's mass went behind ([#111](https://github.com/cgbarlow/braintrust/issues/111)).
+**Checkability stops being *present* and becomes *fetchable*** — the one property this map was not allowed to
+lose, preserved in kind rather than in position: an instruction can still be verified rather than trusted.
+
+**It answers questions about braintrust, not about the Person.** That is what separates it from
+`find_positions`, and the separation is why both exist. *How much of Ethan have you actually read? Is that
+measured or guessed? What was that Voice instruction derived from?*
+
+**A Persona never answers those from its Script.** Either the fact is in `receipts` or the client calls this.
+Answering *"how much have you read?"* from voice is the failure the whole arrangement exists to prevent, and it
+is worse than a slow answer. See rule 4.
+
+*Not decided: the `layer` filter's exact shape, and whether it accepts a `compiled_at` for pinning.*
+
+### 5. `braintrust_follow_person`
 
 **Only a human may cause a new Person to be ingested. An AI may never complete the act.**
 
@@ -350,7 +503,7 @@ model to follow forty people cannot get past a step it has no authority to compl
 What the handshake guarantees is that no single call ingests anything, and that the Plan is rendered into the
 client's tool-approval surface where a human sees it. **The guarantee is structural, not cryptographic.**
 
-### 5. `braintrust_refresh_persona`
+### 6. `braintrust_refresh_persona`
 
 **`(person)`**
 
@@ -375,7 +528,7 @@ reads them as failures will retry them:
 **A paused Person is refused**, with the refusal pointing at `braintrust_follow_person` — see
 [what the build settled](./ingestion.md#what-the-build-settled-about-the-three-triggers).
 
-### 6. `braintrust_unfollow_person`
+### 7. `braintrust_unfollow_person`
 
 **`(person)`**
 
@@ -396,25 +549,36 @@ would rewrite when the user actually decided.
 
 ---
 
-## Three rules that hold across the whole surface
+## Four rules that hold across the whole surface
 
 **1. A Persona is always named "braintrust model of X".** Never the bare name. The disclosure is carried by
 the subject string rather than a boilerplate sentence, so it travels wherever the name travels and costs
 nothing per response — which keeps
 [the consent posture's](https://github.com/cgbarlow/braintrust/issues/9) disclosure hard line in the payload
-rather than demoting it to server instructions. Server instructions still carry the full statement; the
-subject string is what makes it unstrippable.
+rather than demoting it to server instructions.
 
 This is a **rendering at the boundary**. `braintrust_people.display_name` keeps the real name. Injecting the
-disclosure into `voice.generative` was rejected: a hand-written disclaimer is measured from nobody, so it
-would break the property that the generative form is derived from the descriptive one.
+disclosure into the Voice layer was rejected: a hand-written disclaimer is measured from nobody, so it would
+break the property that the generative form is derived from the descriptive one.
 
-**2. `basis` survives twice — as a field and inside the prose.** Every layer returns
-`basis: measured | inferred`, and inferred layers additionally open `descriptive_md` with a marker. A client
-reading JSON gets it cleanly; a client pasting the markdown into a system prompt — the most likely use —
-carries it anyway. **This is a compiler contract: the compiler writes the marker, the serialiser does not
-synthesise it.** A test asserts the string appears nowhere on the read path, because a serialiser that could
-manufacture the marker would serve an unlabelled layer as though it had been labelled all along.
+**The hard line is held here, by `subjectFor()` in code — not by the spoken opening line.** That is what makes
+the opening line's *cadence* a free decision ([#109](https://github.com/cgbarlow/braintrust/issues/109)): the
+subject string discloses to the **client** in every payload; the opening line discloses to the **human reading
+the answer**, and a human needs it once. Declining to repeat it on turn forty breaches nothing.
+
+**2. `basis` travels in a form that cannot be spoken.** Every layer returns `basis: measured | inferred` from
+§4, and the Script carries the same fact as scalars in `receipts`.
+
+*This replaces "`basis` survives twice — as a field and inside the prose."* That rule defended one property —
+**an inferred layer must never pass as measured** — against one loss mode: a client pastes a layer's markdown
+into a system prompt and the field is left behind. **That loss mode is gone.** A client is never handed a layer
+by default, and the Script makes no claim about its own provenance at all, so nothing in it can pass as
+measured because nothing in it claims to be anything.
+
+The property is now held by a field that **cannot be paraphrased away**, which prose redundancy never could.
+**The compiler is unchanged**: it still writes the marker into stored prose, §4 still returns it, and the test
+asserting the serialiser cannot manufacture one still holds. What changes is that the Script's renderer strips
+markers — permitted by the narrower rule that replaced the older, broader one (§2, and see below).
 
 **An inferred layer's `evidence` carries its entries and what they were traced to** — `items_synthesised`,
 `synthesiser`, `passes`, and per entry the Item ids it was attributed to. Every Item named is one braintrust
@@ -427,6 +591,117 @@ first question that hangs for minutes and spends real money unannounced is a bad
 the most expensive action in the product behind a read call. The `passages` fallback therefore applies only to
 compiled Personas.
 
+**4. A Persona never fills a gap from the client's own knowledge while wearing someone's voice.**
+([#112](https://github.com/cgbarlow/braintrust/issues/112).) **This is the most important sentence on the
+surface, and it is new.**
+
+Every other guard on this map stops *braintrust* vouching for an answer it has no business vouching for. None
+of them stops the client supplying one. The client is a capable model that genuinely knows how to poach an egg,
+prune a tomato and summarise the study braintrust never read — and an answer sourced from its own knowledge and
+delivered in the Person's cadence is **the same lie with better manners**, and worse than the original, because
+it now sounds like considered judgement rather than a citation.
+
+It is a rule about the **source** of an answer, not its confidence: speak the Person's views from what
+braintrust retrieved, or say you have nothing and offer what you do cover.
+
+---
+
+## What the descriptions and the server instructions are for
+
+([#110](https://github.com/cgbarlow/braintrust/issues/110).) Before this map, a client held roughly **650 words
+of braintrust-about-braintrust** before loading a single Persona. The cost is real and it is not a false
+economy: descriptions ride in the tool definitions on every request, and the unattended crons in
+[`hermes/`](../../hermes) pay the whole preamble **every run** with no warm cache to inherit. **Attention does
+not cache away at all.**
+
+The test is *what a client must not get wrong* versus *what braintrust would like a client to appreciate.*
+
+**Server `instructions` — rules that span tools, and nothing else.** It is the only surface read before any
+tool is chosen, so it is the only place a whole-surface rule can live. It carries the disclosure as a rule
+about what to **do** with the name, rule 4, and the prohibition on answering a braintrust question from the
+Script. **Two of those three did not exist before this map**: the instructions get shorter *and* gain the rules
+that matter.
+
+**Tool descriptions — which tool, and what its output means.** Read at choosing time, so they answer the
+choosing question and little else. `load_persona`'s ~400-word essay on basis, measured versus inferred and
+evidence floors describes a payload §2 deleted; **it moves to `explain_persona`**, in front of the client that
+asked for the workings rather than every client that ever connects. `find_positions` keeps its two
+must-not-get-wrongs: quotes are verbatim and the tidied version is not the quote, and what an empty answer does
+and does not mean.
+
+**`follow_person`, `refresh_persona` and `unfollow_person` are untouched, deliberately.** The human-gated
+handshake, *unfollow deletes nothing*, *paywalled content is never ingested* — those are consequences a client
+must not get wrong, and they are not conversational overhead. Nothing here shortens them.
+
+Roughly 650 words of pre-Persona prose to something on the order of 150, with `explain_persona`'s new
+description **paid for out of what leaves `load_persona`.** The vocabulary is not deleted anywhere; it moves
+behind the door it describes.
+
+---
+
+## What this map corrected
+
+Named rather than quietly rewritten, so a build effort can see what changed under it.
+
+**1. `speak_as`, and "named once, then speak freely"
+([#60](https://github.com/cgbarlow/braintrust/issues/60)).** `speak_as` is **deleted as a field.** Everything
+it said either becomes the Script itself — the opening line, the blind-spot rule — or stops being needed once
+there is no paperwork in the payload to argue a client out of speaking. *An instruction that must argue a
+client out of the material beside it was evidence the material was wrong, not that the instruction was too
+short.* [#60](https://github.com/cgbarlow/braintrust/issues/60) shipped `src/speak.ts` in a single ticket with
+no map; that this map exists is the correction.
+
+**2. "`basis` survives twice — as a field and inside the prose."** Retired **for the spoken form only**, and
+replaced by rule 2 above. The compiler contract is untouched.
+
+**3. "The opening line carries the Corpus's scale, and that is the part doing the real work."** Half right. A
+Persona that never mentions its Corpus does sound better-read than it is — but **scale is not skew**, and the
+line as written measures the wrong thing. *"Built from 515 things, with 23 more behind a paywall"* reads as a
+rounding error while concealing that his **entire Substack** is unread. Scale leaves the spoken line for
+`receipts`; **skew** takes its place, and only when it would mislead by its absence.
+
+**4. "That floor is the one threshold in braintrust that cannot be measured."** True of an absolute floor, and
+the reason to stop using one. A selectivity margin against the Corpus's own distribution is a shape rather than
+a distance, so it does not depend on the operator's embeddings model — and calibration becomes a required step
+instead of an unmeasurable constant. See §3.
+
+**5. `speak.ts`'s "nothing here rewrites a layer or strips a marker."** Replaced by the narrower **select and
+inflect, never paraphrase** ([#116](https://github.com/cgbarlow/braintrust/issues/116)). The old rule's purpose
+was to keep `basis` from being lost; rule 2 now does that in a stronger form, and what remains worth forbidding
+is braintrust composing new prose about what someone thinks.
+
+**6. [#106](https://github.com/cgbarlow/braintrust/issues/106)'s "thin and thick corpora do not differ here."**
+They differ in how loudly they fail. See §3.
+
+---
+
+## Upstream, and not decided here
+
+**The next effort's starting point. It must not be lost between the two.**
+
+Each of these is a gap the serving surface proved it cannot close. They are recorded with their evidence rather
+than worked around, per the map's reach.
+
+**1. Measuring a conversational register at Compile time.** Voice is measured over Items of 300+ words — by
+construction, **only the monologue** — so braintrust measures how someone *presents* and serves it as how
+someone *talks*. No serving-side rendering repairs that; [#108](https://github.com/cgbarlow/braintrust/issues/108)
+established it by exhausting the alternatives, which is why the length instruction is deleted rather than
+replaced.
+
+*A second instance of the same disease:* `generative` instructs *"speak in the first person singular; it is the
+commonest of the three"* on **190.6 against 184.9 per ten thousand words** — a 3% gap promoted to an
+instruction. Both are one question: **what does a measurement have to show before it earns an instruction at
+all?**
+
+**2. Teaching the compiler to separate disposition from claim.** Some `reasoning` entries are topical claims
+wearing disposition's coat — *"Assumes continued exponential capability growth"*, *"Frames cost and access
+barriers as collapsing"*. Excluding `beliefs` removes most of the drag toward the one subject a Corpus covers;
+these keep some of it. Drawing the line is a Compile-time judgement.
+
+**3. Compiling labels to be spoken rather than read — contingent.** Fires only if §2's omission count comes
+back bad on a real Corpus. A `reasoning` label that is not verb-initial is dropped from the Script and no
+serving-side rule reaches it.
+
 ---
 
 ## Deliberately not decided
@@ -437,3 +712,23 @@ compiled Personas.
 - The default passage count, and how trimming is signalled in prose.
 - Whether `full: true` is a parameter or a separate call.
 - The slug collision suffix format.
+
+**Added by [the talking-to-a-persona map](https://github.com/cgbarlow/braintrust/issues/105).** A build effort
+should not read permission into any of these:
+
+- **The selectivity margin's exact statistic and threshold.** §3 fixes the *property* and requires calibration
+  against the operator's endpoint. Choosing a number without running the probe set is the mistake this
+  correction exists to stop being repeated.
+- **The `fit` grade's scale and name.** That Positions carry two grades is decided; what the second one is
+  called and whether it is banded or continuous is not.
+- **The exact wording of the Script's sections**, of the shortened tool descriptions, and of the server
+  instructions. The *jobs* of those surfaces are decided; the prose is a build artifact and should be judged by
+  ear on a live conversation, which is how every decision on this map was reached.
+- **The Corpus-size threshold** at which the opening line's scope clause fires. The majority-unread-Source
+  trigger is firm; this one is the operator's taste.
+- **The `layer` filter on `explain_persona`**, and whether it accepts a `compiled_at` for pinning.
+- **How an omitted `reasoning` label is surfaced to the operator.** That it is counted and visible is decided;
+  where it appears is not.
+- **Whether the Hermes surface follows.** [`hermes/SOUL.md.template`](../../hermes) and the README's documented
+  expected first reply both encode today's opening line, which §2 replaces. Out of this document's scope and
+  still open.

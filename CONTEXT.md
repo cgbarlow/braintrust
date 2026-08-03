@@ -94,8 +94,18 @@ _Avoid_: sync, refresh, update, run
 
 **Core**:
 The four layers of a Persona that stay roughly constant however large the Corpus grows — Voice, Reasoning,
-Beliefs, Coverage. What you load to sound like someone.
+Beliefs, Coverage. What a Script is rendered from.
 _Avoid_: page, summary, profile
+
+**Script**:
+The spoken form of a Persona — one block of prose, ready to be spoken, carrying none of braintrust's own
+bookkeeping. Rendered from the Core at serving time, never stored. What you load to sound like someone.
+_Avoid_: prompt, template, persona text, system prompt
+
+**Receipts**:
+The few scalars that travel beside a Script: which layers were Measured, how much braintrust read, the Corpus
+window, and what went unread. Deliberately never sentences, so they cannot be spoken by accident.
+_Avoid_: provenance, metadata, stats
 
 **Voice**:
 How a Person sounds. Compiled in two forms held together: a *descriptive* account of measured habits, and a
@@ -107,7 +117,10 @@ How a Person gets to a conclusion, as distinct from what they conclude.
 _Avoid_: method, approach
 
 **Beliefs**:
-Durable commitments underneath the Positions. Always Inferred — no single Item asserts one.
+Durable commitments underneath the Positions. Always Inferred — no single Item asserts one. Compiled and
+retrievable, but never spoken from: a Belief is a *claim*, and a claim is what a Position already carries with
+its dates and citations. Reasoning is spoken from because a disposition is true of every sentence; a Belief is
+only true of some.
 _Avoid_: values, principles, worldview
 
 **Coverage**:
