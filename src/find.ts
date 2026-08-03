@@ -362,7 +362,7 @@ async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | un
   return rows[0];
 }
 
-type Search = { model: string; person: string; since: string | null; until: string | null };
+export type Search = { model: string; person: string; since: string | null; until: string | null };
 
 type PositionRow = {
   id: string;
@@ -588,8 +588,13 @@ async function nearestSimilarity(db: Db, vector: string, search: Search): Promis
  * Sampled rather than scanned: the median of the nearest few hundred Chunks is the shape
  * that matters, and reading a 500-item Corpus end to end on every call would trade the
  * latency this map spent a whole ticket recovering.
+ *
+ * **Exported so the calibrator measures this and not something like it.** `npm run
+ * calibrate` sets `SELECTIVITY_MARGIN`, and a threshold measured with a second
+ * implementation of the same idea would be calibrating a function the server does not
+ * call. See src/calibrate/index.ts.
  */
-async function selectivity(
+export async function selectivity(
   db: Db,
   vector: string,
   search: Search,

@@ -14,9 +14,11 @@
     "start": "node dist/server/index.js",
     "job": "node dist/job/index.js",
     "eval": "node dist/eval/index.js",
+    "calibrate": "node dist/calibrate/index.js",
     "dev": "tsx watch src/server/index.ts",
     "job:dev": "tsx src/job/index.ts",
     "eval:dev": "tsx src/eval/index.ts",
+    "calibrate:dev": "tsx src/calibrate/index.ts",
     "test": "node --import tsx --test --test-concurrency=1 \"test/**/*.test.ts\""
   },
   "dependencies": {
