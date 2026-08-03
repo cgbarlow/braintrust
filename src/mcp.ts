@@ -19,6 +19,7 @@ import { unfollowPerson, type UnfollowArgs } from './follow/unfollow.js';
 import type { Fetcher } from './net/fetch.js';
 import type { Extractor } from './notes/index.js';
 import { explainPersona, listPersonas, loadPersona } from './personas.js';
+import { recentItems, MAX_RECENT, type RecentArgs } from './recent.js';
 import { refreshPersona, type RefreshArgs } from './refresh.js';
 import type { Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
@@ -151,6 +152,53 @@ export function buildServer({
         return failure(
           'braintrust_load_persona failed for a reason braintrust did not expect. The server log ' +
             'has the detail.',
+        );
+      }
+    },
+  );
+
+  server.registerTool(
+    'braintrust_recent_items',
+    {
+      title: 'What someone has published lately',
+      description:
+        'What this person published, newest first, with the gist of each one. This is the ' +
+        'tool for *what is new*, *what have they written lately*, and **any question about ' +
+        "their latest anything** — braintrust_find_positions cannot answer those. It matches " +
+        'on meaning and ranks by similarity, so a question with no topic in it comes back ' +
+        'ranked by nothing and dated all over the place.\n\n' +
+        'The gist is what braintrust wrote down the one time it read the item — its argument ' +
+        'and its claims, as recorded. It is not a summary generated for you now, so it is the ' +
+        'same gist every time and you can cite it.\n\n' +
+        '**Items braintrust never read are listed too, carrying `not_read` instead of a gist.** ' +
+        'A paywalled post still happened and still has a date; leaving it out would tell you ' +
+        'this person published less than they did. Say what it is and do not guess what was ' +
+        'in it.\n\n' +
+        'Reach for it before answering anything time-shaped, and check `compiled_at` against ' +
+        'the newest date here: if someone is asking what is new and the newest item is old, ' +
+        'braintrust_refresh_persona pulls whatever has arrived since.',
+      inputSchema: {
+        person: z.string().min(1).describe('The slug from braintrust_list_personas.'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_RECENT)
+          .optional()
+          .describe('How many items. Default 10, newest first.'),
+        since: isoDate.optional().describe('Only items published on or after this date.'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args: RecentArgs) => {
+      try {
+        return text(await recentItems(args, db));
+      } catch (error) {
+        if (error instanceof BraintrustError) return failure(error.message);
+        console.error('braintrust: braintrust_recent_items failed', error);
+        return failure(
+          'braintrust_recent_items failed for a reason braintrust did not expect. The server ' +
+            'log has the detail.',
         );
       }
     },

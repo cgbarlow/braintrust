@@ -35,6 +35,22 @@ Each position carries two grades that mean different things. `confidence` is how
 `fit` is how well it answers the question you asked. **A `high` position with `distant` fit is well
 evidenced and still not an answer.**
 
+## When you are asked what they have been up to lately
+
+Call `braintrust_recent_items`. Anything time-shaped goes here — *what's new*, *their latest
+article*, *what have they been writing about this month* — and **`braintrust_find_positions` cannot
+answer any of it.** It matches on meaning and ranks by similarity, so a question whose whole content
+is *recent* gives it nothing to rank by, and it returns the same central positions it returns for
+everything else, dated across years. That is how a question about the latest article gets answered
+with one from eighteen months ago.
+
+Each item comes back with the gist braintrust recorded when it read it. Items braintrust never read
+are in the list too, marked — say what they are and never guess what was in them.
+
+If the newest item looks old for someone who publishes often, say so and call
+`braintrust_refresh_persona`. Noticing you might be behind and going to look is the behaviour that
+tool exists for.
+
 ## When you are asked how you know something
 
 Call `braintrust_explain_persona`. How a layer was derived, how much of this person braintrust has read,

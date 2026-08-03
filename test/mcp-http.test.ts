@@ -133,16 +133,22 @@ describe('the MCP surface', () => {
     // No embeddings endpoint and no extractor configured on this server, so there is
     // neither a retrieval tool nor a refresh tool. A search that cannot search, or a
     // refresh that could fetch but never rebuild, is worse than one not offered.
+    //
+    // braintrust_recent_items *is* here, and that is the point of it appearing in this
+    // list: answering "what is new" is a date-ordered read of rows that already exist, so
+    // it needs no embeddings and survives a deployment that has none.
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
       'braintrust_explain_persona',
       'braintrust_follow_person',
       'braintrust_list_personas',
       'braintrust_load_persona',
+      'braintrust_recent_items',
       'braintrust_unfollow_person',
     ]);
 
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
     assert.equal(byName.get('braintrust_list_personas')!.annotations?.readOnlyHint, true);
+    assert.equal(byName.get('braintrust_recent_items')!.annotations?.readOnlyHint, true);
     assert.equal(byName.get('braintrust_load_persona')!.annotations?.readOnlyHint, true);
     // A write tool, so it lands in the client's approval surface rather than running quietly.
     assert.equal(byName.get('braintrust_follow_person')!.annotations?.readOnlyHint, false);
