@@ -9,11 +9,18 @@ payload, not surface: no tool was added, renamed or removed.** Two new Sources, 
 four more fields — and one correction, to what retrieval ranks (§3).
 
 **What [the talking-to-a-persona map](https://github.com/cgbarlow/braintrust/issues/105) changed is larger, and
-it is both.** One tool added (§4), one tool's payload replaced outright (§2), one tool's gate rebuilt (§3), and
+it is both.** One tool added (§5), one tool's payload replaced outright (§2), one tool's gate rebuilt (§3), and
 **six corrections to decisions previously recorded as settled** — collected in
 [What this map corrected](#what-this-map-corrected) so none of them has to be discovered by diffing. The
 premise underneath all of it: **braintrust owns the voice.** It stops being a supplier of materials a client is
 trusted to speak well and becomes accountable for how a Persona sounds.
+
+**What [the every-turn / what-is-new map](https://github.com/cgbarlow/braintrust/issues/120) changed came from
+the first real conversation with a deployed Persona, and it is mostly a record of things this document
+specified correctly and the build did not deliver.** One tool added (§4), and three corrections collected in
+[What the first live conversation corrected](#what-the-first-live-conversation-corrected). The pattern worth
+noticing: **two of the three were decisions that shipped as prose and were never checked against a running
+server** — a calibration nobody ran, and a grade whose implementation could not express what it was for.
 
 **Reach: the serving surface.** Nothing here changes a Compile or requires recompiling a Persona — every
 decision improves Personas that already exist, the moment it deploys. Where a decision hit a wall that only the
@@ -26,9 +33,9 @@ reasoning behind each choice is in the resolution comments linked above — **th
 
 ---
 
-## Seven tools, split by what they are for
+## Eight tools, split by what they are for
 
-**Four read tools, two write tools, and one more spent deliberately.** The split is not incidental: the read
+**Five read tools, two write tools, and one more spent deliberately.** The split is not incidental: the read
 paths mirror the [bounded-core / growing-layer boundary](./compiler.md#2-six-layers-a-bounded-core-and-an-indexed-growing-layer),
 so the tool list itself teaches a client the distinction rather than hiding it behind a mode parameter.
 
@@ -37,6 +44,7 @@ so the tool list itself teaches a client the distinction rather than hiding it b
 | `braintrust_list_personas` | read | true |
 | `braintrust_load_persona` | read | true |
 | `braintrust_find_positions` | read | true |
+| `braintrust_recent_items` | read | true |
 | `braintrust_explain_persona` | read | true |
 | `braintrust_follow_person` | write, **human-gated** | false |
 | `braintrust_refresh_persona` | write, AI-callable | false |
@@ -44,7 +52,7 @@ so the tool list itself teaches a client the distinction rather than hiding it b
 
 All tools are prefixed `braintrust_`. **Nothing is named `search` or `fetch`** — OB1 reserves those.
 
-Five was set as a ceiling requiring a reason. Two are now spent, and both are recorded:
+Five was set as a ceiling requiring a reason. Three are now spent, and all three are recorded:
 
 - `braintrust_unfollow_person` — the alternative was no path at all, and it sits unambiguously beside
   `follow_person`, so it adds none of the routing confusion the ceiling protects against.
@@ -54,14 +62,23 @@ Five was set as a ceiling requiring a reason. Two are now spent, and both are re
   `load_persona` defeats the purpose (the mass still arrives on every call); a parameter is worse, because the
   client has already loaded and moved on, and *re-loading* a Persona to see its receipts is the wrong verb for
   the act. A tool sits in the tool list for the whole conversation.
+- `braintrust_recent_items` — spent by
+  [#124](https://github.com/cgbarlow/braintrust/issues/124). Every other read tool is **topic-shaped**, and a
+  question whose whole content is *recent* has no topic to give them. It is not a mode of `find_positions`: a
+  `sort` parameter would put a recency question through a semantic gate that has nothing to rank it by, which
+  is precisely the failure that made this tool necessary.
 
-**The read tools now answer three different questions, and the split is the point:**
+**The read tools now answer four different questions, and the split is the point:**
 
 | Question | Tool | Evidence about |
 |---|---|---|
 | *Talk to them.* | `load_persona` | — |
 | *What did they say about X?* | `find_positions` | the **Person** |
+| *What have they published lately?* | `recent_items` | the **Corpus** |
 | *How does braintrust know any of this?* | `explain_persona` | **braintrust** |
+
+**The fourth row is the one the surface was missing.** The first three all ask *about what*; none of them can
+answer *about when*. See §4.
 
 **Collapsing the read tools into one `ask_persona` was considered and rejected** — it makes *"give me a cited
 fact, not a synthesis"* impossible to express.
@@ -124,7 +141,7 @@ is one block of prose written to be spoken, plus a small block of scalars that c
                            "youtube:UC0C… — blocked since 2026-07-14"] } }
 ```
 
-**The layers are gone from this payload.** They are not deleted — `braintrust_explain_persona` (§4) returns
+**The layers are gone from this payload.** They are not deleted — `braintrust_explain_persona` (§5) returns
 them whole and verbatim. See [What this map corrected](#what-this-map-corrected) for what this replaces.
 
 #### What is in the Script
@@ -214,7 +231,7 @@ holds no cross-person baseline to be expansive *against*.
 
 **The moves all stay.** They are what makes someone recognisable; the length is what makes them exhausting, and
 the moves are also the part that transfers — someone who hedges before committing in an essay hedges before
-committing in a sentence. `words_per_item` stays in the measurement, where it is true, behind §4.
+committing in a sentence. `words_per_item` stays in the measurement, where it is true, behind §5.
 
 On the operator's hardware this one clause costs **~65 seconds of generation per reply**. It is the largest
 single saving on this map.
@@ -247,7 +264,7 @@ Counts and dates leave the spoken line entirely. They are in `receipts`, speakab
 
 #### The Receipts
 
-~40 words of scalars beside the Script. They exist so **a client that never calls §4 is still not answering
+~40 words of scalars beside the Script. They exist so **a client that never calls §5 is still not answering
 from nothing**: it can say whether a layer was measured or inferred, how much braintrust read, and what it did
 not read, immediately.
 
@@ -432,6 +449,27 @@ questions per reference Persona, run against the operator's endpoint; the thresh
 separate, and **if they do not separate, the endpoint is wrong for the job.** The four probes above are the
 seed of that set.
 
+##### A required step that nobody runs is a gate that is open
+
+The step above shipped as prose and not as a command, so it was never taken. `SELECTIVITY_MARGIN` went to
+production at an admittedly unmeasured `0.06`, and *poaching an egg* still returned three Positions on
+`ethan-mollick` — **the exact failure this section exists to prevent, surviving the fix for it.**
+
+Two things follow, both landed by [#123](https://github.com/cgbarlow/braintrust/issues/123):
+
+- **The procedure is a command.** `npm run calibrate` runs the probe set through the *same* `selectivity()`
+  the server calls, prints both groups' ranges, and puts the threshold in the gap — or reports the overlap,
+  which is this section's own "the endpoint is wrong for the job" arriving as a measurement rather than a
+  worry. An operator pointing braintrust at a different embeddings model inherits the same unmeasured
+  constant, so **the harness is the durable half of this decision and the number is the perishable half.**
+- **Silence is not an option the surface offers.** The server warns at startup when the margin is unset,
+  because an uncalibrated gate does not fail loudly — it answers.
+
+**The same constant cannot serve two embedders, and this is now demonstrated in both directions.** The margin
+that under-refuses on the live Corpus *over*-refuses on the suite's bag-of-words fake, where it silently turned
+an integration test red. The test suite therefore calibrates its own embedder, which is the same act this
+section asks of an operator.
+
 **`nothing_matched` keeps its shape and gains two things**: which failure it was — *nothing came close* and
 *everything came equally close* are different facts about the Corpus — and one plain sentence of fact the
 Script can put into its own words.
@@ -442,6 +480,14 @@ Script can put into its own words.
 answers the question asked, and `measured` + `high` + four dated quotes reads as licence to answer anyway. **A
 second, per-result grade says how well the Position fits *this query***, so a weakly-fitting Position is
 visibly weak even when it is impeccably evidenced.
+
+**`fit` is clearance over the Corpus's middle, and must never be normalised against the answer it is
+grading.** The first build divided by the query's own range — `(similarity − median) / (top − median)` — so
+the best-matching Position scored exactly `1.0` and graded `close` **for every query ever asked**, including
+*poaching an egg*. A grade computed against its own subject carries no information about that subject, and
+`fit` exists for the single purpose of being able to say *this does not answer you*. The thresholds are
+multiples of the selectivity margin, so the gate and the grade share **one** notion of *clear* and one
+calibration moves both. Corrected by [#122](https://github.com/cgbarlow/braintrust/issues/122).
 
 **Correction to [#106](https://github.com/cgbarlow/braintrust/issues/106)**, which recorded *"thin and thick
 corpora do not differ here."* They differ in how loudly they fail. Nate's off-corpus top result came back
@@ -466,7 +512,85 @@ serves. An unembedded Corpus is a refusal with a reason rather than an empty ans
 registered at all in a deployment with no embeddings endpoint — a search that cannot search is worse than one
 that is not there.
 
-### 4. `braintrust_explain_persona`
+### 4. `braintrust_recent_items`
+
+**`(person, limit?, since?)`** — what this Person published, newest first, with the Note braintrust wrote
+when it read each one.
+
+```jsonc
+{ "subject": "braintrust model of Ethan Mollick",
+  "compiled_at": "2026-08-01T22:53:44Z",
+  "items": [
+    { "title": "An opinionated guide to which AI to use to do stuff",
+      "url": "https://www.oneusefulthing.org/p/an-opinionated-guide-to-which-ai-b22",
+      "published_at": "2026-07-23", "source": "substack",
+      // What braintrust wrote the one time it read this. Not composed now.
+      "note": { "argument": "Pick one of two assistants, pay for it, give it a real task.",
+                "claims": ["Most people should pick Claude or ChatGPT.", "…"],
+                "more_claims": 3 } },
+    { "title": "The paid one", "url": "…", "published_at": "2026-07-16", "source": "substack",
+      // Exactly one of `note` and `not_read` is ever present.
+      "not_read": { "reason": "skipped_paywall",
+                    "say": "behind a paywall, which braintrust never reads" } }
+  ],
+  "more_available": 7 }
+```
+
+**The surface had no answer to *when*.** Every other read tool is topic-shaped, so *"what's the gist of his
+latest article?"* fell through to `find_positions`, which ranks by similarity with **no date component at
+all**. Live on `ethan-mollick`, *"his latest article"* and *"what did he publish most recently"* returned the
+**identical five Positions in identical order** — the [§3](#3-braintrust_find_positions) landing failure, on a
+question that has no topic to land anywhere. The client, handed 2025 and 2026 dates and no field naming the
+newest, answered with a 2025 piece **while the real one sat cited in the same payload.**
+
+That is not a retrieval bug to tune. A Corpus is a set of dated things, and *ordering by date* is the one
+question a vector index is structurally unable to answer.
+
+#### The Note is recalled, never composed
+
+`note` is `braintrust_item_notes` — the argument and claims braintrust wrote **the one time it read the
+Item**. It is served as stored.
+
+This is [#116](https://github.com/cgbarlow/braintrust/issues/116)'s rule reaching a second boundary: *select
+and inflect, never paraphrase.* A summary generated at serve time would be braintrust's own prose about
+somebody's article, different on every call and checkable against nothing. A recalled Note is the same every
+time and cites back to a real reading.
+
+**The field is `note` rather than `gist`, and the glossary is why.** `gist` was the obvious name and
+[`CONTEXT.md`](../../CONTEXT.md) rules it out: **Note** lists *summary, extraction, digest* under _Avoid_.
+Coining a serving-boundary synonym for something the glossary already names would leave braintrust with two
+words for one concept — the single failure the glossary exists to prevent. [#114](https://github.com/cgbarlow/braintrust/issues/114)
+caught `provenance` the same way, and the check is now worth running on every new field rather than on the
+ones that feel risky.
+
+**No model in the path, and no embeddings either.** This is a date-ordered read of rows that already exist, so
+unlike §3 the tool registers on a deployment with no embeddings endpoint at all.
+
+#### Items nobody read are listed, marked, and given no Note
+
+`retrieval = 'skipped_paywall'` is [a row on purpose](./schema.md), so a Persona can state its own blind
+spots. A *latest* list is exactly where that matters:
+
+- **Dropping them silently** tells a Persona this Person published less than they did — the overstatement
+  [#112](https://github.com/cgbarlow/braintrust/issues/112) forbids, and worst on precisely the Corpora where
+  it is least true. Nate's Substack is 23 paywalled against 1 read.
+- **Including them unmarked** invites a summary of something nobody read.
+
+So they appear in date order carrying `not_read`, which holds both the machine reason and a `say` line the
+Persona can speak — the same shape [#115](https://github.com/cgbarlow/braintrust/issues/115) gave
+`nothing_matched`, and for the same reason: braintrust's own vocabulary is not speakable.
+
+**`note` and `not_read` are mutually exclusive**, never both and never neither. An empty Note would read as
+*there was not much in it* rather than *nobody read it*.
+
+#### It is the natural moment to notice a Persona is behind
+
+`compiled_at` rides in the payload beside the newest `published_at`. A client asking what is new and seeing a
+newest item that is old has both facts in one place, which is the cheapest possible prompt to call
+`braintrust_refresh_persona` — a tool that has always been AI-callable and had nothing to suggest reaching for
+it. **Whether a Persona should reach for recency unprompted is not decided here**; the map records it as fog.
+
+### 5. `braintrust_explain_persona`
 
 **`(person, layer?)`**
 
@@ -489,7 +613,7 @@ is worse than a slow answer. See rule 4.
 
 *Not decided: the `layer` filter's exact shape, and whether it accepts a `compiled_at` for pinning.*
 
-### 5. `braintrust_follow_person`
+### 6. `braintrust_follow_person`
 
 **Only a human may cause a new Person to be ingested. An AI may never complete the act.**
 
@@ -532,7 +656,7 @@ model to follow forty people cannot get past a step it has no authority to compl
 What the handshake guarantees is that no single call ingests anything, and that the Plan is rendered into the
 client's tool-approval surface where a human sees it. **The guarantee is structural, not cryptographic.**
 
-### 6. `braintrust_refresh_persona`
+### 7. `braintrust_refresh_persona`
 
 **`(person)`**
 
@@ -557,7 +681,7 @@ reads them as failures will retry them:
 **A paused Person is refused**, with the refusal pointing at `braintrust_follow_person` — see
 [what the build settled](./ingestion.md#what-the-build-settled-about-the-three-triggers).
 
-### 7. `braintrust_unfollow_person`
+### 8. `braintrust_unfollow_person`
 
 **`(person)`**
 
@@ -596,7 +720,7 @@ subject string discloses to the **client** in every payload; the opening line di
 the answer**, and a human needs it once. Declining to repeat it on turn forty breaches nothing.
 
 **2. `basis` travels in a form that cannot be spoken.** Every layer returns `basis: measured | inferred` from
-§4, and the Script carries the same fact as scalars in `receipts`.
+§5, and the Script carries the same fact as scalars in `receipts`.
 
 *This replaces "`basis` survives twice — as a field and inside the prose."* That rule defended one property —
 **an inferred layer must never pass as measured** — against one loss mode: a client pastes a layer's markdown
@@ -605,7 +729,7 @@ by default, and the Script makes no claim about its own provenance at all, so no
 measured because nothing in it claims to be anything.
 
 The property is now held by a field that **cannot be paraphrased away**, which prose redundancy never could.
-**The compiler is unchanged**: it still writes the marker into stored prose, §4 still returns it, and the test
+**The compiler is unchanged**: it still writes the marker into stored prose, §5 still returns it, and the test
 asserting the serialiser cannot manufacture one still holds. What changes is that the Script's renderer strips
 markers — permitted by the narrower rule that replaced the older, broader one (§2, and see below).
 
@@ -704,6 +828,35 @@ They differ in how loudly they fail. See §3.
 
 ---
 
+## What the first live conversation corrected
+
+[Map #120](https://github.com/cgbarlow/braintrust/issues/120). Everything below was reproduced against the
+deployed server on `ethan-mollick`, not read off the code — which is the point of the section.
+
+**1. "Calibration becomes a required step."** True, and insufficient: it was written as a requirement and
+shipped as a sentence, so it was never done. A required step with no command attached is not a step. See §3 —
+the procedure is now `npm run calibrate`, and the server says so when nobody has run it.
+
+**2. "A second, per-result grade says how well the Position fits *this query*."** The decision was right and
+the implementation could not express it. Normalising against the query's own top made the best match score
+`1.0` — `close` for every query ever asked, including *poaching an egg*. **A grade normalised against the
+answer it grades is a constant**, and `fit` was the one field whose entire purpose was to be able to say no.
+See §3.
+
+**3. The surface had no answer to *when*.** Not a correction to a decision so much as to an omission nobody
+noticed, because every read tool was designed by asking *evidence about what*. §3's own landing-failure
+analysis turns out to describe recency questions perfectly — *"his latest article"* has no topic to land
+anywhere — and the tool built to catch that failure cannot fix it, because the answer is an ordering and not a
+match. See §4.
+
+**And one about how these were found.** Corrections 1 and 2 were both invisible to the test suite: nothing
+asserted the gate ever refuses anything, and nothing asserted `fit` was ever anything but `close`. Both were
+caught by talking to a deployed Persona and probing it. **This surface's failures are not the kind a unit test
+notices** — they are confidently-formed answers, which is what it looks like when everything returns
+successfully.
+
+---
+
 ## Upstream, and not decided here
 
 **The next effort's starting point. It must not be lost between the two.**
@@ -768,6 +921,11 @@ should not read permission into any of these:
   Where it appears is not decided.
 - **The carrier's exact lead-in wording**, and whether carried frames sit below the inflected instructions or
   in their own block. Covered by the wording entry above, and called out because the carrier is new.
-- **Whether the Hermes surface follows.** [`hermes/SOUL.md.template`](../../hermes) and the README's documented
-  expected first reply both encode today's opening line, which §2 replaces. Out of this document's scope and
-  still open.
+- ~~**Whether the Hermes surface follows.**~~ **Settled by
+  [#121](https://github.com/cgbarlow/braintrust/issues/121), and it followed badly the first time.** The
+  template's opening section was updated to §2's once-only line; its **non-negotiables list was not**, and
+  still read *"Never drop the opening line … before the answer, not after it"* — per-*answer*, in the block
+  that file frames as outranking everything else. A Persona duly disclosed on every turn. The lesson is not
+  about Hermes: **a rule stated twice in one document is a rule that can be half-changed**, and the louder
+  copy wins. Note also that `SOUL.md` is *copied*, not linked, so no template edit ever reaches a profile
+  already created — see [`hermes/README.md`](../../hermes).

@@ -162,15 +162,17 @@ export function buildServer({
     {
       title: 'What someone has published lately',
       description:
-        'What this person published, newest first, with the gist of each one. This is the ' +
-        'tool for *what is new*, *what have they written lately*, and **any question about ' +
-        "their latest anything** — braintrust_find_positions cannot answer those. It matches " +
-        'on meaning and ranks by similarity, so a question with no topic in it comes back ' +
-        'ranked by nothing and dated all over the place.\n\n' +
-        'The gist is what braintrust wrote down the one time it read the item — its argument ' +
-        'and its claims, as recorded. It is not a summary generated for you now, so it is the ' +
-        'same gist every time and you can cite it.\n\n' +
-        '**Items braintrust never read are listed too, carrying `not_read` instead of a gist.** ' +
+        'What this person published, newest first, with the note braintrust wrote when it read ' +
+        'each one.\n\n' +
+        'This is the tool for *what is new*, *what have they written lately*, and **any ' +
+        'question about their latest anything** — braintrust_find_positions cannot answer ' +
+        'those. It matches on meaning and ranks by similarity, so a question whose whole ' +
+        'content is *recent* gives it nothing to rank by, and it returns the same central ' +
+        'positions it returns for everything else, dated across years.\n\n' +
+        '`note` is what braintrust recorded the one time it read the item — its argument and ' +
+        'its claims, as stored. It is not a summary generated for you now, so it is the same ' +
+        'every time and you can cite it.\n\n' +
+        '**Items braintrust never read are listed too, carrying `not_read` instead of a note.** ' +
         'A paywalled post still happened and still has a date; leaving it out would tell you ' +
         'this person published less than they did. Say what it is and do not guess what was ' +
         'in it.\n\n' +

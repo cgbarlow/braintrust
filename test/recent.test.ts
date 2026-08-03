@@ -2,7 +2,7 @@
  * `braintrust_recent_items` — the shape of an answer to *what is new*.
  *
  * The behaviours worth pinning are the ones that make this tool honest rather than the
- * ones that make it work: that an Item nobody read never acquires a gist, that it is
+ * ones that make it work: that an Item nobody read never acquires a Note, that it is
  * listed anyway rather than quietly dropped, and that the answer is ordered by the
  * database on a date rather than by anything that could form a judgement.
  */
@@ -33,13 +33,13 @@ function itemRow(over: Record<string, unknown> = {}) {
 }
 
 describe('recent items', () => {
-  it('serves the gist braintrust recorded, not a summary made now', async () => {
+  it('serves the note braintrust recorded, not a summary made now', async () => {
     const db = dbWith([itemRow()]);
     const payload = await recentItems({ person: 'ethan-mollick' }, db);
 
     assert.equal(payload.items.length, 1);
-    assert.equal(payload.items[0]!.gist?.argument, 'Pick one of two assistants and give it a real task.');
-    assert.deepEqual(payload.items[0]!.gist?.claims, ['Most people should pick Claude or ChatGPT.']);
+    assert.equal(payload.items[0]!.note?.argument, 'Pick one of two assistants and give it a real task.');
+    assert.deepEqual(payload.items[0]!.note?.claims, ['Most people should pick Claude or ChatGPT.']);
     assert.equal(payload.items[0]!.not_read, undefined);
   });
 
@@ -48,22 +48,22 @@ describe('recent items', () => {
     assert.equal(payload.subject, 'braintrust model of Ethan Mollick');
   });
 
-  it('lists an item braintrust never read, and gives it no gist', async () => {
+  it('lists an item braintrust never read, and gives it no note', async () => {
     // The overstatement #112 forbids: dropping the paywalled posts would say this person
-    // published less than they did, and inventing a gist for one is worse still.
+    // published less than they did, and inventing a summary for one is worse still.
     const db = dbWith([itemRow({ retrieval: 'skipped_paywall', argument_md: null, claims: null })]);
     const payload = await recentItems({ person: 'ethan-mollick' }, db);
 
     assert.equal(payload.items.length, 1);
-    assert.equal(payload.items[0]!.gist, undefined);
+    assert.equal(payload.items[0]!.note, undefined);
     assert.equal(payload.items[0]!.not_read?.reason, 'skipped_paywall');
     assert.match(payload.items[0]!.not_read!.say, /paywall/);
   });
 
-  it('never promises a gist for an item that was read but never noted', async () => {
+  it('never promises a note for an item that was read but never noted', async () => {
     const db = dbWith([itemRow({ argument_md: null, claims: null })]);
     const payload = await recentItems({ person: 'ethan-mollick' }, db);
-    assert.equal(payload.items[0]!.gist, undefined);
+    assert.equal(payload.items[0]!.note, undefined);
     assert.equal(payload.items[0]!.not_read?.reason, 'pending');
   });
 
@@ -74,12 +74,12 @@ describe('recent items', () => {
     assert.match(sql, /order by i\.published_at desc/);
   });
 
-  it('bounds the gist, and says how many claims it held back', async () => {
+  it('bounds the note, and says how many claims it held back', async () => {
     const claims = Array.from({ length: CLAIMS_PER_ITEM + 3 }, (_, i) => ({ statement: `c${i}` }));
     const payload = await recentItems({ person: 'ethan-mollick' }, dbWith([itemRow({ claims })]));
 
-    assert.equal(payload.items[0]!.gist?.claims.length, CLAIMS_PER_ITEM);
-    assert.equal(payload.items[0]!.gist?.more_claims, 3);
+    assert.equal(payload.items[0]!.note?.claims.length, CLAIMS_PER_ITEM);
+    assert.equal(payload.items[0]!.note?.more_claims, 3);
   });
 
   it('asks for one row more than it will show, so "more" needs no second query', async () => {

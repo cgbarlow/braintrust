@@ -46,8 +46,10 @@ _Avoid_: passage, segment, fragment
 **Note**:
 What braintrust wrote down the one time it read an Item — the claims made, the argument, the assumptions.
 Every Compile reads Notes rather than Items, because an Item never changes and re-reading it cannot
-produce a different answer.
-_Avoid_: summary, extraction, digest
+produce a different answer. **A Note is also what braintrust serves when asked what an Item was about**,
+which is why the avoided words are avoided at the boundary too: a served Note is recalled, never composed,
+and calling it a gist would invite the summary it is not.
+_Avoid_: summary, extraction, digest, gist
 
 **Backlog**:
 Everything braintrust owes a Corpus but has not yet done — bodies to fetch, Notes to write, archives to

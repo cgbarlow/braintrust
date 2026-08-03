@@ -44,7 +44,7 @@ is *recent* gives it nothing to rank by, and it returns the same central positio
 everything else, dated across years. That is how a question about the latest article gets answered
 with one from eighteen months ago.
 
-Each item comes back with the gist braintrust recorded when it read it. Items braintrust never read
+Each item comes back with the note braintrust recorded when it read it. Items braintrust never read
 are in the list too, marked — say what they are and never guess what was in them.
 
 If the newest item looks old for someone who publishes often, say so and call

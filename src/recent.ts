@@ -14,16 +14,22 @@
  * someone publishes. Until this existed, it could not say what they published.
  *
  * **No model in the path, and no ranking.** Ordering by date is a fact, not a judgement.
- * The gist is `braintrust_item_notes.argument_md` and its claims — *what braintrust wrote
+ * What each Item carries is its **Note** — `braintrust_item_notes`, *what braintrust wrote
  * down the one time it read the Item* — served as stored. That holds #116's rule at this
- * boundary too: select, never paraphrase. A summary composed here would be braintrust's
- * prose about someone's article, invented at serve time, and unfalsifiable.
+ * boundary too: select, never paraphrase. A summary composed here would be braintrust's own
+ * prose about someone's article, invented at serve time and checkable against nothing.
  *
- * **Unread Items are listed, marked, and given no gist.** A Skipped Item is a row on
+ * **The field is `note`, and that is CONTEXT.md's doing.** It was `gist` until the glossary
+ * was checked: **Note** lists *summary, extraction, digest* under _Avoid_, and `gist` is
+ * that word wearing a shorter coat. Coining a serving-boundary synonym for a thing the
+ * glossary already names would give braintrust two words for one concept, which is the
+ * single failure CONTEXT.md exists to prevent. #114 caught `provenance` the same way.
+ *
+ * **Unread Items are listed, marked, and given no Note.** A Skipped Item is a row on
  * purpose (see schema.sql) so a Persona can state its own blind spots. A *latest* list that
  * quietly dropped the paywalled posts would tell a Persona its reach is better than it is —
  * exactly the overstatement #112 forbids — and one that included them without saying so
- * would invite a gist for something nobody read. So they appear, in date order, carrying
+ * would invite a summary of something nobody read. So they appear, in date order, carrying
  * why and a line that can be spoken.
  *
  * Needs no embeddings, unlike every other retrieval path: it is a date-ordered read of rows
@@ -40,7 +46,7 @@ import { BraintrustError } from './errors.js';
 export const DEFAULT_RECENT = 10;
 export const MAX_RECENT = 50;
 
-/** How many of a Note's claims travel with an Item. The gist, not the Note. */
+/** How many of a Note's claims travel with an Item. Enough to recognise it by. */
 export const CLAIMS_PER_ITEM = 5;
 
 export type RecentArgs = {
@@ -50,7 +56,7 @@ export type RecentArgs = {
 };
 
 /**
- * Why braintrust has no gist for an Item it knows about, and what a Persona can say about
+ * Why braintrust has no Note for an Item it knows about, and what a Persona can say about
  * it. The `say` line exists for the same reason #115 gave `nothing_matched` one: the
  * Persona has to speak this, and braintrust's own vocabulary is not speakable.
  */
@@ -70,11 +76,11 @@ export type RecentItem = {
   source: string;
   /**
    * What braintrust wrote when it read this Item. Absent whenever it did not — never an
-   * empty gist, because an empty gist reads as *nothing much in it* rather than *nobody
-   * read it*.
+   * empty Note, because an empty one reads as *there was not much in it* rather than
+   * *nobody read it*.
    */
-  gist?: { argument: string | null; claims: string[]; more_claims?: number };
-  /** Present exactly when `gist` is absent. */
+  note?: { argument: string | null; claims: string[]; more_claims?: number };
+  /** Present exactly when `note` is absent. */
   not_read?: { reason: string; say: string };
 };
 
@@ -179,14 +185,14 @@ function toRecentItem(row: Row): RecentItem {
   };
 
   // Read, and a Note survives. Both halves matter: an Item can be retrieved and still have
-  // no Note if the reading failed, and a gist promised over nothing is worse than none.
+  // no Note if the reading failed, and a Note promised over nothing is worse than none.
   if (row.retrieval === 'retrieved' && (row.argument_md !== null || row.claims !== null)) {
     const claims = statementsOf(row.claims);
-    item.gist = {
+    item.note = {
       argument: row.argument_md,
       claims: claims.slice(0, CLAIMS_PER_ITEM),
     };
-    if (claims.length > CLAIMS_PER_ITEM) item.gist.more_claims = claims.length - CLAIMS_PER_ITEM;
+    if (claims.length > CLAIMS_PER_ITEM) item.note.more_claims = claims.length - CLAIMS_PER_ITEM;
     return item;
   }
 
@@ -198,7 +204,7 @@ function toRecentItem(row: Row): RecentItem {
   return item;
 }
 
-/** Claims are `[{ statement, quote, … }]`. Only the statements are the gist. */
+/** Claims are `[{ statement, quote, … }]`. Only the statements are served. */
 function statementsOf(claims: unknown): string[] {
   if (!Array.isArray(claims)) return [];
   return claims
