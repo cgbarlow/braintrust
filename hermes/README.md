@@ -69,6 +69,11 @@ and then answer in voice, without repeating that line again for the rest of the 
 largely unread — a paywalled newsletter beside a public channel — the line names that scope too. If the
 opening line never appears, check that `braintrust_load_persona` appears in the profile's tool list.
 
+**If it opens every reply with that line**, the profile's `SOUL.md` predates this template. `SOUL.md` is
+copied, not linked, so a profile created earlier keeps whatever the template said on the day it was copied —
+including an older non-negotiable that read as a per-reply instruction and outranked everything telling it to
+speak once. Re-copy the template and replace the two placeholders again.
+
 **5. Repeat per Person.** A council of six is six profiles pointing at one braintrust.
 
 ## Why `SOUL.md` is thin

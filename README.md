@@ -13,7 +13,7 @@ It is a personal tool: one person, their own council, not a service.
 1. **Follow.** Paste the links you already have for someone. braintrust resolves them, prices the work, and shows you the plan before it fetches anything.
 2. **Ingest.** It reads their archive back twelve months, then checks daily. Raw text and embeddings stay separate, so a better model means re-indexing rather than re-fetching.
 3. **Distill.** Each item is read exactly once and what was read is kept. A persona is rebuilt whenever something new arrives — never on a timer — and each rebuild replaces the last one whole, so a persona cannot drift from its evidence.
-4. **Consult.** Any MCP client — Claude, ChatGPT, Cursor — loads a persona's voice and reasoning, or asks what they've said about something and gets it back with quotes and dates. Or give each Person [their own Hermes agent](#talking-to-one-persona-a-hermes-agent-per-person) and talk to them one at a time.
+4. **Consult.** Any MCP client — Claude, ChatGPT, Cursor — loads a persona's voice and reasoning, asks what they've said about something and gets it back with quotes and dates, or asks what they've published lately and gets it in date order with what braintrust made of each piece. Or give each Person [their own Hermes agent](#talking-to-one-persona-a-hermes-agent-per-person) and talk to them one at a time.
 
 ## What it reads
 
@@ -72,6 +72,8 @@ Paste [`schema.sql`](schema.sql) into your Supabase SQL editor — it is idempot
 Add your first council member through your AI client, not the command line — `braintrust_follow_person`, with whatever links you have. **Only a human can add someone**, so an AI can refresh a persona but never introduce one.
 
 `npm test` runs the suite; the database tests skip without a Postgres.
+
+**Run `npm run calibrate` once against your own embeddings endpoint.** It measures where braintrust should stop answering — the threshold that separates *this corpus covers your question* from *your question merely landed near it* — by probing questions the corpus demonstrably covers against questions nobody could think it covers, and reporting where the two groups separate. The value is a property of your embeddings model, so braintrust cannot ship it, and an uncalibrated gate does not fail loudly: it answers. The server warns at startup until you set `BRAINTRUST_SELECTIVITY_MARGIN`.
 
 ## Talking to one persona: a Hermes agent per Person
 

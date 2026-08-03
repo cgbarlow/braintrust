@@ -45,6 +45,20 @@ async function main(): Promise<void> {
   const readiness = await retrieval.check();
   if (!readiness.ready) console.warn(`${SERVER_NAME}: retrieval is unavailable. ${readiness.reason}`);
 
+  // Startup check 3, and the only one that refuses nothing. An uncalibrated selectivity
+  // margin is a gate that is open: it does not fail, it answers — off-corpus questions
+  // come back ranked and cited, which is the loudest failure this surface has. #115 named
+  // the calibration required and it shipped without one, so silence here is what let a
+  // question about poaching an egg return three positions on a live persona.
+  if (process.env.BRAINTRUST_SELECTIVITY_MARGIN === undefined) {
+    console.warn(
+      `${SERVER_NAME}: BRAINTRUST_SELECTIVITY_MARGIN is unset, so the off-corpus gate is ` +
+        `running on an unmeasured default. Questions this corpus does not cover may be ` +
+        `answered as though it does. Run \`npm run calibrate\` against this deployment and ` +
+        `set the value it reports.`,
+    );
+  }
+
   // The web service can now do the expensive half too, for one person at a time, because
   // `braintrust_refresh_persona` runs the same cycle the job does. It is still the job
   // that does the sweeping: a refresh is bounded and asked for, where the daily run is

@@ -362,7 +362,7 @@ async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | un
   return rows[0];
 }
 
-type Search = { model: string; person: string; since: string | null; until: string | null };
+export type Search = { model: string; person: string; since: string | null; until: string | null };
 
 type PositionRow = {
   id: string;
@@ -441,7 +441,7 @@ async function withEvidence(
   db: Db,
   rows: PositionRow[],
   full: boolean,
-  field: { top: number | null; median: number | null },
+  field: { median: number | null },
 ): Promise<FoundPosition[]> {
   if (rows.length === 0) return [];
 
@@ -509,7 +509,7 @@ async function withEvidence(
       days_spanned: row.days_spanned === null ? null : Number(row.days_spanned),
       basis: row.basis,
       confidence: row.confidence,
-      fit: fitOf(1 - Number(row.distance), field.top, field.median),
+      fit: fitOf(1 - Number(row.distance), field.median),
       item_count: row.item_count,
       current: !related.some((one) => one.side === 'from' && one.relation === 'revised'),
       relations: related.map((one) => ({
@@ -588,8 +588,13 @@ async function nearestSimilarity(db: Db, vector: string, search: Search): Promis
  * Sampled rather than scanned: the median of the nearest few hundred Chunks is the shape
  * that matters, and reading a 500-item Corpus end to end on every call would trade the
  * latency this map spent a whole ticket recovering.
+ *
+ * **Exported so the calibrator measures this and not something like it.** `npm run
+ * calibrate` sets `SELECTIVITY_MARGIN`, and a threshold measured with a second
+ * implementation of the same idea would be calibrating a function the server does not
+ * call. See src/calibrate/index.ts.
  */
-async function selectivity(
+export async function selectivity(
   db: Db,
   vector: string,
   search: Search,
@@ -625,12 +630,31 @@ async function selectivity(
 /**
  * How well one Position answers the question, placed against the same distribution the gate
  * used. A grade about *fit*, never about how well braintrust knows the Position.
+ *
+ * **Measured as clearance over the Corpus's middle, in the same units the gate uses.** The
+ * question a reader is asking of this grade is *does this Position stand clear of what this
+ * Corpus says about everything*, and clearance is an absolute quantity — so the thresholds
+ * are multiples of `SELECTIVITY_MARGIN` rather than numbers of their own. One notion of
+ * *clear*, calibrated once: whatever measurement moves the gate moves this with it, and the
+ * two can never drift into disagreeing about what a good match is.
+ *
+ * **`top` is deliberately not a parameter.** It used to be, and that was the defect: the
+ * grade was `(similarity - median) / (top - median)`, so the best-matching Position scored
+ * exactly 1.0 and graded `close` **for every query ever asked** — the value could not be
+ * anything else, because the numerator and denominator were the same number. Live, on
+ * `ethan-mollick`, that meant *"the correct water temperature for poaching an egg"* came
+ * back with three positions all graded `close`. A grade normalised against the answer it is
+ * grading carries no information about the answer, and the one thing `fit` exists to do is
+ * say *this does not answer you*. See test/fit.test.ts.
  */
-function fitOf(similarity: number, top: number | null, median: number | null): 'close' | 'partial' | 'distant' {
-  if (top === null || median === null || top <= median) return 'partial';
-  const relative = (similarity - median) / (top - median);
-  if (relative >= 0.66) return 'close';
-  if (relative >= 0.33) return 'partial';
+export function fitOf(similarity: number, median: number | null): 'close' | 'partial' | 'distant' {
+  // No middle to measure against — an empty or single-Chunk field. Neither a warning nor
+  // an endorsement: braintrust declines to grade rather than guessing a direction.
+  if (median === null) return 'partial';
+
+  const clearance = similarity - median;
+  if (clearance >= SELECTIVITY_MARGIN * 2) return 'close';
+  if (clearance >= SELECTIVITY_MARGIN) return 'partial';
   return 'distant';
 }
 
