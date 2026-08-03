@@ -64,10 +64,10 @@ field from `braintrust_list_personas`, e.g. `nate-b-jones`.
 bt-nate-b-jones chat
 ```
 
-The first reply should open with a line like *"I'm a braintrust model of Nate B. Jones, built from 412
-things they published between 2025-08-01 and 2026-07-29, with 304 more behind a paywall braintrust never
-read — not the person."* If it opens in voice with no such line, the profile is not loading the persona:
-check that `braintrust_load_persona` appears in the profile's tool list.
+The first reply should open with a line like *"I'm a braintrust model of Nate B. Jones — not the person."*
+and then answer in voice, without repeating that line again for the rest of the session. If a source is
+largely unread — a paywalled newsletter beside a public channel — the line names that scope too. If the
+opening line never appears, check that `braintrust_load_persona` appears in the profile's tool list.
 
 **5. Repeat per Person.** A council of six is six profiles pointing at one braintrust.
 

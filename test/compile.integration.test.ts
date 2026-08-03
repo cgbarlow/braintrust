@@ -31,7 +31,7 @@ import {
   writeRelations,
 } from '../src/compile/index.js';
 import { createDb, type Db, type PostgresDb, type TransactionalDb } from '../src/db.js';
-import { listPersonas, loadPersona } from '../src/personas.js';
+import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { chunkItem } from '../src/retrieval/index.js';
 import { fakeEmbedder } from './support/embeddings.js';
 import { fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
@@ -183,7 +183,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     // do rather than what the code supports.
     assert.equal(report.compiler_version, compilerVersion({ revisions: false }));
 
-    const persona = await loadPersona(db, 'nate');
+    const persona = await explainPersona(db, 'nate');
     assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
     assert.deepEqual(Object.keys(persona.layers).sort(), ['beliefs', 'coverage', 'reasoning', 'voice']);
     assert.equal(persona.layers.voice!.basis, 'measured');
@@ -196,7 +196,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
   it('serves the inferred layers with the marker in the prose, not only the basis field', async () => {
     await compile();
-    const persona = await loadPersona(db, 'nate');
+    const persona = await explainPersona(db, 'nate');
 
     for (const layer of ['reasoning', 'beliefs']) {
       // The field is lost the moment a client pastes the markdown into a system prompt.
@@ -234,7 +234,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
   it('measures the voice over the real item text', async () => {
     await compile();
-    const evidence = (await loadPersona(db, 'nate')).layers.voice!.evidence as {
+    const evidence = (await explainPersona(db, 'nate')).layers.voice!.evidence as {
       items_measured: number;
       moves: { move: string; spread: number }[];
     };
@@ -246,7 +246,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
   it('reconciles coverage against the item rows it was counted from', async () => {
     await compile();
-    const evidence = (await loadPersona(db, 'nate')).layers.coverage!.evidence as {
+    const evidence = (await explainPersona(db, 'nate')).layers.coverage!.evidence as {
       retrieved: number;
       skipped_paywall: number;
       skipped_short: number;
@@ -271,7 +271,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     await addItem('an-essay', essay, '2025-06-15');
     await compile();
 
-    const persona = await loadPersona(db, 'nate');
+    const persona = await explainPersona(db, 'nate');
     const coverage = persona.layers.coverage!.evidence as {
       retrieved: number;
       words_retrieved: number;
@@ -320,7 +320,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       ]),
       1,
     );
-    const evidence = (await loadPersona(db, 'nate')).layers.voice!.evidence as { items_measured: number };
+    const evidence = (await explainPersona(db, 'nate')).layers.voice!.evidence as { items_measured: number };
     assert.equal(evidence.items_measured, ITEMS + 1);
   });
 
@@ -534,7 +534,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
   it('changes nothing when a compile fails partway through', async () => {
     await compile();
     const before = await currentCompileId();
-    const evidenceBefore = (await loadPersona(db, 'nate')).layers.voice!.evidence;
+    const evidenceBefore = (await explainPersona(db, 'nate')).layers.voice!.evidence;
 
     await addItem('post-new', body(9), '2025-09-01');
     const report = await compileCorpus({
@@ -550,7 +550,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     // The persona that was already there is untouched, because the delete and the
     // promotion are the same transaction and neither ever ran.
     assert.equal(await currentCompileId(), before);
-    assert.deepEqual((await loadPersona(db, 'nate')).layers.voice!.evidence, evidenceBefore);
+    assert.deepEqual((await explainPersona(db, 'nate')).layers.voice!.evidence, evidenceBefore);
     assert.equal(
       await count(`select count(*) from braintrust_compiles where person_id = $1 and status = 'failed'`, [
         personId,
@@ -573,7 +573,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     // Not published, and not deleted either. The persona that was already there is
     // untouched and still the one a client is served.
     assert.equal(await currentCompileId(), before);
-    const persona = await loadPersona(db, 'nate');
+    const persona = await explainPersona(db, 'nate');
     assert.equal((persona.layers.voice!.evidence as { items_measured: number }).items_measured, ITEMS);
   });
 
@@ -886,7 +886,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     // `unsettled` and `drifting` are visible to anyone who goes looking and are never
     // spoken in the person's voice — so nothing a client loads to answer *as* them
     // carries a tension the person never resolved.
-    const persona = await loadPersona(db, 'nate');
+    const persona = await explainPersona(db, 'nate');
     for (const [name, layer] of Object.entries(persona.layers)) {
       const prose = `${layer.descriptive} ${layer.generative ?? ''}`;
       assert.doesNotMatch(prose, /unsettled|drifting|superseded|revised/i, `${name} speaks a relation`);

@@ -10,7 +10,8 @@ import { loadCurrent, personExists } from './compile/store.js';
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
-import { speakAs } from './speak.js';
+import type { Receipts, ScriptInput, SourceCoverage } from './script.js';
+import { renderScript } from './script.js';
 
 export type CorpusSummary = {
   items_retrieved: number;
@@ -218,58 +219,57 @@ export type LoadedLayerPayload = {
   evidence: unknown;
 };
 
+/**
+ * What `braintrust_load_persona` returns: a Script, and the few scalars that cannot be
+ * spoken.
+ *
+ * The four layers are **not** here. They are not deleted — `braintrust_explain_persona`
+ * returns them whole and verbatim, one visible call away — but a client is no longer handed
+ * materials and trusted to speak them well. See docs/design/mcp-surface.md §2.
+ */
 export type LoadedPersonaPayload = {
   subject: string;
   compiled_at: string | null;
   compiler_version: string;
   /** Which generation of Notes this Persona was built from. Declared, never inferred. */
   extractor: string | null;
+  /** The Script. Ready to speak, with nothing in it to interpret. */
+  speak: string;
   /**
-   * How to speak what follows. A default rather than a rule: a client is free to ignore
-   * it, which is why the two things it must not ignore — the disclosure and the blind
-   * spots — are stated inside it rather than left to be inferred from the layers.
-   *
-   * Top-level rather than per-layer because it governs the whole answer, and it sits
-   * before `layers` so it is read before the material it is about.
+   * The Receipts. Scalars, never sentences — so a client holding them can answer *is that
+   * measured or inferred* and *how much have you read* immediately, and cannot lift them
+   * into voice by accident.
    */
-  speak_as: string;
+  receipts: Receipts;
+};
+
+/** Today's payload, unchanged, behind its own door. */
+export type ExplainedPersonaPayload = {
+  subject: string;
+  compiled_at: string | null;
+  compiler_version: string;
+  extractor: string | null;
   layers: Record<string, LoadedLayerPayload>;
 };
 
-/**
- * The Core, whole. No query and no assembly step: serving it is reading the layer rows
- * of the one Compile whose status is `current`.
- *
- * **Never compiled means answer nothing.** Compiling on demand was rejected — a first
- * question that hangs for minutes and spends real money unannounced is a bad first
- * impression, and it puts the most expensive action in the product behind a read call.
- * The two ways of having no Persona are two different sentences, because "braintrust has
- * never heard of them" and "braintrust follows them and has not built one yet" send the
- * caller somewhere different.
- *
- * Voice returns both forms. The client acts on `generative`; `descriptive` and
- * `evidence` are what make the instruction checkable. Returning only the first leaves it
- * unfalsifiable, and returning only the second means two clients build two different
- * personalities from identical data.
- */
-export async function loadPersona(db: Db, person: string): Promise<LoadedPersonaPayload> {
-  const slug = person.trim();
+async function currentOrFail(db: Db, slug: string) {
   const loaded = await loadCurrent(db, slug);
+  if (loaded) return loaded;
 
-  if (!loaded) {
-    if (await personExists(db, slug)) {
-      throw new BraintrustError(
-        `braintrust follows ${slug} but has not built a persona for them yet. Nothing is compiled ` +
-          'on demand: the scheduled job builds a persona once it has read what it collected, so ' +
-          'this resolves itself rather than needing anything from you.',
-      );
-    }
+  if (await personExists(db, slug)) {
     throw new BraintrustError(
-      `braintrust does not follow anyone called "${slug}". braintrust_list_personas has the ones ` +
-        'it does, and braintrust_follow_person adds someone new — which only a human can complete.',
+      `braintrust follows ${slug} but has not built a persona for them yet. Nothing is compiled ` +
+        'on demand: the scheduled job builds a persona once it has read what it collected, so ' +
+        'this resolves itself rather than needing anything from you.',
     );
   }
+  throw new BraintrustError(
+    `braintrust does not follow anyone called "${slug}". braintrust_list_personas has the ones ` +
+      'it does, and braintrust_follow_person adds someone new — which only a human can complete.',
+  );
+}
 
+function layersOf(loaded: Awaited<ReturnType<typeof loadCurrent>> & {}): Record<string, LoadedLayerPayload> {
   const layers: Record<string, LoadedLayerPayload> = {};
   for (const layer of loaded.layers) {
     layers[layer.layer] = {
@@ -279,15 +279,100 @@ export async function loadPersona(db: Db, person: string): Promise<LoadedPersona
       evidence: layer.evidence,
     };
   }
+  return layers;
+}
 
+/** Reads the shapes the compiler writes, defensively: a partial layer must not throw. */
+function scriptInputFrom(
+  subject: string,
+  layers: Record<string, LoadedLayerPayload>,
+): ScriptInput {
+  const voice = layers.voice;
+  const reasoning = layers.reasoning;
+  const coverage = layers.coverage;
+
+  const evidence = (coverage?.evidence ?? {}) as Record<string, unknown>;
+  const rawSources = (evidence.by_source ?? {}) as Record<string, Record<string, unknown>>;
+
+  const bySource: Record<string, SourceCoverage> = {};
+  for (const [key, source] of Object.entries(rawSources)) {
+    bySource[key] = {
+      platform: typeof source.platform === 'string' ? source.platform : key.split(':')[0] ?? '',
+      retrieved: numberOr(source.retrieved, 0),
+      skipped_paywall: numberOr(source.skipped_paywall, 0),
+      failed: numberOr(source.failed, 0),
+      backfill_complete: source.backfill_complete !== false,
+    };
+  }
+
+  const window = evidence.window;
+  const entries = ((reasoning?.evidence ?? {}) as { entries?: { label?: unknown }[] }).entries ?? [];
+
+  return {
+    subject,
+    voiceGenerative: voice?.generative ?? null,
+    voiceBasis: voice?.basis ?? null,
+    reasoningBasis: reasoning?.basis ?? null,
+    reasoningLabels: entries
+      .map((entry) => entry.label)
+      .filter((label): label is string => typeof label === 'string'),
+    bySource,
+    itemsRead: numberOr(evidence.retrieved, 0),
+    wordsRead: numberOr(evidence.words_retrieved, 0),
+    window:
+      Array.isArray(window) && typeof window[0] === 'string' && typeof window[1] === 'string'
+        ? [window[0], window[1]]
+        : null,
+  };
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' ? value : fallback;
+}
+
+/**
+ * The Script, rendered fresh from the stored layers on every call.
+ *
+ * **Never compiled means answer nothing.** Compiling on demand was rejected — a first
+ * question that hangs for minutes and spends real money unannounced is a bad first
+ * impression, and it puts the most expensive action in the product behind a read call. The
+ * two ways of having no Persona are two different sentences, because "braintrust has never
+ * heard of them" and "braintrust follows them and has not built one yet" send the caller
+ * somewhere different.
+ */
+export async function loadPersona(db: Db, person: string): Promise<LoadedPersonaPayload> {
+  const slug = person.trim();
+  const loaded = await currentOrFail(db, slug);
   const subject = subjectFor(loaded.display_name);
+  const { speak, receipts } = renderScript(scriptInputFrom(subject, layersOf(loaded)));
 
   return {
     subject,
     compiled_at: loaded.compiled_at?.toISOString() ?? null,
     compiler_version: loaded.compiler_version,
     extractor: loaded.extractor,
-    speak_as: speakAs(subject, asCorpusSummary(loaded.corpus_stats)),
-    layers,
+    speak,
+    receipts,
+  };
+}
+
+/**
+ * The door the layers went behind.
+ *
+ * Returns them **verbatim** — same bytes, nothing reformatted for the occasion and nothing
+ * summarised. Checkability did not survive this map by staying in front of the client; it
+ * survived by staying reachable, and it is only reachable if what comes back is the thing
+ * itself rather than an account of it.
+ */
+export async function explainPersona(db: Db, person: string): Promise<ExplainedPersonaPayload> {
+  const slug = person.trim();
+  const loaded = await currentOrFail(db, slug);
+
+  return {
+    subject: subjectFor(loaded.display_name),
+    compiled_at: loaded.compiled_at?.toISOString() ?? null,
+    compiler_version: loaded.compiler_version,
+    extractor: loaded.extractor,
+    layers: layersOf(loaded),
   };
 }

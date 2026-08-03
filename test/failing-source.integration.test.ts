@@ -28,7 +28,7 @@ import { followPerson, type PlanResponse } from '../src/follow/index.js';
 import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { runCycle, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 import { createExtractor } from '../src/notes/index.js';
-import { listPersonas, loadPersona } from '../src/personas.js';
+import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
 import { BLOCK_AFTER_FAILURES } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
@@ -447,7 +447,7 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
       // not, and the compile happens anyway — on what braintrust actually has.
       await run({ extract: true, fetcher: fakeFetcher(routesWhereBodies(refusing(403))) });
 
-      const persona = await loadPersona(db, 'nate-b-jones');
+      const persona = await explainPersona(db, 'nate-b-jones');
       const coverage = persona.layers.coverage!;
       assert.match(coverage.descriptive, /Stopped answering/);
       assert.match(coverage.descriptive, /the source refusing braintrust, not the user choosing/i);

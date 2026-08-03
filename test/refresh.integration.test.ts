@@ -25,7 +25,7 @@ import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { unfollowPerson } from '../src/follow/unfollow.js';
 import { runCycle } from '../src/ingest/cycle.js';
 import { createExtractor } from '../src/notes/index.js';
-import { listPersonas, loadPersona } from '../src/personas.js';
+import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { refreshPersona, type RefreshResponse, type Refreshed } from '../src/refresh.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
 import { fakeExtractor, testExtractorConfig } from './support/notes.js';
@@ -139,7 +139,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       assert.ok(outcome.compiled_at, 'the persona has a compile date');
 
       // And it is the persona a client would now be served, not a report about one.
-      const persona = await loadPersona(db, NATE);
+      const persona = await explainPersona(db, NATE);
       assert.deepEqual(Object.keys(persona.layers).sort(), [
         'beliefs',
         'coverage',
@@ -352,7 +352,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       const outcome = refreshed(await refresh());
       await unfollowPerson({ person: NATE }, { db });
 
-      const persona = await loadPersona(db, NATE);
+      const persona = await explainPersona(db, NATE);
       assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
       assert.equal(persona.compiled_at, outcome.compiled_at);
     });

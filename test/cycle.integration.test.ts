@@ -24,7 +24,7 @@ import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { runCycle, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 import { recordCatalogued, type SourceRow } from '../src/ingest/items.js';
 import { createExtractor } from '../src/notes/index.js';
-import { loadPersona } from '../src/personas.js';
+import { explainPersona, loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
 import { BLOCK_AFTER_FAILURES, requestSpacingMs } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
@@ -912,7 +912,7 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
 
     // The point of compiling inside the cycle: someone who followed a person this
     // morning has a persona this evening, without doing anything else.
-    const persona = await loadPersona(db, 'nate-b-jones');
+    const persona = await explainPersona(db, 'nate-b-jones');
     assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
     assert.deepEqual(Object.keys(persona.layers).sort(), ['beliefs', 'coverage', 'reasoning', 'voice']);
 
