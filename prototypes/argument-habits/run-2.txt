@@ -1,0 +1,105 @@
+
+==========================================================================
+chris-barlow
+==========================================================================
+HOW THEY ARGUE
+
+- Open by naming the thing most people reach for first, and why it fails them.
+- Refuse the terms of the question, and re-set them.
+- Give the pattern a name, then reason inside it.
+- Argue from what you built, not what you propose.
+
+  traced: opens-on-the-mistaken-instinct=3  rejects-the-standard-framing=3  builds-a-named-frame=3  moved-by-what-was-built=3
+
+==========================================================================
+ethan-mollick
+==========================================================================
+HOW THEY ARGUE
+
+- Open on what happened when you tried it yourself.
+- Give the pattern a name, then reason inside it.
+- Take the direction of travel seriously, and say where it lands.
+- Show the thing working before you argue about it.
+- Reach for the number, and say where it came from.
+- Say what you are unsure of, in the same breath as the claim.
+
+  traced: opens-on-own-experiment=5  builds-a-named-frame=3  extrapolates-a-trend=3  moved-by-the-worked-example=11  moved-by-measurement=5  flags-its-own-limits=9
+
+==========================================================================
+matt-pocock
+==========================================================================
+HOW THEY ARGUE
+
+- Give the pattern a name, then reason inside it.
+- Refuse the terms of the question, and re-set them.
+- End with the steps, in order.
+- Show the thing working before you argue about it.
+
+  traced: builds-a-named-frame=3  rejects-the-standard-framing=3  closes-on-a-procedure=6  moved-by-the-worked-example=5
+
+==========================================================================
+nate-b-jones
+==========================================================================
+HOW THEY ARGUE
+
+- Open on a specific episode, then widen to what it shows.
+- Give the pattern a name, then reason inside it.
+- Open by naming what the question takes for granted.
+- Refuse the terms of the question, and re-set them.
+- Reach for the number, and say where it came from.
+
+  traced: opens-on-a-case=2  builds-a-named-frame=3  opens-on-the-buried-assumption=3  rejects-the-standard-framing=2  moved-by-measurement=2
+
+==========================================================================
+stuart-winter-tear
+==========================================================================
+HOW THEY ARGUE
+
+- Open by naming the thing most people reach for first, and why it fails them.
+- Give the pattern a name, then reason inside it.
+- Refuse the terms of the question, and re-set them.
+
+  traced: opens-on-the-mistaken-instinct=23  builds-a-named-frame=9  rejects-the-standard-framing=23
+
+==========================================================================
+OVERLAP
+==========================================================================
+
+chris-barlow         ethan-mollick        shared  1/ 9  (11%)  builds-a-named-frame
+chris-barlow         matt-pocock          shared  2/ 6  (33%)  rejects-the-standard-framing, builds-a-named-frame
+chris-barlow         nate-b-jones         shared  2/ 7  (29%)  rejects-the-standard-framing, builds-a-named-frame
+chris-barlow         stuart-winter-tear   shared  3/ 4  (75%)  opens-on-the-mistaken-instinct, rejects-the-standard-framing, builds-a-named-frame
+ethan-mollick        matt-pocock          shared  2/ 8  (25%)  builds-a-named-frame, moved-by-the-worked-example
+ethan-mollick        nate-b-jones         shared  2/ 9  (22%)  builds-a-named-frame, moved-by-measurement
+ethan-mollick        stuart-winter-tear   shared  1/ 8  (13%)  builds-a-named-frame
+matt-pocock          nate-b-jones         shared  2/ 7  (29%)  builds-a-named-frame, rejects-the-standard-framing
+matt-pocock          stuart-winter-tear   shared  2/ 5  (40%)  builds-a-named-frame, rejects-the-standard-framing
+nate-b-jones         stuart-winter-tear   shared  2/ 6  (33%)  builds-a-named-frame, rejects-the-standard-framing
+
+==========================================================================
+MENU COVERAGE
+==========================================================================
+
+      opens-on-the-mistaken-instinct     2  chris-barlow, stuart-winter-tear
+      opens-on-a-case                    1  nate-b-jones
+      opens-on-own-experiment            1  ethan-mollick
+      opens-on-the-buried-assumption     1  nate-b-jones
+DEAD  reasons-by-analogy                 0  
+BROAD builds-a-named-frame               5  chris-barlow, ethan-mollick, matt-pocock, nate-b-jones, stuart-winter-tear
+DEAD  reasons-from-first-principles      0  
+      extrapolates-a-trend               1  ethan-mollick
+DEAD  separates-conflated-questions      0  
+DEAD  dissolves-rather-than-answers      0  
+DEAD  argues-from-cost-shift             0  
+      moved-by-the-worked-example        2  ethan-mollick, matt-pocock
+      moved-by-measurement               2  ethan-mollick, nate-b-jones
+      moved-by-what-was-built            1  chris-barlow
+DEAD  discounts-the-official-account     0  
+DEAD  concedes-then-narrows              0  
+BROAD rejects-the-standard-framing       4  chris-barlow, matt-pocock, nate-b-jones, stuart-winter-tear
+      flags-its-own-limits               1  ethan-mollick
+DEAD  refuses-the-monolith               0  
+      closes-on-a-procedure              1  matt-pocock
+DEAD  closes-on-a-condition              0  
+DEAD  closes-on-an-invitation            0  
+DEAD  closes-on-what-it-costs-us         0  

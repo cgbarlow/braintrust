@@ -1,0 +1,330 @@
+[
+ {
+  "title": "An opinionated guide to which AI to use to do stuff",
+  "url": "https://www.oneusefulthing.org/p/an-opinionated-guide-to-which-ai-b22",
+  "published_at": "2026-07-23",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by noting that AI usage has shifted from simple chatbot conversations to agentic systems that can act autonomously using tools, effectively doing many hours of human work. From this premise they distinguish low‑stakes from high‑stakes tasks, recommending any free model for the former but insisting on the most advanced models for the latter because of lower error rates. They then argue that for most users the two best general‑purpose agents are ChatGPT and Claude, and that the most powerful deployment is to grant the agent access to the user's own computer. However, they caution that permissions and approval settings must remain enabled to prevent unwanted actions and prompt‑injection attacks. The author supports the claim of high capability with examples of accurate document editing and complex multimodal tasks, while acknowledging occasional nitpicking. Finally, they synthesize these points into practical advice: choose Claude or ChatGPT at the $20 tier, assign real tasks, and iteratively refine the results, while noting that Google Gemini is currently a less suitable primary option.",
+   "claims": [
+    "Using AI now means using an agentic system that can do many hours of human work by combining a model with tools to plan and act.",
+    "For low‑stakes tasks any free model is fine, but for high‑stakes medical or legal advice you should use the most advanced models (Claude Opus/Fable or GPT‑5.6 Sol at High level).",
+    "For most people the two best general‑purpose AI tools are ChatGPT and Claude.",
+    "The most powerful way to use AI is to give it access to your own computer.",
+    "When using AI agents for real work, you must keep permission and approval settings on to avoid unwanted actions and prompt‑injection attacks."
+   ],
+   "more_claims": 3
+  }
+ },
+ {
+  "title": "The twilight of the chatbots",
+  "url": "https://www.oneusefulthing.org/p/the-twilight-of-the-chatbots",
+  "published_at": "2026-06-30",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by observing that leading American AI labs are releasing increasingly powerful models at a faster pace, and that capability gains are accelerating, as shown by multiple independent assessments that report better‑than‑exponential improvement. They extend this trend to open‑weight Chinese models, noting that these also follow an exponential curve, albeit lagging behind the closed US models. From these empirical trends, the author argues that the way AI is used is shifting: as models become capable of longer, self‑correcting tasks, the dominant workflow moves from a co‑intelligence (human‑in‑the‑loop) to assigning autonomous agents to perform work. Internal data from OpenAI (e.g., a quarter of workers running four agents weekly) and studies of Claude Code usage support the claim that expertise, not profession, drives success with agents. The author then links the rapid, exponential capability growth to broader economic and policy turbulence, contending that institutions cannot keep pace with the curve, leading to sudden security threats, market swings, and regulatory shocks. The conclusion is that this instability will persist as long as the exponential growth continues.",
+   "claims": [
+    "The evidence points to accelerating capability gains as well.",
+    "They are all increasing at a better than exponential rate.",
+    "AI systems cannot pass every test, nor are they always cheap to run, but they are definitely improving at a very rapid rate.",
+    "The open‑weights Chinese models are on their own exponential curve, behind closed US models.",
+    "As AIs can do longer and longer tasks, the way people are using AI is changing."
+   ],
+   "more_claims": 9
+  }
+ },
+ {
+  "title": "What it feels like to work with Mythos",
+  "url": "https://www.oneusefulthing.org/p/what-it-feels-like-to-work-with-mythos",
+  "published_at": "2026-06-09",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by describing early access to Claude 5 Fable and a series of experiments that showed it outperforming every public model they had used, suggesting a qualitative leap in capability. They illustrate this with concrete, complex projects—building an isochrone map and a sophisticated data‑analysis tool—where Fable autonomously recruited cheaper subsidiary agents, performed massive research, coded, and iterated without the author’s direct involvement. While the outputs were impressive, the author notes imperfections and a lack of transparency into the model’s decision‑making, framing the experience as both delightful and unnerving. They then discuss practical constraints such as high token costs and overly sensitive guardrails that downgrade the model. From these observations, the author concludes that the human role has shifted from active steering to merely commissioning outcomes, and they speculate that unless interfaces improve, future AI advances may further diminish meaningful human participation, making the black‑box nature an inherent trade‑off for power.",
+   "claims": [
+    "My conclusion is that it represents a very real leap over every model I have used before.",
+    "The guardrails around Fable essentially prevent it from being used for cybersecurity at all.",
+    "In experiment after experiment I conducted, it outperformed basically every other public model I have used by a considerable margin.",
+    "It was capable across many problems and produced some startling results — it would work up to a dozen hours executing on multi-page specifications.",
+    "Fable can autonomously launch other AI agents to conduct research, retrieve data, and code while those agents run."
+   ],
+   "more_claims": 5
+  }
+ },
+ {
+  "title": "Co-Existence and the End of Co-Intelligence",
+  "url": "https://www.oneusefulthing.org/p/co-existence-and-the-end-of-co-intelligence",
+  "published_at": "2026-06-04",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by recalling an earlier vision of AI as cooperative \"co‑intelligence\" but points out that AI firms have always pursued highly autonomous systems that out‑perform humans. Recent breakthroughs in coding agents have already shown massive productivity gains, indicating that AI is moving beyond assistance toward dominance in many tasks. Yet the author stresses that AI remains imperfect—especially at long‑form writing and storytelling—so humans still have a vital role. Drawing on personal experience, she describes a deliberately limited, judgmental use of AI in drafting her new book and its website, noting both the efficiencies gained and the subtle losses of human thought. She anticipates that AI will soon act as a reader, critic, and gatekeeper for creators, making the relationship between humans and AI an ongoing negotiation rather than a one‑time solution. Consequently, she argues for a new paradigm of \"co‑existence\" where humans continuously renegotiate their partnership with ever‑improving AI systems.",
+   "claims": [
+    "AI companies have always aimed to build highly autonomous systems that outperform humans at most economically valuable work.",
+    "Recent coding agents have dramatically increased software productivity, with studies showing up to seventeen‑times more code written and AI now writing 80% of Anthropic’s code, letting developers ship eight times more.",
+    "AI is not a great long‑form writer.",
+    "I wrote every chapter draft myself, with all the parentheticals and dumb jokes you expect from my writing.",
+    "I expect that, increasingly, AIs will read my work and decide whether to recommend it to their human users."
+   ]
+  }
+ },
+ {
+  "title": "Choosing to Stay Human",
+  "url": "https://www.oneusefulthing.org/p/choosing-to-stay-human",
+  "published_at": "2026-05-26",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by observing the flood of AI‑generated content that often lacks genuine meaning, which erodes readers' attention and devalues human effort. From this observation, they claim that default, unthinking use of AI undermines the development of essential human skills such as writing and critical thinking. They support this by citing empirical studies: one showing that students who rely on ChatGPT for homework perform worse on tests because the AI short‑circuits mental effort, and another showing that a carefully designed AI tutor that personalizes problems can improve test scores when it still requires the learner to engage. A consulting experiment further illustrates that even high‑performing professionals can fall into \"cognitive surrender\" and miss AI errors when they let the system do the work. The author therefore argues that the problem lies both in tool design that encourages frictionless use and in users' reflexive habits. The proposed solution is an intentional, balanced approach that treats AI as an aid rather than a default, preserving human agency and effort while leveraging AI’s strengths.",
+   "claims": [
+    "AI‑generated posts often contain no human meaning and act as “attention vampires” that waste mental effort.",
+    "Using AI for writing threatens the development of writing as an important human skill.",
+    "Employing AI as a default or without thinking is condemnable.",
+    "When AI simply provides answers, it short‑circuits effort and harms learning outcomes.",
+    "Personalized AI tutoring can significantly boost learning when it pushes students to solve problems themselves."
+   ],
+   "more_claims": 2
+  }
+ },
+ {
+  "title": "Sign of the future: GPT-5.5",
+  "url": "https://www.oneusefulthing.org/p/sign-of-the-future-gpt-55",
+  "published_at": "2026-04-23",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by presenting early access to GPT‑5.5 as evidence that AI improvement is ongoing and substantial. He frames AI progress in terms of three interlinked layers—models, apps, and harnesses—and argues that OpenAI has advanced each layer with the new GPT‑5.5 family. To substantiate this, he offers concrete demonstrations: a coding challenge where only GPT‑5.5 Pro models an evolving town and does so faster than its predecessor; a new image model that can generate high‑quality text and arbitrary pictures; the production of a near‑PhD‑level paper from a handful of prompts; and the creation of a full tabletop role‑playing game with a polished PDF and illustrations. These examples illustrate the growing competence and utility of the system. However, the author also notes persistent shortcomings—flat long‑form fiction and occasionally uninteresting hypotheses—showing that the AI frontier remains jagged. He concludes that while capability gains are accelerating and GPT‑5.5 is a noteworthy step, the frontier is not eliminated but merely pushed farther out.",
+   "claims": [
+    "GPT‑5.5 indicates that rapid improvement in AI is not finished.",
+    "Only GPT‑5.5 Pro modeled an evolving town in the coding challenge.",
+    "GPT‑5.5 Pro is faster than GPT‑5.4 Pro, taking 20 minutes versus 33 minutes.",
+    "Models, apps, and harnesses are three interlinked concepts to consider in AI.",
+    "OpenAI has made advances in models, apps, and harnesses with GPT‑5.5."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "Claude Dispatch and the Power of Interfaces",
+  "url": "https://www.oneusefulthing.org/p/claude-dispatch-and-the-power-of",
+  "published_at": "2026-03-31",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by asserting that AI models are already highly capable, but most users only access them through generic chatbot interfaces that impose a cognitive tax, especially for less‑experienced workers. This mismatch between AI capability and interface design limits productivity and creates frustration. The author then surveys existing attempts to improve interfaces: specialized programming tools, Google’s experimental domain‑specific interfaces, and open‑source agents like OpenClaw, noting their strengths and shortcomings. Building on this, the author highlights Claude Cowork with Dispatch as a more practical agent that lets users control AI via familiar messaging apps, embodying the insight that users prefer agents that act on their real files and tools. Finally, the author argues that the ultimate solution is AI‑generated, on‑the‑fly interfaces that adapt to the task at hand, thereby eliminating the bottleneck of mismatched interfaces and unlocking AI’s full potential.",
+   "claims": [
+    "AIs are already far more capable than most people realize.",
+    "A large part of the capability overhang comes from how people interact with AI, not from AI’s own limits.",
+    "The chatbot interface is an obstacle that creates cognitive load and offsets productivity gains.",
+    "Less‑experienced workers are hurt most by chatbot‑based interfaces.",
+    "Among specialized AI interfaces, only programming‑focused ones are truly complete."
+   ],
+   "more_claims": 6
+  }
+ },
+ {
+  "title": "The Shape of the Thing",
+  "url": "https://www.oneusefulthing.org/p/the-shape-of-the-thing",
+  "published_at": "2026-03-12",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by observing that AI capabilities have been improving exponentially, a trend that is evident across multiple benchmarks and visualized through the Otter Test and other metrics. This rapid progress has shifted the dominant mode of human‑AI interaction from a back‑and‑forth co‑intelligence model to one where autonomous AI agents can be handed tasks and deliver results quickly, marking a new era of \"managing AIs.\" Although most organizations have been slow to adopt these tools, the author points to concrete experiments—most notably StrongDM's Software Factory—that demonstrate how AI can now write, test, and ship software without human code involvement, suggesting that radical new work structures are both possible and increasingly necessary. The convergence of practical agents, jagged exponential gains, and experimental work practices creates a rolling, unpredictable environment where AI breakthroughs quickly ripple through markets, jobs, and policy, as illustrated by a single week of disruptive events. The author further argues that recursive self‑improvement (RSI) is already on the roadmaps of major AI labs, which could accelerate the exponential curves even more. Consequently, the author concludes that the present moment offers a narrow window to influence how AI is integrated into society; organizations that set responsible precedents now can shape the \"Thing\" before it becomes uncontrollable.",
+   "claims": [
+    "We have entered a new era of AI agents that can be given work and return reasonable results in minutes, shifting from co‑intelligence to managing AIs.",
+    "AI ability is improving exponentially with rapid gains and few signs of slowdown until tests reach their ceiling.",
+    "Most organizations have adopted AI very little so far, even though the technology is capable.",
+    "The combination of practical agents, jagged exponential improvement, and radical work‑process experimentation creates a rolling, unpredictable environment for AI advances.",
+    "Recursive self‑improvement is no longer science fiction; every major AI company has it on their roadmap, which could steepen the exponential curves."
+   ],
+   "more_claims": 1
+  }
+ },
+ {
+  "title": "A Guide to Which AI to Use in the Agentic Era",
+  "url": "https://www.oneusefulthing.org/p/a-guide-to-which-ai-to-use-in-the",
+  "published_at": "2026-02-18",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by noting that AI usage has moved from simple chatbot conversations to agentic systems that can perform tasks autonomously. This shift introduces a new layered architecture—models, apps, and harnesses—each affecting performance. Because the same model can behave very differently depending on the harness, the traditional question of \"which AI should I use?\" now hinges on the intended work rather than just model choice. The author argues that while paying for advanced models (around $20/month) is necessary for serious work, the real differentiator for most users is the app and especially the harness that grants tool access. Specific harnesses like Claude Cowork and coding agents are highlighted as superior, whereas alternatives like OpenClaw are warned against for security reasons. The conclusion is that adopting AI as an agent, not merely a chatbot, is the most crucial development since ChatGPT and users should invest in the appropriate models, apps, and harnesses to get real work done.",
+   "claims": [
+    "Using AI as an agent—assigning tasks to it and letting it use tools—is now practical.",
+    "Choosing which AI to use has become harder because the answer depends on the intended use.",
+    "Free models are optimized for chat rather than accuracy, making them faster but less accurate and capable.",
+    "For most people, differences between models are now small enough that apps and harnesses matter more than the model itself.",
+    "Claude Cowork is a genuinely new, non‑technical AI agent with no direct equivalent from OpenAI or Google."
+   ],
+   "more_claims": 2
+  }
+ },
+ {
+  "title": "Management as AI superpower",
+  "url": "https://www.oneusefulthing.org/p/management-as-ai-superpower",
+  "published_at": "2026-01-27",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by describing an experiment in which MBA students used AI tools to build startup prototypes in four days, noting that the results were dramatically farther along than traditional semester‑long efforts. From this observation they infer that the decisive factor was not the tools themselves but the ability to tell the AI precisely what was wanted, a skill rooted in traditional management. They formalize the delegation decision with an \"Equation of Agentic Work\" that balances Human Baseline Time, Probability of Success, and AI Process Time, arguing that high probability of success and low process overhead make AI delegation worthwhile, while the opposite makes it inefficient. Evidence from the GDPval study, where GPT‑5.2 matched or beat human experts 72% of the time, illustrates concrete time savings. The author then proposes three ways to improve the equation—better instructions, better evaluation, and quicker assessment—each of which leverages subject‑matter expertise. This leads to the broader claim that AI shifts scarcity from talent to the ability to ask the right questions, making classic management (scoping, defining deliverables, providing feedback) the essential skill set for the AI era. Consequently, the future of work will be managing AI agents, and those who can articulate clear expectations will succeed.",
+   "claims": [
+    "In a few days of AI‑assisted work, MBA students produced startup prototypes that were an order of magnitude farther along than semester‑long projects before AI.",
+    "The key to success with AI is simply telling the AI what you want.",
+    "Deciding whether to delegate a task to AI depends on three variables: Human Baseline Time, Probability of Success, and AI Process Time.",
+    "You should only give work to the AI if the probability of success is very high, otherwise you’ll waste more time than doing it yourself.",
+    "AI makes talent abundant and cheap; the scarce resource is knowing what to ask for."
+   ],
+   "more_claims": 2
+  }
+ },
+ {
+  "title": "Claude Code and What Comes Next",
+  "url": "https://www.oneusefulthing.org/p/claude-code-and-what-comes-next",
+  "published_at": "2026-01-07",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by recounting a personal experiment in which Claude Code took a single, vague request and autonomously built, deployed, and populated a revenue‑generating website, demonstrating that the system can deliver concrete results with minimal human oversight. From this example they infer a broader shift: recent AI coding tools have become dramatically more capable not because of a single breakthrough but due to two synergistic advances—greater autonomous work and an \"agentic harness\" of modular tools. They support this claim with the METR metric, showing exponential growth in the length of tasks AI can complete reliably. The author then critiques the current design focus on programmers, arguing that the underlying capabilities are useful for all knowledge workers. To explain how these tools overcome traditional LLM limits, they describe mechanisms such as context‑window compaction, Skills, and subagents, which together let the AI manage memory, load domain‑specific instructions, and delegate work, effectively operating as a team. Finally, they acknowledge the powerful but risky nature of granting an AI direct access to a user's computer, urging safeguards while encouraging broader experimentation, and they cite Andrej Karpathy’s observation that programmers’ productivity can be multiplied by leveraging these new tools.",
+   "claims": [
+    "Claude Code can autonomously create and deploy a working website that sells a product, based on a single user request.",
+    "METR, which measures the length of tasks AI can complete autonomously with 50% reliability, has been increasing exponentially, reflecting rapid AI ability growth.",
+    "These AI coding tools are primarily built for programmers, which limits their broader usefulness to other knowledge workers.",
+    "Skills let Claude Code load specific instructions and toolsets on demand, enabling it to handle entire processes.",
+    "Claude Code can create subagents, effectively hiring specialized AIs to handle parts of a task, making it work like a team."
+   ]
+  }
+ },
+ {
+  "title": "The Shape of AI: Jaggedness, Bottlenecks and Salients",
+  "url": "https://www.oneusefulthing.org/p/the-shape-of-ai-jaggedness-bottlenecks",
+  "published_at": "2025-12-20",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by recalling the \"Jagged Frontier\" concept: AI excels at some tasks while failing spectacularly at others. He argues that this jaggedness will persist and that the popular view—that AI’s rapid ability growth will simply eclipse human capability despite these gaps—is incomplete. He identifies a key source of jaggedness: LLMs lack permanent memory, a problem that may be harder to solve than researchers expect. Small pockets of jaggedness create bottlenecks, which can be either ability‑based (e.g., poor vision for medical imaging) or process‑based (e.g., regulatory and clinical‑trial constraints). When a bottleneck becomes a \"reverse salient\" and is eliminated, the entire system can leap forward, as illustrated by Google’s Nano Banana Pro image‑generation model that removed the visual‑generation bottleneck and unlocked new applications like high‑quality slide decks. Even with such leaps, many human‑centric tasks remain on the jagged frontier, so AI will not wholesale replace roles like consultants or designers. Consequently, the author concludes that watching which bottlenecks break—not benchmark numbers—provides the best insight into AI’s future trajectory.",
+   "claims": [
+    "Jaggedness will remain a big part of AI going forward.",
+    "The view that AI will simply outpace humans despite jaggedness misses critical aspects of work and technology.",
+    "A major source of jaggedness is that LLMs do not retain new tasks permanently.",
+    "Even small amounts of jaggedness can create bottlenecks that prevent super‑smart AIs from automating tasks.",
+    "Some bottlenecks arise from non‑ability processes, shifting the limiting factor from intelligence to institutions that move at institutional speed."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "Three Years from GPT-3 to Gemini 3",
+  "url": "https://www.oneusefulthing.org/p/three-years-from-gpt-3-to-gemini",
+  "published_at": "2025-11-18",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by recalling the modest capabilities of AI three years ago and then details a series of hands‑on demonstrations with Gemini 3—coding a game, building a research pipeline, and producing a graduate‑level paper. From these examples he infers that AI can now manipulate code to perform any computer‑based activity, which, combined with the emergence of agentic models like Antigravity, turns AI into a digital coworker rather than a simple chatbot. This shift redefines the human‑in‑the‑loop role from error‑fixer to director. Because these capabilities appear without a noticeable slowdown in development, the author concludes that AI progress is accelerating and that tools once reserved for programmers are becoming broadly useful.",
+   "claims": [
+    "Gemini 3 is very good at coding, and this matters to you even if you don’t think of what you do as programming.",
+    "Everything you do on a computer is ultimately code, so if AI can work with code it can do anything a computer user can do.",
+    "The human‑in‑the‑loop role is shifting from fixing AI mistakes to directing AI work.",
+    "Gemini 3 demonstrates a level of intelligence comparable to a competent graduate‑student researcher, i.e., a PhD‑level intelligence, though with some flaws.",
+    "AI development has not slowed down; Gemini 3 is evidence that progress continues rapidly."
+   ],
+   "more_claims": 1
+  }
+ },
+ {
+  "title": "Giving your AI a Job Interview",
+  "url": "https://www.oneusefulthing.org/p/giving-your-ai-a-job-interview",
+  "published_at": "2025-11-12",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by noting that the dominant way to gauge AI intelligence—benchmark tests—has serious flaws: public answer keys can be memorized, the tests often measure unknown constructs, and they are uncalibrated and sometimes erroneous. Although these benchmarks collectively capture some underlying ability that correlates with real‑world impact, they cover only a narrow set of skills and miss important domains like writing, empathy, and business advice. Practitioners sometimes resort to informal \"vibes\" tests that reveal a model's world model, but such idiosyncratic measures are unreliable and cannot replace systematic evaluation. Consequently, the author argues that selecting AI for organizational use should be treated like hiring a person: conduct rigorous, task‑specific interviews using realistic scenarios, expert‑generated tasks, and blind evaluation—as exemplified by OpenAI’s GDPval study. Moreover, beyond raw performance, one must assess a model’s decision‑making attitude (e.g., risk tolerance) because consistent differences across models can steer large numbers of decisions. The conclusion is that both standard benchmarks and vibes are insufficient; organizations must repeatedly and systematically test candidate models on the exact tasks and judgments they will face.",
+   "claims": [
+    "The most common approach is to treat AI like a human, by giving it tests and reporting how many answers it gets right.",
+    "Many benchmarks and their answer keys are public, so some AIs end up incorporating them into their basic training, whether by accident or so they can score highly on these benchmarks.",
+    "We often don’t know what these tests really measure.",
+    "All of these benchmarks, taken together, appear to measure some underlying ability factor.",
+    "There are very few benchmarks for measuring writing ability, sociological analysis, business advice, or empathy."
+   ],
+   "more_claims": 8
+  }
+ },
+ {
+  "title": "An Opinionated Guide to Using AI Right Now",
+  "url": "https://www.oneusefulthing.org/p/an-opinionated-guide-to-using-ai",
+  "published_at": "2025-10-19",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by noting that a sizable minority of humanity now uses AI weekly, and that most of this usage relies on free tools. Using OpenAI’s usage chart as empirical grounding, they argue that when a free model meets a user’s needs, there is no reason to look beyond it. For users who need more capability, they outline two paid tiers ($20 for most people, $200 for complex technical work) and recommend selecting among the major providers based on personal preference. They further contend that for serious tasks, agent‑type models are preferable because they are more capable and less error‑prone than simple chat models. The author highlights the Deep Research mode as a way to substantially improve answer accuracy and citation quality, and notes that newer models hallucinate far less, reducing that risk. Ultimately, they claim that the lasting value lies in users learning to work effectively with these systems, building intuition that will remain valuable as models evolve, and that the future of AI is defined more by human application than by model advances.",
+   "claims": [
+    "If the chart shows a free model is sufficient for my AI needs, I should just pick any free model I like and use it.",
+    "The $20 subscription tier is suitable for most users, while the $200 tier is intended for those with complex technical and coding requirements.",
+    "For most people, simply choosing the AI system they prefer is enough.",
+    "For serious work, I should use agent models because they are more capable, consistent, and less likely to make errors.",
+    "Deep Research reports, while not perfect, are considerably more accurate than standard AI answers and usually have correct citations."
+   ],
+   "more_claims": 3
+  }
+ },
+ {
+  "title": "Real AI Agents and Real Work",
+  "url": "https://www.oneusefulthing.org/p/real-ai-agents-and-real-work",
+  "published_at": "2025-09-29",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by pointing to a new benchmark where AI performed almost as well as human experts on complex, multi‑hour tasks, noting that the remaining gap is largely due to formatting and instruction‑following errors rather than fundamental hallucinations. From this evidence they infer that continued improvements will soon let AI surpass humans on such tasks. However, they argue that tasks are not equivalent to whole jobs, because a job comprises many interrelated tasks and human interaction that current AI cannot fully replicate. To illustrate AI’s emerging value, they describe how an AI agent reproduced the results of a sophisticated economics paper, suggesting a potential solution to the academic replication crisis. They then explain that recent advances—self‑correcting models and better tool use—have turned AI agents into more autonomous performers of multi‑step work. The author warns that without careful judgment, organizations may misuse these agents to generate excessive, low‑value content, drowning workers in AI‑produced material. Instead, they propose a workflow where experts delegate tasks to AI, review and correct outputs, achieving substantial speed and cost gains while retaining control. The overall conclusion is that AI agents can already do valuable work, but the societal impact hinges on deliberate human choices about how to employ them.",
+   "claims": [
+    "AIs have quietly crossed a threshold: they can now perform real, economically relevant work.",
+    "Human experts won, but barely, and the margins varied dramatically by industry.",
+    "The major reason for AI losing to humans was not hallucinations and errors, but a failure to format results well or follow instructions exactly.",
+    "If the current patterns hold, the next generation of AI models should beat human experts on average in this test.",
+    "AI doing one or more tasks does not replace an entire job because jobs consist of many tasks and AI is still jagged in its abilities."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "On Working with Wizards",
+  "url": "https://www.oneusefulthing.org/p/on-working-with-wizards",
+  "published_at": "2025-09-11",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by recalling an earlier co‑intelligence model where humans guided and corrected AI. Observing recent AI systems—GPT‑5 Pro, Claude 4.1 Opus, NotebookLM—he notes that they produce impressive, graduate‑student‑level outputs from vague prompts, yet their internal decision‑making is hidden. Through concrete examples (a video summary, a critique of his own paper, a transformed spreadsheet and PowerPoint), he shows that while the results are accurate, users cannot intervene or fully verify the process, and reliance on such \"wizard\" AI may erode human expertise. Consequently, he argues that we must shift our literacy: learn when to employ wizard‑style AI, become judges of output rather than process, and accept provisional trust based on usefulness rather than perfect certainty. This new stance balances the benefits of rapid, high‑quality AI work with the risks of opacity and skill loss.",
+   "claims": [
+    "New AI systems act as autonomous agents that can plan and act toward given goals.",
+    "As AI competence rises, its opacity rises as well, making verification harder.",
+    "Advanced AI can discover subtle errors that humans have previously missed."
+   ]
+  }
+ },
+ {
+  "title": "Mass Intelligence",
+  "url": "https://www.oneusefulthing.org/p/mass-intelligence",
+  "published_at": "2025-08-28",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by noting that over a billion people now regularly use AI chatbots, signalling a massive user base. They argue that two historic barriers—confusion over model selection and high cost—kept most users on weaker, error‑prone systems. Recent developments, especially the rollout of GPT‑5 and dramatic efficiency gains that have slashed per‑token costs, have removed those barriers, making the most capable models both cheap and automatically selected for the task. Simultaneously, AI has become easier to use, no longer requiring elaborate prompting techniques. With cost, access, and usability all collapsing, powerful AI is now available to virtually everyone, which the author labels the \"Mass Intelligence\" era. This widespread availability will generate a flood of both opportunities and problems across all institutions, forcing society to grapple with new forms of trust, expertise, and regulation.",
+   "claims": [
+    "We are entering an era of Mass Intelligence, where powerful AI is becoming as accessible as a Google search.",
+    "Powerful AI is getting cheaper and easier to access.",
+    "Smarter models are getting dramatically more efficient to run.",
+    "The marginal cost of serving each additional user has collapsed, enabling new business models like ad‑support.",
+    "Powerful AI models are just getting better at doing what you ask them to or even figuring out what you want and going beyond what you ask."
+   ],
+   "more_claims": 2
+  }
+ },
+ {
+  "title": "GPT-5: It Just Does Stuff",
+  "url": "https://www.oneusefulthing.org/p/gpt-5-it-just-does-stuff",
+  "published_at": "2025-08-07",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by demonstrating a striking, self‑generated paragraph from GPT‑5 to establish that the new model is a major advancement. He then identifies two common frustrations with current AI: users must manually pick the right model and many do not know what AI can accomplish. He argues that GPT‑5 resolves both by automatically selecting among internal models and by being proactively suggestive, thereby reducing the cognitive load on users. A series of anecdotal examples—an SVG task, startup‑idea generation, and a fully functional 3D city‑builder created from vague prompts—serve as evidence of GPT‑5’s breadth and autonomy. The author acknowledges limitations, noting that the model’s hardness assessment is sometimes arbitrary and that human oversight remains necessary to catch hallucinations. Nonetheless, he concludes that the reduction in friction and the model’s proactive capabilities constitute a significant leap forward in AI usability.",
+   "claims": [
+    "GPT-5 is a big deal.",
+    "GPT-5 automatically selects among multiple internal models and decides how much thinking effort to use.",
+    "GPT-5’s model‑selection can be arbitrary about what counts as a hard problem.",
+    "Premium users can manually choose the more powerful GPT‑5 Thinking model, bypassing the automatic selector.",
+    "GPT‑5 is proactive and constantly suggests actions, solving users’ lack of awareness of AI capabilities."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "The Bitter Lesson versus The Garbage Can",
+  "url": "https://www.oneusefulthing.org/p/the-bitter-lesson-versus-the-garbage",
+  "published_at": "2025-07-28",
+  "source": "substack",
+  "not_read": {
+   "reason": "failed",
+   "say": "braintrust could not fetch it"
+  }
+ }
+]

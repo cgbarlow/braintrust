@@ -1,0 +1,80 @@
+- Take the direction of travel seriously, and say where it lands.
+
+  traced: opens-on-own-experiment=4  opens-on-the-buried-assumption=3  extrapolates-a-trend=2
+
+==========================================================================
+matt-pocock
+==========================================================================
+HOW THEY ARGUE
+
+- Open by naming the thing most people reach for first, and why it fails them.
+- Open on a specific episode, then widen to what it shows.
+- Show the thing working before you argue about it.
+- End with the steps, in order.
+
+  traced: opens-on-the-mistaken-instinct=4  opens-on-a-case=3  moved-by-the-worked-example=5  closes-on-a-procedure=8
+
+==========================================================================
+nate-b-jones
+==========================================================================
+HOW THEY ARGUE
+
+- Open by naming the thing most people reach for first, and why it fails them.
+- Open on a specific episode, then widen to what it shows.
+- Give the pattern a name, then reason inside it.
+
+  traced: opens-on-the-mistaken-instinct=3  opens-on-a-case=2  builds-a-named-frame=3
+
+==========================================================================
+stuart-winter-tear
+==========================================================================
+HOW THEY ARGUE
+
+- Open by naming the thing most people reach for first, and why it fails them.
+- Give the pattern a name, then reason inside it.
+- End with the steps, in order.
+
+  traced: opens-on-the-mistaken-instinct=12  builds-a-named-frame=4  closes-on-a-procedure=2
+
+==========================================================================
+OVERLAP
+==========================================================================
+
+chris-barlow         ethan-mollick        shared  0/ 5  (0%)  —
+chris-barlow         matt-pocock          shared  1/ 5  (20%)  opens-on-the-mistaken-instinct
+chris-barlow         nate-b-jones         shared  1/ 4  (25%)  opens-on-the-mistaken-instinct
+chris-barlow         stuart-winter-tear   shared  1/ 4  (25%)  opens-on-the-mistaken-instinct
+ethan-mollick        matt-pocock          shared  0/ 7  (0%)  —
+ethan-mollick        nate-b-jones         shared  0/ 6  (0%)  —
+ethan-mollick        stuart-winter-tear   shared  0/ 6  (0%)  —
+matt-pocock          nate-b-jones         shared  2/ 5  (40%)  opens-on-the-mistaken-instinct, opens-on-a-case
+matt-pocock          stuart-winter-tear   shared  2/ 5  (40%)  opens-on-the-mistaken-instinct, closes-on-a-procedure
+nate-b-jones         stuart-winter-tear   shared  2/ 4  (50%)  opens-on-the-mistaken-instinct, builds-a-named-frame
+
+==========================================================================
+MENU COVERAGE
+==========================================================================
+
+BROAD opens-on-the-mistaken-instinct     4  chris-barlow, matt-pocock, nate-b-jones, stuart-winter-tear
+      opens-on-a-case                    2  matt-pocock, nate-b-jones
+      opens-on-own-experiment            1  ethan-mollick
+      opens-on-the-buried-assumption     1  ethan-mollick
+DEAD  reasons-by-analogy                 0  
+      builds-a-named-frame               2  nate-b-jones, stuart-winter-tear
+DEAD  reasons-from-first-principles      0  
+      extrapolates-a-trend               1  ethan-mollick
+DEAD  separates-conflated-questions      0  
+DEAD  dissolves-rather-than-answers      0  
+DEAD  argues-from-cost-shift             0  
+      moved-by-the-worked-example        1  matt-pocock
+DEAD  moved-by-measurement               0  
+DEAD  moved-by-what-was-built            0  
+DEAD  discounts-the-official-account     0  
+DEAD  concedes-then-narrows              0  
+      rejects-the-standard-framing       1  chris-barlow
+DEAD  flags-its-own-limits               0  
+DEAD  refuses-the-monolith               0  
+      closes-on-a-procedure              2  matt-pocock, stuart-winter-tear
+DEAD  closes-on-a-condition              0  
+DEAD  closes-on-an-invitation            0  
+DEAD  closes-on-what-it-costs-us         0  

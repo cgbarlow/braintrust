@@ -1,0 +1,423 @@
+[
+ {
+  "title": "/wayfinder: Nothing is too big to plan anymore",
+  "url": "https://www.youtube.com/watch?v=F3lL98Pj90o",
+  "published_at": "2026-07-30",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by noting that existing AI planning tools are limited to a single session, which forces users to break large projects into tiny chunks and curtails ambition. To overcome this, they present Wayfinder, a skill that maps a project as a set of decision tickets (research, prototype, grilling, and tasks) and tracks the \"fog of war\" across multiple agent sessions. Wayfinder orchestrates parallel and dependent work, integrates with any coding agent and any issue‑tracker, and can even handle real‑world tasks. By generating non‑persistent specs and encouraging frequent prototyping, it avoids waterfall‑style upfront design while still providing a concrete destination. The speaker argues that for work that cannot be completed in one session, Wayfinder offers a systematic, scalable way to plan and execute, even for non‑coding endeavors.",
+   "claims": [
+    "I have figured out a way to plan work of any size using an AI agent.",
+    "Existing planning tools are too constrained because they are tied to a single session.",
+    "My new approach removes the single‑session limit.",
+    "Wayfinder can orchestrate planning of enormous chunks of work across multiple sessions.",
+    "Wayfinder can manage both research and real‑world tasks."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "Don't waste time on specs: /prototype instead",
+  "url": "https://www.youtube.com/watch?v=n0VhIVtviC0",
+  "published_at": "2026-07-23",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by observing that many developers feel compelled to write exhaustive specifications before involving AI, mistakenly believing that a perfect spec guarantees correct output. He points out that this impulse ignores the fact that code can be written incrementally, using throwaway prototypes that directly answer design questions. Because the cost of generating code has dropped dramatically, creating quick, high‑fidelity prototypes is now cheap and highly effective. By integrating a dedicated \"prototype\" skill into his Wayfinder planning system, he can raise the fidelity of discussions when needed, turning abstract questions into concrete, testable artifacts. Although higher‑fidelity prototypes consume more tokens, they provide clearer answers than low‑fidelity conversation, reducing the gap between spec and production code. Consequently, he argues that teams should replace over‑specification with iterative prototyping—both for UI and back‑end logic—to achieve faster, more reliable outcomes.",
+   "claims": [
+    "People think they need to create a detailed spec for AI before getting useful outputs.",
+    "You can actually write code while working towards a spec, using throwaway prototypes to answer questions.",
+    "A prototype is throwaway code that answers a question.",
+    "The cost of producing code has gone way, way down, making prototypes cheaper than ever and a more effective tool.",
+    "Producing prototypes (quick throwaway spikes) has never been cheaper and never been a more effective tool."
+   ],
+   "more_claims": 3
+  }
+ },
+ {
+  "title": "There is no such thing as greenfield",
+  "url": "https://www.youtube.com/shorts/0l7zOp260yc",
+  "published_at": "2026-07-21",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "Do you even need human review?",
+  "url": "https://www.youtube.com/shorts/Yn8h5Ip-L9c",
+  "published_at": "2026-07-20",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "What is the dumb zone?",
+  "url": "https://www.youtube.com/shorts/sOd7svdu_1I",
+  "published_at": "2026-07-20",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "Using /grill-me for interviews?!",
+  "url": "https://www.youtube.com/shorts/5hYsBUMmr-I",
+  "published_at": "2026-07-20",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "Kill your MEMORY.md",
+  "url": "https://www.youtube.com/shorts/A0scuiiGBC4",
+  "published_at": "2026-07-17",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "Framework Hell, Tutorial Hell... now Skill Hell",
+  "url": "https://www.youtube.com/shorts/32LyZyFQhCQ",
+  "published_at": "2026-07-17",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "This change makes /grill-me SO MUCH BETTER",
+  "url": "https://www.youtube.com/shorts/tLyfDIt9wHg",
+  "published_at": "2026-07-17",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "My #1 book recommendation for strategic programming",
+  "url": "https://www.youtube.com/shorts/t34UuBxB2YQ",
+  "published_at": "2026-07-16",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "I'm thinking about changing my most popular skill",
+  "url": "https://www.youtube.com/shorts/U832hShMVnc",
+  "published_at": "2026-07-16",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "mattpocock/skills: A complete AI Coding workflow, end-to-end",
+  "url": "https://www.youtube.com/watch?v=M6mYodf0dJM",
+  "published_at": "2026-07-16",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker assumes that users of his AI coding skills need a clear, repeatable workflow. He begins by installing the skills, configuring them for a chosen agent, and setting up an issue‑tracker, arguing that this universal setup works for any agent. He then proposes a step‑by‑step main flow—starting with the \"grill with docs\" skill to elicit a concise, shared understanding, compressing that discussion into a spec, breaking the spec into tickets that each fit within a single context window, and finally running the implement skill which automatically performs type‑checking, building, and a sub‑agent code review against both the spec and coding standards. Throughout he stresses the importance of staying within token limits (≈140 k) to avoid attention degradation, and he rejects monolithic agent runs in favor of modular sub‑agents for better editing and review. The conclusion is that following this disciplined, token‑aware, modular workflow yields reliable AI‑assisted development.",
+   "claims": [
+    "One thing that is good is that it will set up your skills to work with any agent.",
+    "I believe that being conscious about the context window that you're using, the tokens that you're using is essential to using AI well.",
+    "Grill with docs interviews you to sharpen the idea and because you're in a repo it's stateful.",
+    "If a question needs a runnable answer, then you can use prototype.",
+    "If you go above 140k tokens you get attention degradation and the model becomes stupider."
+   ],
+   "more_claims": 1
+  }
+ },
+ {
+  "title": "Claude Code's system tools are SO BLOATED",
+  "url": "https://www.youtube.com/shorts/oLx4yCbeklQ",
+  "published_at": "2026-07-16",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "My /teach skill is still insane",
+  "url": "https://www.youtube.com/shorts/glaIO6OYh74",
+  "published_at": "2026-07-16",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "Do software fundamentals still matter?",
+  "url": "https://www.youtube.com/shorts/eEjBhVI9Qok",
+  "published_at": "2026-07-16",
+  "source": "youtube",
+  "not_read": {
+   "reason": "skipped_short",
+   "say": "too short to be worth reading — braintrust skips these by setting"
+  }
+ },
+ {
+  "title": "New Skills! v1.1 brings /wayfinder, /research, /implement, /to-spec, /to-tickets",
+  "url": "https://www.youtube.com/watch?v=A8mokin_YOs",
+  "published_at": "2026-07-08",
+  "source": "youtube",
+  "note": {
+   "argument": "The author begins by pointing out that the existing skill names (two PRD, two issues) were misleading and caused friction for users. By renaming them to two spec and two tickets, the workflow better reflects the actual artifacts being created and removes bias toward specific issue trackers. He then addresses practical bugs in the grilling skills, noting that recent fixes have cut down odd complaints. Recognizing that large planning tasks overwhelm a single agent session, he introduces the Wayfinder skill, which splits such work into manageable tickets mapped in GitHub, thereby reducing anxiety and enabling collaborative tracking. Complementary research and prototype skills further flesh out a full software development lifecycle. Finally, he streamlines the TDD skill to a simple red‑green order, arguing that refactoring belongs in code review. The overall turn is that these naming, bug‑fix, and workflow improvements collectively make the system clearer, less error‑prone, and more collaborative, and the release will be remembered for these structural changes.",
+   "claims": [
+    "The thing we were creating in two PRD wasn’t actually a PRD, it was a spec.",
+    "Two issues always felt biased toward GitHub and Linear, so we should call them tickets instead.",
+    "The recent bug fixes to the grilling skills have dramatically reduced strange complaints.",
+    "Wayfinder is designed for planning tasks that are too big for a single agent session by breaking them into tickets and mapping them in GitHub issues.",
+    "Using Wayfinder eliminates the anxiety of managing sessions with Grill with Docs because each ticket is saved collaboratively in GitHub."
+   ],
+   "more_claims": 3
+  }
+ },
+ {
+  "title": "Learn anything with the /teach skill",
+  "url": "https://www.youtube.com/watch?v=s5T5oQJcJ6U",
+  "published_at": "2026-06-08",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by reflecting on a decade of teaching experience and the desire to encapsulate that expertise in an AI skill. Observing that effective teaching requires tracking a learner's progress, they argue that the skill must be stateful rather than stateless, explaining the distinction between the two. They design the /teach skill to be stateful, incorporating components such as a mission file, curated high‑trust resources, concise HTML lessons, quizzes, and learning records, all guided by the zone of proximal development to keep learners optimally challenged. Demonstrating the skill with a Rubik's Cube tutorial, they show how it adapts to the learner's state and provides interactive feedback. The speaker then extrapolates the utility of such a skill to engineering contexts like onboarding, and positions developers as the first community to experience AI's strengths—particularly code generation—giving them a unique advantage to pioneer AI‑augmented learning tools.",
+   "claims": [
+    "Teach needed to be a stateful skill.",
+    "A stateless skill doesn't retain any state from previous runs.",
+    "Stateful skills save data to the local file system or to MCP servers.",
+    "Neither stateless nor stateful skills are inherently better; they are useful in different situations.",
+    "The zone of proximal development is the key teaching idea that you should always teach someone in the area where they are perfectly challenged but not intimidated."
+   ],
+   "more_claims": 6
+  }
+ },
+ {
+  "title": "Can Cursor's HARDCORE Review Skill Stop The Slop?",
+  "url": "https://www.youtube.com/watch?v=mh5XZ-L5SFQ",
+  "published_at": "2026-05-28",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by evaluating an existing code‑review skill, noting its high star count but also expressing dissatisfaction with its current state. He highlights the skill's ambition—its push for structural simplifications, code‑judo moves, and aggressive refactoring—while pointing out concrete problems: large files strain the agent's context window, the skill ignores testing, repeats many guidelines, and encourages unnecessary optionality in TypeScript. He argues that this over‑ambition leads to many false positives, yet those are cheap to reject, whereas missed issues are dangerous. From these observations he concludes that the skill should be trimmed for brevity, made more test‑centric, and better calibrated to avoid needless duplication, but still merits experimentation because its ambitious stance can surface valuable improvements.",
+   "claims": [
+    "The skill has attracted a huge amount of attention, with over 109,000 stars.",
+    "The skill is notable for how ambitious it asks the reviewer to be.",
+    "Large files are hard for agents to navigate because they must ingest the entire file into their context window.",
+    "The skill currently lacks any mention of testing.",
+    "I would get the skill to focus a lot more on tests."
+   ],
+   "more_claims": 2
+  }
+ },
+ {
+  "title": "9 Things People Get Wrong With My /grill-* skills",
+  "url": "https://www.youtube.com/watch?v=UzMNBN6xLLA",
+  "published_at": "2026-05-25",
+  "source": "youtube",
+  "note": {
+   "argument": "The author begins by defining Grill Me skills as a relentless questioning process that requires the user to be a good planner. He distinguishes between grillable (low‑fidelity) and ungrillable (high‑fidelity) questions, arguing that the latter must be handled via a prototyping handoff. He then warns that overly large scopes introduce hidden high‑fidelity questions and can exceed a model’s token limit, pushing it into a “dumb zone.” Effective use therefore demands active participation—neither passive surrender to endless low‑fidelity queries nor over‑active fixation on them. The author stresses preserving the context and design decisions made during grilling, rather than discarding them, and insists on using sufficiently capable models because grilling leans on their parametric knowledge. Finally, he proposes running two (or more) grilling sessions in parallel to increase planning throughput. Together, these points form a step‑by‑step guide to avoid common failure modes and get the most out of the Grill Me skills.",
+   "claims": [
+    "The idea of these skills is that they relentlessly question you, continually asking questions until you reach a shared understanding.",
+    "The person answering the questions using the Grill Me skill needs to be good at planning.",
+    "These skills are short and are meant to aid engineers, not replace them.",
+    "Some questions are grillable (answerable in a grilling session) while others are ungrillable and require a different approach.",
+    "If the scope of a grilling session is too large, hidden high‑fidelity questions will arise that are hard to answer without seeing the full thing."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "/handoff is my new favourite skill",
+  "url": "https://www.youtube.com/watch?v=dtAJ2dOd3ko",
+  "published_at": "2026-05-21",
+  "source": "youtube",
+  "note": {
+   "argument": "The author begins by noting that large language‑model agents suffer a performance drop as their context window fills, defining a \"smart zone\" (roughly the first 120 k tokens) and a \"dumb zone\" beyond that. Existing tools like compact can summarise a conversation to move it back into the smart zone, but compact either clobbers progress or creates a layered sediment of summaries that can become inefficient. To preserve the purity of a current session while still tackling out‑of‑scope tasks, the author created the handoff skill, which extracts the relevant slice of context, writes a concise markdown hand‑off document, and saves it to a temporary location. This enables parallel sessions, prototyping, and a DIY sub‑agent workflow where learnings are compressed and fed back to the original session. The author also codifies best practices for hand‑off documents—saving them temporarily, redacting sensitive data, avoiding duplication, and including a suggested‑skill section—to make the process reliable and portable across different agents. The conclusion is that handoff is an essential, reusable tool in the author’s workflow for managing context limits and orchestrating multi‑session development.",
+   "claims": [
+    "The handoff skill takes the context window of the current session and compresses it into a markdown file that can be handed off to another session.",
+    "I use handoff to slice out the relevant part of a session and run it independently in another session.",
+    "Compact summarizes a large conversation to move it from the “dumb zone” back into the “smart zone.”",
+    "Even though Anthropic advertises a huge context window, only about 120 k tokens are effectively useful for smart tasks.",
+    "Hand‑off files should be saved to the temporary directory of the user’s OS because they are disposable."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "I stopped using /grill-me for coding. Here’s what I use instead:",
+  "url": "https://www.youtube.com/watch?v=6BB6exR8Zd8",
+  "published_at": "2026-05-14",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by praising the existing Grill Me skill, acknowledging its initial slowdown but ultimately claiming it saves time. He then identifies a core limitation: the need to repeatedly explain non‑obvious domain concepts to the AI. To solve this, he introduces the ubiquitous‑language concept from domain‑driven design, which creates a shared documentation of terminology. By merging this documentation approach with Grill Me, he creates a new skill—Grill with Docs—that automatically reads a context.md file to provide the AI with the shared language. This integration yields concrete benefits: the AI can respond more concisely, uses fewer tokens, and its reasoning aligns with the codebase, making the code easier to navigate. Consequently, he proposes a simple rule: use Grill with Docs whenever a code base exists, otherwise continue using Grill Me, which still has valuable non‑engineering applications. He reinforces the claim by noting ongoing skill updates via his newsletter.",
+   "claims": [
+    "The Grill Me skill is an absolute game‑changer.",
+    "Grill Me may feel slow at first but ultimately saves time.",
+    "Grill Me forces me to re‑explain all of the non‑obvious domain concepts before any productive work can happen.",
+    "Ubiquitous language is a DDD‑based document that captures the shared language of code, developers, and domain experts.",
+    "Grill with Docs looks for a context.md file that documents all of the shared language for the bounded context."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "Anthropic's \"dedicated monthly credit\" is actually a huge cut",
+  "url": "https://www.youtube.com/watch?v=lNOQaakmyDU",
+  "published_at": "2026-05-13",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by explaining Anthropic's new announcement about a dedicated monthly credit that applies only to programmatic (AFK) usage of Claude. He contrasts AFK use cases with human‑in‑the‑loop use cases, noting that previously a single subscription could fund both. He then points out that the credit effectively reduces the amount of compute available for AFK work, constituting a large cut for users like himself. Interpreting Anthropic's intent, he argues that the company is deliberately favoring human‑in‑the‑loop interactions and limiting AFK usage, even though the change adds a nominal bonus. While he appreciates the clarity the announcement brings, he concludes that the cut forces him to move his AFK workloads to a competitor (Codex) that does not impose such a split, while retaining Claude for human‑in‑the‑loop tasks.",
+   "claims": [
+    "Anthropic is prioritizing human‑in‑the‑loop use cases over AFK ones.",
+    "The new dedicated monthly credit results in a massive cut in usage limits for AFK work.",
+    "Anthropic does not want or care about users employing Claude for AFK purposes.",
+    "The author will use Codex more for AFK tasks.",
+    "A 20x Anthropic subscription is roughly ten times cheaper than using API credits."
+   ],
+   "more_claims": 1
+  }
+ },
+ {
+  "title": "New Skills! /handoff, /prototype, /review and /writing-* | Skills Changelog",
+  "url": "https://www.youtube.com/watch?v=DNqsMXH6Eog",
+  "published_at": "2026-05-12",
+  "source": "youtube",
+  "note": {
+   "argument": "The author begins by noting the rapid growth of the skills repository and uses that momentum to introduce two new capabilities—hand‑off and prototype—that address concrete workflow pain points. They argue that manual context transfer between agents wastes tokens and creates errors, so the hand‑off skill automates the creation of a temporary document that preserves both content and the underlying vibe, while also handling file‑read quirks in Claude. Building on that, they claim that prototyping is a core research tool in AI engineering, useful not only for UI but also for business‑logic state machines, allowing developers to explore unknowns in a throwaway environment before committing code. The author supports these claims with concrete examples, bug‑fixes (XML‑tag prioritisation, triage labeling), and future plans (writing and code‑review skills), showing a pattern of identifying a limitation, devising a skill to overcome it, and validating the improvement through observed user feedback. The overall reasoning is that specialized, modular skills can extend the capabilities of AI agents while keeping each agent's context window manageable and its output reliable.",
+   "claims": [
+    "Prototyping is essential in AI engineering as a way to research, spike, and flush out design decisions before committing to them.",
+    "The UI prototype skill generates several radically different UI variations directly in the target location with a floating button for selection.",
+    "Human feedback is necessary for UI prototypes because UI quality depends on taste and style that AI cannot fully assess."
+   ]
+  }
+ },
+ {
+  "title": "Burn through the backlog from hell with /triage",
+  "url": "https://www.youtube.com/watch?v=MzWIIlx0Gpc",
+  "published_at": "2026-05-07",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by diagnosing a gap: most skill‑based automation works for solo developers but breaks down in team settings where many people contribute ideas and bug reports. To fill that gap they present a new skill, triage, which they have already deployed across all their open‑source repos. They explain that triage works by attaching a state‑machine of category and state labels to each issue, guaranteeing that every issue has exactly one of each. This labeling scheme lets the system automatically distinguish bugs from enhancements, and further classify them (needs triage, needs info, ready for agent, etc.). By requiring a brief before an issue can be marked “ready for agent,” the skill creates a clean hand‑off point for autonomous agents. The speaker demonstrates the workflow: the AI lists untriaged issues, applies labels, diagnoses bugs, writes fixes, and pushes changes, all while monitoring context usage. The argument concludes that this label‑driven pipeline turns noisy human input into well‑defined tasks that autonomous agents can reliably consume, and that the approach dovetails with other skills like PRD generation.",
+   "claims": [
+    "The problem with most skill‑based setups is that they work well for solo developers but not for teams.",
+    "I have built a skill called triage and I run it on every open‑source repository I maintain.",
+    "Triage is great for working through GitHub issues and can be plugged into Jira or any backlog to turn items into actionable tasks or reject them.",
+    "The skill is driven by a state machine encoded into labels.",
+    "Triage integrates well with my existing skills, such as creating PRDs that can be marked ready for agent."
+   ]
+  }
+ },
+ {
+  "title": "I Open-Sourced My Own AFK Software Factory",
+  "url": "https://www.youtube.com/watch?v=E5-QK3CDVQM",
+  "published_at": "2026-04-30",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by noting that autonomous AI coding agents need sandboxing to handle permission requests safely. Existing sandbox solutions were unsatisfactory, prompting the creation of a new tool, Sandcastle, a TypeScript library that lets users run prompts inside isolated sandboxes with any chosen agent. He demonstrates how Sandcastle integrates with Docker, GitHub issues, and a simple run function to orchestrate planning, implementation, review, and merging agents in parallel. By structuring the workflow so that a reviewer catches implementer errors and a merger resolves conflicts, the system becomes agnostic to the underlying AI model and dramatically speeds up development. The speaker concludes that the tool is flexible, unopinionated, and has already boosted his productivity, inviting others to adopt and extend it.",
+   "claims": [
+    "In order to get agents to run properly AFK, you need them to be sandboxed.",
+    "I was not particularly happy with any of the existing sandbox solutions.",
+    "I realized I needed to build something here.",
+    "Sandcastle is a TypeScript library for orchestrating AI coding agents in isolated sandboxes.",
+    "You can use Sandcastle to build TypeScript scripts that simply run a prompt inside a sandbox using a chosen agent."
+   ],
+   "more_claims": 5
+  }
+ },
+ {
+  "title": "How To De-Slop A Codebase Ruined By AI (with one skill)",
+  "url": "https://www.youtube.com/watch?v=3MP8D-mdheA",
+  "published_at": "2026-04-29",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by observing that AI has accelerated software entropy, causing codebases to degrade faster as incremental changes introduce hidden problems. To counter this, they advocate restructuring code into deep modules—units with simple interfaces that hide complex implementations—because deep modules provide locality for maintainers and leverage for users. They define the terminology (modules, interfaces, seams, adapters) and explain how deep modules improve testability and maintainability. Using an AI‑driven \"improve code base architecture\" skill, developers can identify shallow‑module hotspots and refactor them into deeper modules, but the AI only supplies suggestions; a human strategic programmer must evaluate and apply them. Regular use of the skill, combined with good testing harnesses, is recommended, especially for legacy (i.e., shallow‑module, bad) codebases.",
+   "claims": [
+    "AI has simply accelerated software entropy.",
+    "Codebases are falling apart faster than they ever have before because every change that doesn’t consider the whole codebase introduces small, weird things that make the code harder to change.",
+    "Deep modules are considered better than shallow modules because they hide more information from the caller.",
+    "For maintainers, deep modules give locality – changes and bugs are concentrated in one place.",
+    "For users, deep modules give more leverage – more capability per unit of interface they have to learn."
+   ],
+   "more_claims": 1
+  }
+ },
+ {
+  "title": "Never Trust An LLM",
+  "url": "https://www.youtube.com/watch?v=9VNG0h4pLh0",
+  "published_at": "2026-03-27",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by observing that large language models frequently produce false statements—\"hallucinations\"—and that this unreliability has made him and many other developers distrust them. He categorises hallucinations (factual errors, fabricated entities, contextual inconsistencies) and distinguishes between intrinsic (information supplied in the current conversation) and extrinsic (knowledge the model must retrieve from its training data) sources. He then explains why hallucinations occur: the training process compresses vast amounts of data, discarding detail, so the model often has only a low‑resolution representation of facts and therefore guesses when asked about missing information. Moreover, benchmark‑driven evaluation rewards confident guesses over admissions of uncertainty, reinforcing this behavior. From this analysis he concludes that LLMs can be useful if used correctly—by feeding them the necessary context (intrinsic information) or by forcing them to fetch up‑to‑date data via a search tool—while still remaining skeptical of any extrinsic answers they generate.",
+   "claims": [
+    "LLMs lie. They lie all the time.",
+    "Hallucinations are so unbelievably common that I am now paranoid about everything an LLM says to me and I will never ever trust an LLM.",
+    "Every software developer I talk to shares the same intuition that LLMs hallucinate constantly.",
+    "LLMs are unreliable, especially when you rely on their extrinsic knowledge.",
+    "LLMs are much more reliable when you provide them with the information first."
+   ],
+   "more_claims": 4
+  }
+ },
+ {
+  "title": "Claude Code tried to improve /init... Is it any better?",
+  "url": "https://www.youtube.com/watch?v=llwTBpPqo9A",
+  "published_at": "2026-03-23",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by testing the newly released Claude code init command, noting that it asks the user a series of setup questions. He argues that these questions are unnecessary because the tool could automatically explore the repository to discover where skills and hooks belong. He then critiques the ask‑user‑question UI as unusable, recommending its removal. Evaluating each suggested addition to Claude.md, he accepts a single line about useEffect reducer as a cheap safeguard, rejects redundant entries such as testing patterns and build commands that Claude can already infer, and dismisses an explanatory header that adds no value. He praises the new init script for producing a far smaller Claude.md and a useful skill (npm‑install‑force for effect packages) compared to the previous bloated version, while still urging the team to make the system less sycophantic and more proactive. The overall conclusion is that a minimal, non‑redundant Claude.md combined with targeted skills represents a genuine improvement, provided the UI and suggestion logic are refined.",
+   "claims": [
+    "The init script should not ask the user questions about skills and hooks but should automatically explore the repository to determine appropriate additions.",
+    "The ask‑user‑question UI is terrible and should not be used.",
+    "Including a one‑line instruction about useEffect reducer in Claude.md is worthwhile as cheap insurance against a mistake.",
+    "The new init script is an improvement over the previous version because it produces a minimal Claude.md and a useful skill instead of a huge file.",
+    "The top explanatory line in Claude.md (“This file provides guidance to Claude code…”) is unnecessary because the LLM already knows its purpose."
+   ],
+   "more_claims": 1
+  }
+ },
+ {
+  "title": "Building a REAL feature with Claude Code: every step explained",
+  "url": "https://www.youtube.com/watch?v=hX7yG1KVYhI",
+  "published_at": "2026-03-18",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by rejecting the hype that Claude code represents a brand‑new paradigm, arguing instead that existing software‑development practices—incremental design, feedback loops, and treating tools as teammates—apply just as well. He identifies concrete pain points in his current system: the cumbersome two‑step ghost‑lesson workflow, the lack of a direct delete UI for real lessons, and the inability to create courses without a file‑system path. He proposes a set of concrete enhancements—direct creation of real lessons, a “ghost course” concept with a nullable file‑path column, UI changes to expose delete and creation actions, and a materialisation cascade that automatically creates on‑disk artifacts when needed. To flesh out these ideas he uses Claude to ask clarifying questions, capture a ubiquitous‑language glossary, and generate a concise PRD. The PRD is broken into bite‑sized GitHub issues, each with clear acceptance criteria. An autonomous “AFK” agent (Ralph) then iterates over the issues, writing code, tests, and commit messages while the author QA‑tests in parallel, feeding back bugs and refinements. The loop continues until the feature set is complete, demonstrating that the combination of human‑in‑the‑loop design, AI‑generated specifications, and autonomous implementation yields a rapid, reliable development process.",
+   "claims": [
+    "The techniques we’ve been using for the past 20 years work really well with Claude code.",
+    "You get the most out of Claude code when you treat it like a teammate you would delegate work to.",
+    "Ghost courses let me plan courses without having to commit to a concrete file‑system path.",
+    "Once a course has a file‑system path it stays a real course forever because the on‑disk representation never disappears.",
+    "To support ghost courses the courses table’s file‑path column must be made nullable."
+   ]
+  }
+ },
+ {
+  "title": "5 Claude Code skills I use every single day",
+  "url": "https://www.youtube.com/watch?v=EJyuu6zlQCg",
+  "published_at": "2026-03-16",
+  "source": "youtube",
+  "note": {
+   "argument": "The speaker begins by asserting that, in modern development, process is more critical than ever because the AI agents they employ lack any memory of prior actions. This memory limitation forces developers to impose extremely strict, well‑defined processes to make the agents useful. To that end, the speaker has created a suite of concise, purpose‑built skills—Grill Me, Write a PRD, PRD‑to‑Issues, TDD, and an architecture‑improvement skill—that structure interaction with the agents, enforce shared understanding, translate ideas into concrete specifications, break those specifications into actionable tasks, and ensure rigorous test‑driven development. By consistently applying these skills, the speaker observes a marked increase in the quality of code generated by the agents. The conclusion is that treating agents as memory‑less humans and surrounding them with disciplined processes and targeted skills is the most effective path to high‑quality AI‑assisted engineering, and the speaker offers a course to teach this approach.",
+   "claims": [
+    "Process has never been more important.",
+    "These AI engineers have no memory.",
+    "You need extremely strict and well‑defined processes to get those agents to actually do useful things.",
+    "The code quality that the AI’s producing has shot up because of these skills.",
+    "Skills don’t have to be long to be impactful."
+   ],
+   "more_claims": 3
+  }
+ }
+]

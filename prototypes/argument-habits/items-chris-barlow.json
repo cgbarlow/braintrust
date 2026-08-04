@@ -1,0 +1,85 @@
+[
+ {
+  "title": "The Guild Hall is open for business 🏰",
+  "url": "https://unchartedquests.substack.com/p/the-guild-hall-is-open-for-business",
+  "published_at": "2026-02-02",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by criticizing conventional goal‑setting as feeling like homework and generating guilt. They reject that model and argue that framing work as quests—where obstacles are expected, struggle signals progress, and completion reflects personal growth—offers a more motivating structure. To embody this philosophy they built Guild Hall, a quest‑based platform that replaces static goals with adventure‑style tasks. The platform’s design (skill tiers, streak tracking, challenge questions, contextual greetings, nudge banners, weekly emails, philosophy quotes, and a refreshed dashboard) operationalises the quest metaphor, turning learning into an engaging, game‑like experience. The conclusion is that Guild Hall provides a better, less obligatory way to learn agentic engineering.",
+   "claims": [
+    "Traditional goal‑setting feels like homework.",
+    "Quests work better than goals because obstacles become expected parts of the adventure, struggle proves you’re on the right path, and completion is about who you’ve become, not just what you’ve ticked off.",
+    "Guild Hall is a quest‑based platform where learning agentic engineering feels less like obligation and more like an actual adventure.",
+    "Skill tiers let users see their progress from Apprentice to Legend on a dashboard progress bar.",
+    "Streak tracking records daily activity streaks with milestone badges and lets users configure weekends."
+   ],
+   "more_claims": 6
+  }
+ },
+ {
+  "title": "An epic quest in career development (part 3)",
+  "url": "https://unchartedquests.substack.com/p/an-epic-quest-in-career-development-465",
+  "published_at": "2025-03-22",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by presenting the Quest Buddy concept, asserting that any activity can be turned into a quest, that quests can be grouped, and that completing quests should earn a badge. Building on this, they argue that digital badges are an exciting and valuable way to demonstrate skills, and that the underlying technology of digital verifiable credentials makes it possible to store and verify these badges securely in a digital wallet without contacting the original issuer. From these premises, they envision a future where every completed quest is linked to a digital badge and where badges can be issued by a wide variety of sources—educational institutions, employers, festivals, adventure operators—thereby making badges ubiquitous evidence of learning and achievement. The conclusion is an invitation to others to engage with this quest‑based, badge‑driven model.",
+   "claims": [
+    "Anything can be a quest!",
+    "Multiple quests can be grouped.",
+    "Completing quests earns you a badge.",
+    "Digital badges deserve to become ubiquitous as a way of demonstrating evidence of skills gained through formal and experiential learning.",
+    "Digital verifiable credentials allow secure electronic versions of traditional documents that can be easily verified online without needing to contact the original issuer."
+   ],
+   "more_claims": 2
+  }
+ },
+ {
+  "title": "An epic quest in career development (Part 2)",
+  "url": "https://unchartedquests.substack.com/p/an-epic-quest-in-career-development-d1a",
+  "published_at": "2025-03-16",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by extending the earlier metaphor of career development as an epic quest, now proposing to model the work of IT Architects as an interactive card game. They describe the game's objective, setup, and mechanics, explicitly linking each element (colored action cards, resource costs, teamwork bonuses) to real‑world architectural roles and collaborative processes. By asserting that the game's structure promotes teamwork, strategic planning, and cooperative play, they argue that the game faithfully mirrors the dynamics of actual IT architecture teams. The conclusion is that playing this game provides a fun, experiential simulation of the professional challenges and collaborative nature of IT architecture work.",
+   "claims": [
+    "The Practice: A Card Game simulates the dynamic experience of working in a team of IT Architects within a typical organisation.",
+    "The main goal is to deliver Outcomes.",
+    "This structure promotes teamwork and strategic planning, simulating real‑world scenarios where different job roles must collaborate to achieve organizational objectives.",
+    "This rule encourages cooperative play by allowing players to support one another, mirroring the collaborative nature of IT architectural teams within organizations.",
+    "The player with the most star tokens at the end wins."
+   ]
+  }
+ },
+ {
+  "title": "An epic quest in career development (Part 1)",
+  "url": "https://unchartedquests.substack.com/p/an-epic-quest-in-career-development",
+  "published_at": "2025-03-09",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by noting that most employees feel uninspired by the usual professional‑development planning process, leaving managers struggling to engage their teams. They introduce SFIA as a structured framework for defining tech roles, then describe how they repurposed that framework into a game‑like system of Magic‑the‑Gathering character cards and a D&D‑style handbook. This gamified “Architect’s Role Compendium” reframed career progression as quests rather than distant goals, arguing that quests provide narrative, immediate action, and intrinsic rewards, making the process psychologically easier and more enjoyable. The author reports that this approach has proven effective in real development conversations and concludes that low‑cost, creative gamification can transform mundane development work into a fun, appreciated experience for teams.",
+   "claims": [
+    "Most people feel uninspired about updating their professional development plans.",
+    "SFIA provides a structured definition for technology‑based roles.",
+    "Turning position descriptions into Magic‑the‑Gathering‑style character cards is an effective tool for engaging team members in development conversations.",
+    "Framing career goals as quests is more engaging, psychologically easier, and more enjoyable than traditional goal setting.",
+    "Creative, low‑cost gamification can turn mundane development activities into something fun that teams will appreciate."
+   ]
+  }
+ },
+ {
+  "title": "Welcome to Uncharted Quests",
+  "url": "https://unchartedquests.substack.com/p/welcome-to-uncharted-quests",
+  "published_at": "2025-03-02",
+  "source": "substack",
+  "note": {
+   "argument": "The author begins by observing that many people are stuck with uninspiring to‑do lists. To overcome this, they propose re‑framing every task as a step in a larger quest, arguing that such a narrative structure makes work more engaging and meaningful. They extend the idea to the emerging context of agentic AI workflows, claiming that quests offer a practical adaptation strategy. To support individuals on these quests, the author introduces a digital guide—or NPC—that provides timely advice, keeps users on track, and celebrates progress. Finally, they suggest that applying quest‑based design to business processes can transform organizations, turning routine activities into purposeful, adventure‑like narratives.",
+   "claims": [
+    "Too many of us end up with a long list of to-dos that rarely inspire us.",
+    "Quest-based experiences turn ordinary tasks into parts of a larger quest, making work more engaging and meaningful.",
+    "Reimagining routine activities as quests makes them more engaging and more meaningful.",
+    "A digital guide or NPC can act as a smart companion that offers timely advice, keeps you on track, and celebrates your progress.",
+    "In the era of agentic AI workflows, framing work as quests provides a practical way to adapt."
+   ],
+   "more_claims": 1
+  }
+ }
+]
