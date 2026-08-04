@@ -513,7 +513,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         ['separated', 'overlapping', 'not_measurable'].includes(measured.separation as string),
         `separation was ${String(measured.separation)}`,
       );
-      assert.equal(typeof measured.margin, 'number');
+      assert.equal(typeof measured.floor, 'number');
       // Never a measured outcome without the evidence for one.
       if (measured.separation === 'not_measurable') {
         assert.equal(measured.in_low, null);
@@ -521,6 +521,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         assert.equal(typeof measured.in_low, 'number');
         assert.equal(typeof measured.out_high, 'number');
       }
+      // And `span` exists only where the probes actually separated — it is the scale
+      // `fit` grades against, and an unearned scale is worse than none.
+      assert.equal(measured.span === null, measured.separation !== 'separated');
     });
 
     it('still promotes a persona when there is no embedder to calibrate with', async () => {

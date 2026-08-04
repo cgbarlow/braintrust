@@ -456,7 +456,39 @@ questions per reference Persona, run against the operator's endpoint; the thresh
 separate, and **if they do not separate, the endpoint is wrong for the job.** The four probes above are the
 seed of that set.
 
-##### The Compile measures its own gate — corrected by [#128](https://github.com/cgbarlow/braintrust/issues/128)
+##### The margin measured the endpoint, not the corpus — corrected by [#133](https://github.com/cgbarlow/braintrust/issues/133)
+
+**Everything below about *who* produces the threshold stands. What it measures does not.** The first live run
+of Compile-time calibration returned `overlapping` for every Persona, with off-corpus ceilings inside 0.05 of
+each other across Corpora of 5, 19 and 40 Items — `0.3047`, `0.2543`, `0.2549`. **A statistic that returns one
+number for three unrelated Corpora is describing the embeddings model, not the Corpora.** `ethan-mollick` then
+refused *"what AI agents change about how work actually gets done"*, which is the dead centre of what he
+writes about.
+
+The same probe carried the answer. Top **absolute** similarity on that Corpus:
+
+| Question | Top |
+|---|---:|
+| the correct water temperature for poaching an egg | **0.445** |
+| what AI agents change about how work actually gets done | **0.691** |
+
+So the gate is `top >= floor`, and the floor is measured per Persona on every Compile. **This restores what
+[#115](https://github.com/cgbarlow/braintrust/issues/115) removed, and its reason for removing it was one
+observation of a guess failing:** eight Positions cleared `MATCH_FLOOR = 0.35`, a value #115 itself called
+unmeasured — and which sits *below* where off-corpus questions actually land. The instrument was never wrong.
+The setting was, and nobody had measured it. The elegant argument that a *shape* is endpoint-independent where
+a *distance* is not was true in principle and false in fact.
+
+**`did_not_select` is gone from `nothing_matched`.** It named the margin test and has nothing left to mean: a
+question either reaches this Corpus or it does not. Two reasons remain — `below_floor` and `nothing_indexed`.
+
+**And the `overlapping` fallback reversed.** It used to enforce the off-corpus ceiling, on the reasoning that
+refusing too much is the safer failure. It then did exactly that to a live Persona, which answered nothing at
+all. **A Persona that over-answers is wrong in a way a reader can see and challenge; one that refuses
+everything is indistinguishable from a broken deployment.** An unusable measurement is now discarded rather
+than enforced.
+
+##### The Compile measures its own gate — [#128](https://github.com/cgbarlow/braintrust/issues/128)
 
 The paragraph above is right that the threshold cannot be a shipped constant, and wrong about who should
 therefore produce it. It shipped as prose rather than a command and was never run: `SELECTIVITY_MARGIN` went
@@ -511,8 +543,8 @@ answers the question asked, and `measured` + `high` + four dated quotes reads as
 second, per-result grade says how well the Position fits *this query***, so a weakly-fitting Position is
 visibly weak even when it is impeccably evidenced.
 
-**`fit` is clearance over the Corpus's middle, and must never be normalised against the answer it is
-grading.** The first build divided by the query's own range — `(similarity − median) / (top − median)` — so
+**`fit` is height above the Persona's own measured floor, in units of its own measured span, and must never
+be normalised against the answer it is grading.** The first build divided by the query's own range — `(similarity − median) / (top − median)` — so
 the best-matching Position scored exactly `1.0` and graded `close` **for every query ever asked**, including
 *poaching an egg*. A grade computed against its own subject carries no information about that subject, and
 `fit` exists for the single purpose of being able to say *this does not answer you*. The thresholds are

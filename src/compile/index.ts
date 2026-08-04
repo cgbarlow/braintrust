@@ -63,7 +63,13 @@ import { voiceLayer } from './voice.js';
  * to say which rule measured it. `VOICE_MIN_WORDS` rides here too, so tuning the floor
  * rebuilds every Persona and the change is visible rather than silent.
  *
- * **`measured-3` is the self-calibrated gate**: a Compile now measures its own Persona's
+ * **`measured-4` is the gate measuring the right quantity.** `measured-3` calibrated
+ * #115's selectivity margin, which the first live run showed measures the embeddings model
+ * rather than the Corpus — three Personas, three sizes, one number, and a Persona refusing
+ * its own subject. The floor is absolute top similarity now. Same machinery, same
+ * automation; the quantity changed. See ./selectivity.ts.
+ *
+ * **`measured-3` was the self-calibrated gate**: a Compile now measures its own Persona's
  * selectivity margin and stores it (see ./selectivity.ts). A new measured fact is exactly
  * what this constant is for — and here it is load-bearing rather than documentary. A
  * Persona whose Corpus has not moved has no `has_unseen`, so **the only thing that can
@@ -72,7 +78,7 @@ import { voiceLayer } from './voice.js';
  * waiting for its subject to publish something — which is the one condition that has
  * nothing to do with whether braintrust can now measure its gate.
  */
-export const MEASUREMENT_VERSION = 'measured-3';
+export const MEASUREMENT_VERSION = 'measured-4';
 
 /**
  * What a Compile that could not compare revisions records instead of `revisions-1`.
@@ -398,7 +404,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     }
 
     log(
-      `braintrust: gate for ${person.slug} is ${calibrated.margin} (${calibrated.separation}` +
+      `braintrust: floor for ${person.slug} is ${calibrated.floor} (${calibrated.separation}` +
         `${calibrated.separation === 'separated' ? `, ${calibrated.probes.in} in / ${calibrated.probes.out} out` : ''}).`,
     );
 
