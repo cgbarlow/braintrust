@@ -143,6 +143,9 @@ _Avoid_: first seen, discovered, since
 
 **Basis**:
 Whether something was Measured or Inferred. Travels with the content all the way to the answer.
+**The word is reserved for that one distinction.** Anything else that wants to say *how this value was
+arrived at* — how a Compile's gate was settled, for instance — needs its own word, because a second meaning
+would make the first unreadable at exactly the moment it matters.
 _Avoid_: provenance, source type, confidence
 
 **Measured**:

@@ -510,12 +510,12 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       const measured = rows[0]?.selectivity;
       assert.ok(measured, 'every compile records what its gate was set to and why');
       assert.ok(
-        ['separated', 'overlapping', 'not_measurable'].includes(measured.basis as string),
-        `basis was ${String(measured.basis)}`,
+        ['separated', 'overlapping', 'not_measurable'].includes(measured.separation as string),
+        `separation was ${String(measured.separation)}`,
       );
       assert.equal(typeof measured.margin, 'number');
-      // Never a measured basis without the evidence for one.
-      if (measured.basis === 'not_measurable') {
+      // Never a measured outcome without the evidence for one.
+      if (measured.separation === 'not_measurable') {
         assert.equal(measured.in_low, null);
       } else {
         assert.equal(typeof measured.in_low, 'number');
@@ -528,11 +528,11 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       const report = await compile();
       assert.deepEqual(report.compiled, ['nate']);
 
-      const { rows } = await db.query<{ basis: string | null }>(
-        `select corpus_stats -> 'selectivity' ->> 'basis' as basis
+      const { rows } = await db.query<{ separation: string | null }>(
+        `select corpus_stats -> 'selectivity' ->> 'separation' as separation
            from braintrust_compiles where status = 'current'`,
       );
-      assert.equal(rows[0]?.basis, 'not_measurable');
+      assert.equal(rows[0]?.separation, 'not_measurable');
     });
 
     it('rebuilds exactly once, then goes quiet', async () => {

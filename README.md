@@ -73,7 +73,7 @@ Add your first council member through your AI client, not the command line — `
 
 `npm test` runs the suite; the database tests skip without a Postgres.
 
-**Run `npm run calibrate` once against your own embeddings endpoint.** It measures where braintrust should stop answering — the threshold that separates *this corpus covers your question* from *your question merely landed near it* — by probing questions the corpus demonstrably covers against questions nobody could think it covers, and reporting where the two groups separate. The value is a property of your embeddings model, so braintrust cannot ship it, and an uncalibrated gate does not fail loudly: it answers. The server warns at startup until you set `BRAINTRUST_SELECTIVITY_MARGIN`.
+**There is nothing to calibrate.** braintrust has to know when a question falls outside what it has read — otherwise a persona answers anyway, and answers well, with real quotes and real dates. Where that line sits depends on your embeddings model, so braintrust measures it rather than shipping a number: every compile probes the persona's own positions against questions nobody could think it covers, and puts the threshold in the gap. It re-measures on every rebuild, so it tracks a corpus as it grows. `npm run calibrate` reports what was measured and why, if you ever want to look.
 
 ## Talking to one persona: a Hermes agent per Person
 

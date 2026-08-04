@@ -22,6 +22,13 @@ specified correctly and the build did not deliver.** One tool added (§4), and t
 noticing: **two of the three were decisions that shipped as prose and were never checked against a running
 server** — a calibration nobody ran, and a grade whose implementation could not express what it was for.
 
+**What [the self-calibrating-gate map](https://github.com/cgbarlow/braintrust/issues/127) changed is one
+decision, made the day before and retired on an operator's instruction:** *"this needs to be fully automated
+and not a maintenance task and not something I should ever have to administer."* Calibration moves into the
+Compile (§3). **This is the first decision on this document that a Compile-time change was the right answer
+to** — the serving-surface reach below held for every other one, and holding it here produced a threshold a
+human had to own.
+
 **Reach: the serving surface.** Nothing here changes a Compile or requires recompiling a Persona — every
 decision improves Personas that already exist, the moment it deploys. Where a decision hit a wall that only the
 Compile can move, it is recorded in [Upstream, and not decided here](#upstream-and-not-decided-here) rather
@@ -449,26 +456,49 @@ questions per reference Persona, run against the operator's endpoint; the thresh
 separate, and **if they do not separate, the endpoint is wrong for the job.** The four probes above are the
 seed of that set.
 
-##### A required step that nobody runs is a gate that is open
+##### The Compile measures its own gate — corrected by [#128](https://github.com/cgbarlow/braintrust/issues/128)
 
-The step above shipped as prose and not as a command, so it was never taken. `SELECTIVITY_MARGIN` went to
-production at an admittedly unmeasured `0.06`, and *poaching an egg* still returned three Positions on
+The paragraph above is right that the threshold cannot be a shipped constant, and wrong about who should
+therefore produce it. It shipped as prose rather than a command and was never run: `SELECTIVITY_MARGIN` went
+to production at an admittedly unmeasured `0.06`, and *poaching an egg* still returned three Positions on
 `ethan-mollick` — **the exact failure this section exists to prevent, surviving the fix for it.**
+[#123](https://github.com/cgbarlow/braintrust/issues/123) then made it a command and a startup warning, which
+made it a *maintenance task*, which is the same mistake with better ergonomics.
 
-Two things follow, both landed by [#123](https://github.com/cgbarlow/braintrust/issues/123):
+**braintrust was already holding everything the measurement needs.** A compiled Position is, by construction,
+a claim this Corpus supports with dated citations — so embedding its statement gives a question the Corpus
+*must* be able to answer. Every Persona therefore carries its own known-in probe set, free, from the moment it
+compiles. The known-out set stays fixed and generic, and is the only authored thing left in the loop.
 
-- **The procedure is a command.** `npm run calibrate` runs the probe set through the *same* `selectivity()`
-  the server calls, prints both groups' ranges, and puts the threshold in the gap — or reports the overlap,
-  which is this section's own "the endpoint is wrong for the job" arriving as a measurement rather than a
-  worry. An operator pointing braintrust at a different embeddings model inherits the same unmeasured
-  constant, so **the harness is the durable half of this decision and the number is the perishable half.**
-- **Silence is not an option the surface offers.** The server warns at startup when the margin is unset,
-  because an uncalibrated gate does not fail loudly — it answers.
+So **every Compile measures its own Persona's margin**, through the same `selectivity()` the server calls, and
+stores it in `corpus_stats` beside the Coverage counts. Serving reads it per Persona.
+`BRAINTRUST_SELECTIVITY_MARGIN` is demoted to a pure override, the startup warning is deleted, and **no
+document tells anybody to calibrate anything.**
 
-**The same constant cannot serve two embedders, and this is now demonstrated in both directions.** The margin
-that under-refuses on the live Corpus *over*-refuses on the suite's bag-of-words fake, where it silently turned
-an integration test red. The test suite therefore calibrates its own embedder, which is the same act this
-section asks of an operator.
+**The threshold anchors near the off-corpus ceiling rather than midway between the groups.** Position
+statements are the synthesiser's paraphrase of what the Corpus says — semantically dead-centre, lexically
+distinct from the source, which is what makes them a fair test of meaning rather than of vocabulary. But they
+are an *optimistic* in-group: a question a human actually asks is fuzzier and scores lower than any Position
+statement, so the weakest Position margin **overestimates** where genuine in-corpus questions bottom out. A
+midpoint would inherit that optimism and start refusing real questions.
+
+**Three outcomes, recorded rather than collapsed.** `separated` is the normal case. `overlapping` is this
+section's own *the endpoint is wrong for the job*, arriving as a measurement — the margin goes to the
+off-corpus ceiling, which is the most the instrument can honestly claim. `not_measurable` — too few Positions,
+or no embedder — falls back and says the value is not a measured one. **Nothing about calibration may fail a
+Compile.**
+
+**Measuring on every rebuild also dissolves a drift problem rather than managing it.** The gate compares
+against the median of the nearest **400 Chunks**, which for `ethan-mollick` (~285 Chunks) is the middle of his
+entire Corpus and for `nate-b-jones` (~7,600) is the middle of the nearest 5%. Those are two statistics
+sharing one name, and a Corpus crosses between them **silently as it grows** — Mollick is roughly a dozen
+posts away. A value measured once cannot survive that; a value re-measured on every rebuild never has to.
+*Whether the 400-Chunk sample should be proportional rather than fixed is deliberately still open.*
+
+**The same constant cannot serve two embedders, and this was demonstrated in both directions before the fix.**
+The margin that under-refuses on the live Corpus *over*-refuses on the suite's bag-of-words fake, where it
+silently turned an integration test red. The suite still declares its own margin, because the fake is an
+embeddings model like any other.
 
 **`nothing_matched` keeps its shape and gains two things**: which failure it was — *nothing came close* and
 *everything came equally close* are different facts about the Corpus — and one plain sentence of fact the
@@ -849,6 +879,14 @@ analysis turns out to describe recency questions perfectly — *"his latest arti
 anywhere — and the tool built to catch that failure cannot fix it, because the answer is an ordering and not a
 match. See §4.
 
+**4. Correcting correction 1, one day later.** [#123](https://github.com/cgbarlow/braintrust/issues/123)'s
+answer — a command and a startup warning — was itself wrong, and wrong in a way worth naming because the
+reasoning behind it was sound. *The threshold is a property of the embeddings model* is true. *Therefore
+braintrust cannot ship it* is true. *Therefore a human must produce it* does not follow, and nobody checked,
+because braintrust holds a perfect probe set for every Person it has ever compiled. **A correct chain of
+reasoning that stops one step early is harder to catch than a wrong one**, and what caught this was not
+analysis — it was somebody being told to do a chore and declining. See §3.
+
 **And one about how these were found.** Corrections 1 and 2 were both invisible to the test suite: nothing
 asserted the gate ever refuses anything, and nothing asserted `fit` was ever anything but `close`. Both were
 caught by talking to a deployed Persona and probing it. **This surface's failures are not the kind a unit test
@@ -905,7 +943,10 @@ number that says how much it is worth.
 **Added by [the talking-to-a-persona map](https://github.com/cgbarlow/braintrust/issues/105).** A build effort
 should not read permission into any of these:
 
-- **The selectivity margin's exact statistic and threshold.** §3 fixes the *property* and requires calibration
+- ~~**The selectivity margin's exact statistic and threshold.**~~ **The threshold is settled by
+  [#128](https://github.com/cgbarlow/braintrust/issues/128)** — measured per Persona on every Compile, never
+  configured. **The statistic is not:** whether the 400-Chunk sample should scale with Corpus size stays open,
+  and re-measuring every rebuild makes that survivable rather than solved. Original entry: §3 fixes the *property* and requires calibration
   against the operator's endpoint. Choosing a number without running the probe set is the mistake this
   correction exists to stop being repeated.
 - **The `fit` grade's scale and name.** That Positions carry two grades is decided; what the second one is

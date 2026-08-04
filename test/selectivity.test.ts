@@ -60,7 +60,7 @@ describe('calibrating the gate', () => {
       statements: STATEMENTS,
     });
 
-    assert.equal(result.basis, 'separated');
+    assert.equal(result.separation, 'separated');
     assert.ok(result.margin > 0.1, 'above every off-corpus probe');
     assert.ok(result.margin < 0.4, 'below every position this persona holds');
     assert.equal(result.in_low, 0.4);
@@ -91,7 +91,7 @@ describe('calibrating the gate', () => {
     const { db, embedder } = harness(margins);
     const result = await calibrateSelectivity({ db, embedder, person: 'p', statements: STATEMENTS });
 
-    assert.equal(result.basis, 'overlapping');
+    assert.equal(result.separation, 'overlapping');
     assert.equal(result.margin, 0.3, 'the off-corpus ceiling — the most it can honestly claim');
     assert.match(result.note, /did not separate/);
   });
@@ -105,15 +105,15 @@ describe('calibrating the gate', () => {
       statements: STATEMENTS.slice(0, MIN_IN_CORPUS - 1),
     });
 
-    assert.equal(result.basis, 'not_measurable');
+    assert.equal(result.separation, 'not_measurable');
     assert.equal(result.margin, SELECTIVITY_MARGIN);
     assert.equal(result.in_low, null);
     assert.match(result.note, /not a measured value/);
   });
 
-  it('never reports a measured basis without the evidence for one', async () => {
+  it('never reports a measured outcome without the evidence for one', async () => {
     const fallback = notMeasurable('No embeddings endpoint is configured.');
-    assert.equal(fallback.basis, 'not_measurable');
+    assert.equal(fallback.separation, 'not_measurable');
     assert.equal(fallback.in_low, null);
     assert.equal(fallback.out_high, null);
     assert.deepEqual(fallback.probes, { in: 0, out: 0 });

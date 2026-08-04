@@ -84,11 +84,11 @@ export const MIN_IN_CORPUS = 4;
  */
 export const ANCHOR = 0.25;
 
-export type SelectivityBasis = 'separated' | 'overlapping' | 'not_measurable';
+export type SelectivitySeparation = 'separated' | 'overlapping' | 'not_measurable';
 
 export type CalibratedSelectivity = {
   margin: number;
-  basis: SelectivityBasis;
+  separation: SelectivitySeparation;
   /** The weakest in-corpus probe, and the strongest off-corpus one. Null when unmeasured. */
   in_low: number | null;
   out_high: number | null;
@@ -100,7 +100,7 @@ export type CalibratedSelectivity = {
 /** The honest answer when there is nothing to measure with. Never an invented number. */
 export const notMeasurable = (reason: string): CalibratedSelectivity => ({
   margin: SELECTIVITY_MARGIN,
-  basis: 'not_measurable',
+  separation: 'not_measurable',
   in_low: null,
   out_high: null,
   probes: { in: 0, out: 0 },
@@ -158,7 +158,7 @@ export async function calibrateSelectivity(
   if (outHigh >= inLow) {
     return {
       margin: round(outHigh),
-      basis: 'overlapping',
+      separation: 'overlapping',
       in_low: round(inLow),
       out_high: round(outHigh),
       probes,
@@ -170,7 +170,7 @@ export async function calibrateSelectivity(
 
   return {
     margin: round(outHigh + (inLow - outHigh) * ANCHOR),
-    basis: 'separated',
+    separation: 'separated',
     in_low: round(inLow),
     out_high: round(outHigh),
     probes,

@@ -389,8 +389,8 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     }
 
     log(
-      `braintrust: gate for ${person.slug} is ${calibrated.margin} (${calibrated.basis}` +
-        `${calibrated.basis === 'separated' ? `, ${calibrated.probes.in} in / ${calibrated.probes.out} out` : ''}).`,
+      `braintrust: gate for ${person.slug} is ${calibrated.margin} (${calibrated.separation}` +
+        `${calibrated.separation === 'separated' ? `, ${calibrated.probes.in} in / ${calibrated.probes.out} out` : ''}).`,
     );
 
     await promote(deps.db, person.id, compileId, {
