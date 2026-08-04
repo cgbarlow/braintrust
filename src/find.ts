@@ -72,78 +72,68 @@ export const ITEM_OVER_FETCH = 8;
  */
 export const MATCH_PASSAGES = 60;
 
-/**
- * How close a Chunk has to be before braintrust calls it a match. Cosine similarity, so
- * pgvector's distance has to come in under `1 - MATCH_FLOOR`.
- *
- * **This is not the thing the spec refuses to do.** Thin Positions are never hidden — a
- * Position found once is returned graded `low`, and no threshold on `item_count` exists
- * anywhere. This is the other question, which every vector search has to answer: *did the
- * Corpus match the question at all?* Nearest-neighbour search always returns neighbours,
- * so without a floor "what do they think about the moon landing" comes back with their
- * best position on evals, ranked confidently — and the passages fallback could never fire,
- * because something is always nearest.
- *
- * 0.35 is a **starting point, and the one threshold here that has not been measured
- * against a real endpoint** — braintrust configures no embeddings model, and the value that
- * separates "related" from "merely nearest" is a property of whichever one an operator
- * points it at. It is deliberately low: a floor set too high turns a real answer into a
- * shrug, and the failure it protects against is the loud one.
- */
-export const MATCH_FLOOR = 0.35;
 
 /**
- * How far the best match has to stand clear of the Corpus's own middle before braintrust
- * calls the question *answered by this Corpus* rather than merely *nearest to it*.
+ * How similar the best-matching Chunk has to be before braintrust will answer at all.
  *
- * **This is the gate. `MATCH_FLOOR` above is only a sanity check now.** Found live: on
- * `ethan-mollick`, "the correct water temperature for poaching an egg" and "how to prune
- * tomato plants" returned the **identical top three Positions in the same order** — two
- * questions with nothing in common producing one answer. That is a query vector landing
- * near the Corpus centroid rather than near any region of it, so the ranking degenerates to
- * the Corpus's most central claims and carries no information about the question at all. A
- * floor cannot see that: it asks *is the nearest thing near enough*, and on a topically
- * monolithic Corpus the answer is yes for every question ever asked.
+ * **This replaces the selectivity margin, which measured the endpoint rather than the
+ * Corpus.** #115 swapped an absolute floor for a margin against the Corpus's own
+ * distribution, reasoning that a shape does not belong to the operator's embeddings model
+ * the way a distance does. The reasoning was elegant and the measurement disagreed: three
+ * Personas of 5, 19 and 40 Items produced off-corpus ceilings of 0.3047, 0.2543 and 0.2549
+ * — one number, three unrelated Corpora, which is what a statistic looks like when it is
+ * describing the model instead of the data. `ethan-mollick` then refused *"what AI agents
+ * change about how work actually gets done"*.
  *
- * A margin against the Corpus's own distribution is a **shape rather than a distance**, so
- * unlike `MATCH_FLOOR` it does not belong to whichever embeddings model an operator points
- * at. That is the whole reason it replaces one.
+ * Top absolute similarity, on that same Corpus and in that same probe:
  *
- * **It still has to be calibrated, and calibration is a step rather than a guess.** Run a
- * probe set of known-in and known-out questions against the operator's endpoint and put the
- * threshold where the two groups separate; if they do not separate, the endpoint is wrong
- * for the job. `BRAINTRUST_SELECTIVITY_MARGIN` exists so that is a measurement rather than a
- * code change. The default below is a starting point and is **not** a measured value.
+ * | Question | Top |
+ * |---|---:|
+ * | the correct water temperature for poaching an egg | 0.445 |
+ * | what AI agents change about how work actually gets done | 0.691 |
+ *
+ * It separates. #115's rejection of the floor rested on watching eight Positions clear
+ * `0.35` — a value it admitted was a guess, and which sits *below* where off-corpus
+ * questions land. **The instrument was never wrong; the setting was, and nobody had
+ * measured it.**
+ *
+ * This constant is now only the fallback, for a Persona compiled before the floor was
+ * measured or on a Corpus where the probes did not separate. The value in force is
+ * normally measured per Persona on every Compile — see compile/selectivity.ts.
  */
-export const SELECTIVITY_MARGIN = Number(process.env.BRAINTRUST_SELECTIVITY_MARGIN ?? 0.06);
+export const RETRIEVAL_FLOOR = Number(process.env.BRAINTRUST_RETRIEVAL_FLOOR ?? 0.35);
 
 /**
- * The operator's override, or nothing.
+ * The operator's override, or nothing. Set, it wins for every Persona.
  *
- * **`SELECTIVITY_MARGIN` above is now a fallback, not a setting.** Every Compile measures
- * this Person's own margin against this Person's own Corpus and stores it — see
- * compile/selectivity.ts — so the number in force is normally a measurement, and nobody
- * configures anything. This exists for the operator who has a reason to overrule that, and
- * when it is set it wins everywhere.
- *
- * Read once at module load, like the constant it overrides.
+ * Exists for the same reason its predecessor did — an escape hatch, not configuration —
+ * and nothing in any document asks anybody to set it.
  */
-export const SELECTIVITY_OVERRIDE =
-  process.env.BRAINTRUST_SELECTIVITY_MARGIN === undefined
+export const FLOOR_OVERRIDE =
+  process.env.BRAINTRUST_RETRIEVAL_FLOOR === undefined
     ? null
-    : Number(process.env.BRAINTRUST_SELECTIVITY_MARGIN);
+    : Number(process.env.BRAINTRUST_RETRIEVAL_FLOOR);
 
 /**
- * The margin in force for one Persona: the override if an operator set one, else what that
- * Persona's last Compile measured, else the unmeasured shipped default.
- *
- * The fallback is reached by Personas compiled before calibration existed, and it resolves
- * itself on their next rebuild — the same shape as every other Compile-derived improvement.
+ * The scale `fit` grades against when a Compile measured no span of its own. Unmeasured,
+ * and deliberately wide: a fit grade that is merely uninformative is a smaller failure
+ * than one that calls a weak match `close`.
  */
-export function marginFor(measured: number | null): number {
-  if (SELECTIVITY_OVERRIDE !== null) return SELECTIVITY_OVERRIDE;
-  return measured ?? SELECTIVITY_MARGIN;
+export const DEFAULT_SPAN = 0.2;
+
+/** The floor in force for one Persona: the override, else what its Compile measured, else the fallback. */
+export function floorFor(measured: number | null): number {
+  if (FLOOR_OVERRIDE !== null) return FLOOR_OVERRIDE;
+  return measured ?? RETRIEVAL_FLOOR;
 }
+
+/**
+ * Retired. `MATCH_FLOOR` was the absolute floor #115 replaced with a selectivity margin and
+ * #133 restored — but restored as a *measured, per-Persona* value rather than a constant.
+ * Kept as an alias so nothing that imported it breaks, and so the name that appears in
+ * `nothing_matched.floor` still resolves.
+ */
+export const MATCH_FLOOR = RETRIEVAL_FLOOR;
 
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;
@@ -253,15 +243,14 @@ export type FindPayload = {
    */
   nothing_matched?: {
     nearest_similarity: number | null;
-    floor: number;
     /** The gate in force for this Persona — measured on its last Compile unless overridden. */
-    margin: number;
+    floor: number;
     /**
      * *Nothing came close* and *everything came equally close* are different facts about a
      * Corpus and an operator reads them differently: the first is an honest empty answer,
      * the second is a question that never selected this Corpus at all.
      */
-     reason: 'below_floor' | 'did_not_select' | 'nothing_indexed';
+     reason: 'below_floor' | 'nothing_indexed';
     /** What a Persona can put into its own words. Never braintrust's prose about braintrust. */
     say: string;
   };
@@ -271,8 +260,10 @@ type CurrentCompile = {
   id: string;
   display_name: string;
   compiled_at: Date | null;
-  /** What this Persona's Compile measured. Null before calibration existed. */
-  measured_margin: number | null;
+  /** What this Persona's Compile measured. Null before the floor was measured. */
+  measured_floor: number | null;
+  /** The gap between the probe groups, which is the scale `fit` grades against. */
+  measured_span: number | null;
 };
 
 export async function findPositions(args: FindArgs, deps: FindDeps): Promise<FindPayload> {
@@ -318,17 +309,17 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // The gate, before anything is ranked. A question that merely lands in this Corpus gets
   // no answer at all — not a weakly-graded one — because the ranking behind a landed
   // question is the Corpus's own centroid rather than anything about what was asked.
-  const margin = marginFor(compile.measured_margin);
+  const floor = floorFor(compile.measured_floor);
+  const span = compile.measured_span ?? DEFAULT_SPAN;
   const field = await selectivity(deps.db, vectorLiteral(vector), search);
-  const selected =
-    field.top !== null && field.median !== null && field.top - field.median >= margin;
+  const selected = field.top !== null && field.top >= floor;
 
   const matched = selected
-    ? await matchingPositions(deps.db, compile.id, vectorLiteral(vector), search)
+    ? await matchingPositions(deps.db, compile.id, vectorLiteral(vector), search, floor)
     : [];
 
   const shown = matched.slice(0, limit);
-  const positions = await withEvidence(deps.db, shown, args.full === true, field, margin);
+  const positions = await withEvidence(deps.db, shown, args.full === true, floor, span);
 
   const payload: FindPayload = {
     subject: subjectFor(compile.display_name),
@@ -353,7 +344,7 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // conclusion and the raw material for one in the same answer with nothing but a key name
   // to tell a client which is which.
   if (positions.length === 0 && selected) {
-    const found = await matchingPassages(deps.db, vectorLiteral(vector), search);
+    const found = await matchingPassages(deps.db, vectorLiteral(vector), search, floor);
     const bound = args.full === true ? found.length : DEFAULT_PASSAGES;
     payload.passages = found.slice(0, bound);
     if (found.length > bound) more.passages = found.length - bound;
@@ -367,13 +358,13 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // a floor that does not suit the endpoint.
   if (payload.positions.length === 0 && payload.passages.length === 0) {
     const nearest = await nearestSimilarity(deps.db, vectorLiteral(vector), search);
-    const reason =
-      nearest === null ? 'nothing_indexed' : selected ? 'below_floor' : 'did_not_select';
+    // Two reasons, not three. `did_not_select` named the discredited margin test and has
+    // nothing left to mean: a question either reaches this Corpus or it does not.
+    const reason = nearest === null ? 'nothing_indexed' : 'below_floor';
 
     payload.nothing_matched = {
       nearest_similarity: nearest,
-      floor: MATCH_FLOOR,
-      margin,
+      floor,
       reason,
       say:
         reason === 'nothing_indexed'
@@ -390,11 +381,14 @@ function bounded(value: number, low: number, high: number): number {
 }
 
 async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | undefined> {
-  const { rows } = await db.query<CurrentCompile & { measured_margin: string | null }>(
-    // The margin this Persona's own Compile measured. Null for anything compiled before
-    // calibration existed, which is what marginFor() falls back for.
+  const { rows } = await db.query<
+    CurrentCompile & { measured_floor: string | null; measured_span: string | null }
+  >(
+    // What this Persona's own Compile measured. Null for anything compiled before the
+    // floor was measured, which is what floorFor() falls back for.
     `select c.id, p.display_name, c.finished_at as compiled_at,
-            (c.corpus_stats -> 'selectivity' ->> 'margin') as measured_margin
+            (c.corpus_stats -> 'selectivity' ->> 'floor') as measured_floor,
+            (c.corpus_stats -> 'selectivity' ->> 'span')  as measured_span
        from braintrust_people p
        join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
       where p.slug = $1`,
@@ -403,11 +397,14 @@ async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | un
 
   const row = rows[0];
   if (!row) return undefined;
-  const measured = row.measured_margin === null ? null : Number(row.measured_margin);
-  return {
-    ...row,
-    measured_margin: Number.isFinite(measured as number) ? (measured as number) : null,
-  };
+  return { ...row, measured_floor: numeric(row.measured_floor), measured_span: numeric(row.measured_span) };
+}
+
+/** A jsonb text field that should hold a number, or null if it does not. */
+function numeric(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export type Search = { model: string; person: string; since: string | null; until: string | null };
@@ -447,6 +444,7 @@ async function matchingPositions(
   compileId: string,
   vector: string,
   search: Search,
+  floor: number,
 ): Promise<PositionRow[]> {
   const { rows } = await db.query<Omit<PositionRow, 'item_count'> & { item_count: string }>(
     `with hits as (
@@ -459,7 +457,7 @@ async function matchingPositions(
           and e.model = $3
           and ($4::date is null or i.published_at >= $4::date)
           and ($5::date is null or i.published_at <= $5::date)
-          and e.embedding <=> $2::vector <= ${1 - MATCH_FLOOR}
+          and e.embedding <=> $2::vector <= ${1} - $6::float
         order by distance
         limit ${MATCH_ITEMS * ITEM_OVER_FETCH}
      ),
@@ -478,7 +476,7 @@ async function matchingPositions(
       group by p.id, p.slug, p.statement, p.held_since, p.held_until, p.days_spanned,
                p.basis, p.confidence, p.item_count
       order by distance asc, p.item_count desc, p.slug`,
-    [compileId, vector, search.model, search.since, search.until],
+    [compileId, vector, search.model, search.since, search.until, floor],
   );
 
   return rows.map((row) => ({ ...row, item_count: Number(row.item_count) }));
@@ -489,8 +487,8 @@ async function withEvidence(
   db: Db,
   rows: PositionRow[],
   full: boolean,
-  field: { median: number | null },
-  margin: number,
+  floor: number,
+  span: number,
 ): Promise<FoundPosition[]> {
   if (rows.length === 0) return [];
 
@@ -558,7 +556,7 @@ async function withEvidence(
       days_spanned: row.days_spanned === null ? null : Number(row.days_spanned),
       basis: row.basis,
       confidence: row.confidence,
-      fit: fitOf(1 - Number(row.distance), field.median, margin),
+      fit: fitOf(1 - Number(row.distance), floor, span),
       item_count: row.item_count,
       current: !related.some((one) => one.side === 'from' && one.relation === 'revised'),
       relations: related.map((one) => ({
@@ -677,37 +675,40 @@ export async function selectivity(
 }
 
 /**
- * How well one Position answers the question, placed against the same distribution the gate
- * used. A grade about *fit*, never about how well braintrust knows the Position.
+ * How well one Position answers the question. A grade about *fit*, never about how well
+ * braintrust knows the Position.
  *
- * **Measured as clearance over the Corpus's middle, in the same units the gate uses.** The
- * question a reader is asking of this grade is *does this Position stand clear of what this
- * Corpus says about everything*, and clearance is an absolute quantity — so the thresholds
- * are multiples of `SELECTIVITY_MARGIN` rather than numbers of their own. One notion of
- * *clear*, calibrated once: whatever measurement moves the gate moves this with it, and the
- * two can never drift into disagreeing about what a good match is.
+ * **Graded as height above this Persona's own floor, in units of its own measured span.**
+ * Both numbers come from the same Compile-time calibration the gate uses, so there is one
+ * notion of *clear* and one measurement moving both — and the span is what this Corpus
+ * actually produced between a question it answers and one it does not, rather than a
+ * constant somebody picked.
  *
- * **`top` is deliberately not a parameter.** It used to be, and that was the defect: the
- * grade was `(similarity - median) / (top - median)`, so the best-matching Position scored
- * exactly 1.0 and graded `close` **for every query ever asked** — the value could not be
- * anything else, because the numerator and denominator were the same number. Live, on
- * `ethan-mollick`, that meant *"the correct water temperature for poaching an egg"* came
- * back with three positions all graded `close`. A grade normalised against the answer it is
- * grading carries no information about the answer, and the one thing `fit` exists to do is
- * say *this does not answer you*. See test/fit.test.ts.
+ * **Two ways this has been wrong, and both are excluded by the signature.**
+ *
+ * It first divided by the query's own range, `(similarity - median) / (top - median)`, so
+ * the best match scored exactly 1.0 and graded `close` for every query ever asked — the
+ * numerator and denominator were the same number. That is why `top` is not a parameter: a
+ * grade computed against the answer it is grading carries no information about that answer,
+ * and saying *this does not answer you* is the only thing `fit` exists to do.
+ *
+ * It then graded clearance over the Corpus's median, which the live run showed to be the
+ * quantity that measures the embeddings model rather than the Corpus — the same defect that
+ * made the gate refuse a Persona's own subject. That is why `median` is not a parameter
+ * either. See test/fit.test.ts.
  */
 export function fitOf(
   similarity: number,
-  median: number | null,
-  margin: number = SELECTIVITY_MARGIN,
+  floor: number,
+  span: number = DEFAULT_SPAN,
 ): 'close' | 'partial' | 'distant' {
-  // No middle to measure against — an empty or single-Chunk field. Neither a warning nor
-  // an endorsement: braintrust declines to grade rather than guessing a direction.
-  if (median === null) return 'partial';
+  // A Corpus whose probes never separated has no span of its own. Declining to
+  // discriminate is the honest answer: neither a warning nor an endorsement.
+  if (!Number.isFinite(span) || span <= 0) return 'partial';
 
-  const clearance = similarity - median;
-  if (clearance >= margin * 2) return 'close';
-  if (clearance >= margin) return 'partial';
+  const height = similarity - floor;
+  if (height >= span * 0.66) return 'close';
+  if (height >= span * 0.33) return 'partial';
   return 'distant';
 }
 
@@ -717,7 +718,12 @@ export function fitOf(
  * wall of lowercase into prose would make it a rendering of what was said rather than
  * what was said.
  */
-async function matchingPassages(db: Db, vector: string, search: Search): Promise<Passage[]> {
+async function matchingPassages(
+  db: Db,
+  vector: string,
+  search: Search,
+  floor: number,
+): Promise<Passage[]> {
   const { rows } = await db.query<{
     item_title: string | null;
     url: string;
@@ -736,10 +742,10 @@ async function matchingPassages(db: Db, vector: string, search: Search): Promise
         and e.model = $3
         and ($4::date is null or i.published_at >= $4::date)
         and ($5::date is null or i.published_at <= $5::date)
-        and e.embedding <=> $1::vector <= ${1 - MATCH_FLOOR}
+        and e.embedding <=> $1::vector <= ${1} - $6::float
       order by e.embedding <=> $1::vector
       limit ${MATCH_PASSAGES}`,
-    [vector, search.person, search.model, search.since, search.until],
+    [vector, search.person, search.model, search.since, search.until, floor],
   );
 
   return rows.map((row) => ({

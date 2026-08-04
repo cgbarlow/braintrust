@@ -16,7 +16,7 @@ import {
   notMeasurable,
   OFF_CORPUS_PROBES,
 } from '../src/compile/selectivity.js';
-import { SELECTIVITY_MARGIN } from '../src/find.js';
+import { RETRIEVAL_FLOOR } from '../src/find.js';
 import { fakeDb } from './support/fake-db.js';
 
 /**
@@ -24,7 +24,7 @@ import { fakeDb } from './support/fake-db.js';
  * embedder whose vector encodes which question it was — so a test can say "this question
  * scores 0.4" without going near pgvector.
  */
-function harness(margins: Record<string, number>, fallback = 0.01) {
+function harness(tops: Record<string, number>, fallback = 0.3) {
   const order: string[] = [];
   const embedder = {
     model: 'test-embeddings',
@@ -37,9 +37,9 @@ function harness(margins: Record<string, number>, fallback = 0.01) {
   let served = 0;
   const db = fakeDb(() => {
     const question = order[served++];
-    const margin = question !== undefined && question in margins ? margins[question]! : fallback;
-    // top - median is what the calibrator reads.
-    return [{ top: 0.5 + margin, median: 0.5 }];
+    const top = question !== undefined && question in tops ? tops[question]! : fallback;
+    // Absolute top similarity is what the calibrator reads.
+    return [{ top, median: 0.2 }];
   });
   return { db, embedder };
 }
@@ -48,11 +48,11 @@ const STATEMENTS = ['p one', 'p two', 'p three', 'p four', 'p five', 'p six'];
 
 describe('calibrating the gate', () => {
   it('puts the threshold above every off-corpus probe and below every position', async () => {
-    const margins: Record<string, number> = {};
-    for (const s of STATEMENTS) margins[s] = 0.4;
-    for (const q of OFF_CORPUS_PROBES) margins[q] = 0.1;
+    const tops: Record<string, number> = {};
+    for (const s of STATEMENTS) tops[s] = 0.8;
+    for (const q of OFF_CORPUS_PROBES) tops[q] = 0.45;
 
-    const { db, embedder } = harness(margins);
+    const { db, embedder } = harness(tops);
     const result = await calibrateSelectivity({
       db,
       embedder,
@@ -61,38 +61,43 @@ describe('calibrating the gate', () => {
     });
 
     assert.equal(result.separation, 'separated');
-    assert.ok(result.margin > 0.1, 'above every off-corpus probe');
-    assert.ok(result.margin < 0.4, 'below every position this persona holds');
-    assert.equal(result.in_low, 0.4);
-    assert.equal(result.out_high, 0.1);
+    assert.ok(result.floor > 0.45, 'above every off-corpus probe');
+    assert.ok(result.floor < 0.8, 'below every position this persona holds');
+    assert.equal(result.in_low, 0.8);
+    assert.equal(result.out_high, 0.45);
+    assert.equal(result.span, 0.35);
   });
 
   it('anchors near the off-corpus ceiling, not midway', async () => {
     // Position statements are an optimistic in-group — a real question is fuzzier and
     // scores lower — so a midpoint threshold would inherit that optimism and start
     // refusing real questions. This is the asymmetry, asserted rather than described.
-    const margins: Record<string, number> = {};
-    for (const s of STATEMENTS) margins[s] = 0.5;
-    for (const q of OFF_CORPUS_PROBES) margins[q] = 0.1;
+    const tops: Record<string, number> = {};
+    for (const s of STATEMENTS) tops[s] = 0.85;
+    for (const q of OFF_CORPUS_PROBES) tops[q] = 0.45;
 
-    const { db, embedder } = harness(margins);
+    const { db, embedder } = harness(tops);
     const result = await calibrateSelectivity({ db, embedder, person: 'p', statements: STATEMENTS });
 
-    const midpoint = (0.5 + 0.1) / 2;
-    assert.ok(result.margin < midpoint, 'sits below the midpoint');
-    assert.equal(result.margin, 0.1 + (0.5 - 0.1) * ANCHOR);
+    const midpoint = (0.85 + 0.45) / 2;
+    assert.ok(result.floor < midpoint, 'sits below the midpoint');
+    assert.equal(result.floor, 0.45 + (0.85 - 0.45) * ANCHOR);
   });
 
   it('reports an endpoint that cannot separate the two groups, rather than hiding it', async () => {
-    const margins: Record<string, number> = {};
-    for (const s of STATEMENTS) margins[s] = 0.2;
-    for (const q of OFF_CORPUS_PROBES) margins[q] = 0.3; // off-corpus scores higher
+    const tops: Record<string, number> = {};
+    for (const s of STATEMENTS) tops[s] = 0.5;
+    for (const q of OFF_CORPUS_PROBES) tops[q] = 0.6; // off-corpus scores higher
 
-    const { db, embedder } = harness(margins);
+    const { db, embedder } = harness(tops);
     const result = await calibrateSelectivity({ db, embedder, person: 'p', statements: STATEMENTS });
 
     assert.equal(result.separation, 'overlapping');
-    assert.equal(result.margin, 0.3, 'the off-corpus ceiling — the most it can honestly claim');
+    // Deliberately permissive, and a reversal: the margin version enforced the off-corpus
+    // ceiling here and refused a live persona's own subject. A persona that over-answers
+    // can be challenged by a reader; one that refuses everything is worth less than none.
+    assert.equal(result.floor, RETRIEVAL_FLOOR, 'the measurement is discarded, not enforced');
+    assert.equal(result.span, null, 'and fit is given no scale it did not earn');
     assert.match(result.note, /did not separate/);
   });
 
@@ -106,7 +111,7 @@ describe('calibrating the gate', () => {
     });
 
     assert.equal(result.separation, 'not_measurable');
-    assert.equal(result.margin, SELECTIVITY_MARGIN);
+    assert.equal(result.floor, RETRIEVAL_FLOOR);
     assert.equal(result.in_low, null);
     assert.match(result.note, /not a measured value/);
   });
@@ -123,11 +128,11 @@ describe('calibrating the gate', () => {
     // Positions arrive grouped by topic, so the first N would measure one corner of the
     // corpus and call it the whole thing.
     const many = Array.from({ length: 60 }, (_, i) => `position ${i}`);
-    const margins: Record<string, number> = {};
-    for (const s of many) margins[s] = 0.4;
-    for (const q of OFF_CORPUS_PROBES) margins[q] = 0.1;
+    const tops: Record<string, number> = {};
+    for (const s of many) tops[s] = 0.8;
+    for (const q of OFF_CORPUS_PROBES) tops[q] = 0.45;
 
-    const { db, embedder } = harness(margins);
+    const { db, embedder } = harness(tops);
     const seen: string[] = [];
     const spy = {
       ...embedder,

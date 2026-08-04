@@ -73,7 +73,7 @@ Add your first council member through your AI client, not the command line — `
 
 `npm test` runs the suite; the database tests skip without a Postgres.
 
-**There is nothing to calibrate.** braintrust has to know when a question falls outside what it has read — otherwise a persona answers anyway, and answers well, with real quotes and real dates. Where that line sits depends on your embeddings model, so braintrust measures it rather than shipping a number: every compile probes the persona's own positions against questions nobody could think it covers, and puts the threshold in the gap. It re-measures on every rebuild, so it tracks a corpus as it grows. `npm run calibrate` reports what was measured and why, if you ever want to look.
+**There is nothing to calibrate.** braintrust has to know when a question falls outside what it has read — otherwise a persona answers anyway, and answers well, with real quotes and real dates. Where that line sits depends on your embeddings model, so braintrust measures it rather than shipping a number: every compile probes the persona's own positions against questions nobody could think it covers, and puts the floor in the gap. It re-measures on every rebuild, so it tracks a corpus as it grows. `npm run calibrate` reports what was measured and why, if you ever want to look — a persona reading `overlapping` is telling you your embeddings model cannot tell covered from uncovered, which is worth knowing.
 
 ## Talking to one persona: a Hermes agent per Person
 

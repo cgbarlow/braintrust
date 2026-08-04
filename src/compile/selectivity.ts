@@ -1,6 +1,23 @@
 /**
  * Calibrating the off-corpus gate, per Person, on every Compile.
  *
+ * **What is measured is the absolute top similarity, and getting that wrong cost a live
+ * outage.** The first version of this file calibrated `top - median`, following #115's
+ * selectivity margin. It measured the embeddings model rather than the Corpus: three
+ * Personas of 5, 19 and 40 Items all reported `overlapping` with off-corpus ceilings inside
+ * 0.05 of each other (0.3047 / 0.2543 / 0.2549), and `ethan-mollick` then refused *"what AI
+ * agents change about how work actually gets done"* — the dead centre of his Corpus.
+ *
+ * The same probe carried the answer. Top absolute similarity on that Corpus: **0.445** for
+ * poaching an egg, **0.691** for the question it wrongly refused. That separates cleanly.
+ *
+ * So #115 had it backwards. It rejected an absolute floor after watching eight Positions
+ * clear one — but that floor was `0.35`, its own admitted guess, sitting *below* where
+ * off-corpus questions actually land. The floor was never the wrong instrument; it was the
+ * right instrument at a setting nobody had measured, and one observation of it failing
+ * removed the only statistic that works. See
+ * https://github.com/cgbarlow/braintrust/issues/133.
+ *
  * The gate ([find.ts](../find.ts)) refuses to answer when a question merely *lands* in a
  * Corpus rather than *selecting* it. Deciding how far clear is clear enough needs a
  * threshold, and that threshold is a property of whichever embeddings model an operator
@@ -33,7 +50,7 @@
  */
 
 import type { Db } from '../db.js';
-import { selectivity, SELECTIVITY_MARGIN } from '../find.js';
+import { RETRIEVAL_FLOOR, selectivity } from '../find.js';
 import { vectorLiteral, type Embedder } from '../retrieval/embed.js';
 
 /**
@@ -74,24 +91,32 @@ export const MIN_IN_CORPUS = 4;
  * synthesiser's paraphrase of what the Corpus says — semantically dead-centre, and lexically
  * distinct from the source text, which is what makes them a fair test of meaning rather than
  * of vocabulary. But they are an *optimistic* in-group: a question a human actually asks is
- * fuzzier and will score lower than any Position statement. So the weakest Position margin
+ * fuzzier and will score lower than any Position statement. So the weakest Position score
  * **overestimates** where genuine in-corpus questions bottom out, and a midpoint threshold
- * would inherit that optimism and start refusing real questions.
+ * would inherit that optimism and start refusing real questions. Measured on the live
+ * Corpus: a real question reached 0.691 where a Position statement sits higher still.
  *
  * Anchoring near the off-corpus ceiling keeps the thing the gate exists to stop — a
  * confident answer to a question nobody wrote about — while leaving the widest possible
- * margin for real questions that are less articulate than a compiled Position.
+ * room for real questions that are less articulate than a compiled Position.
  */
 export const ANCHOR = 0.25;
 
 export type SelectivitySeparation = 'separated' | 'overlapping' | 'not_measurable';
 
 export type CalibratedSelectivity = {
-  margin: number;
+  /** Top similarity a question must reach before this Corpus will answer it. */
+  floor: number;
   separation: SelectivitySeparation;
   /** The weakest in-corpus probe, and the strongest off-corpus one. Null when unmeasured. */
   in_low: number | null;
   out_high: number | null;
+  /**
+   * The measured distance between the two groups. Not used by the gate — it is the scale
+   * `fit` grades against, so that grade is in units this Corpus actually produces rather
+   * than in a constant somebody picked.
+   */
+  span: number | null;
   probes: { in: number; out: number };
   /** Why, in one line, for whoever reads corpus_stats and wonders. */
   note: string;
@@ -99,10 +124,11 @@ export type CalibratedSelectivity = {
 
 /** The honest answer when there is nothing to measure with. Never an invented number. */
 export const notMeasurable = (reason: string): CalibratedSelectivity => ({
-  margin: SELECTIVITY_MARGIN,
+  floor: RETRIEVAL_FLOOR,
   separation: 'not_measurable',
   in_low: null,
   out_high: null,
+  span: null,
   probes: { in: 0, out: 0 },
   note: `${reason} Falling back to the shipped default, which is not a measured value.`,
 });
@@ -140,49 +166,55 @@ export async function calibrateSelectivity(
     sampled.push(statements[i]!);
   }
 
-  const inMargins = await marginsFor(deps, sampled);
-  const outMargins = await marginsFor(deps, OFF_CORPUS_PROBES);
+  const inTops = await topsFor(deps, sampled);
+  const outTops = await topsFor(deps, OFF_CORPUS_PROBES);
 
-  if (inMargins.length < MIN_IN_CORPUS || outMargins.length === 0) {
+  if (inTops.length < MIN_IN_CORPUS || outTops.length === 0) {
     return notMeasurable('The embeddings endpoint did not return enough vectors to measure.');
   }
 
-  const inLow = Math.min(...inMargins);
-  const outHigh = Math.max(...outMargins);
-  const probes = { in: inMargins.length, out: outMargins.length };
+  const inLow = Math.min(...inTops);
+  const outHigh = Math.max(...outTops);
+  const probes = { in: inTops.length, out: outTops.length };
 
-  // The endpoint cannot tell covered from uncovered on this Corpus — #115's "the endpoint
-  // is wrong for the job", arriving as a measurement. Refusing to serve is not on the
-  // table, so the margin goes to the off-corpus ceiling: everything the off-corpus probes
-  // reached is now refused, which is the most this instrument can honestly claim.
   if (outHigh >= inLow) {
+    // The endpoint cannot tell covered from uncovered on this Corpus. **The fallback is
+    // permissive, and that is a reversal.** The margin version put the threshold at the
+    // off-corpus ceiling, reasoning that refusing too much is the safer failure — and then
+    // did exactly that to a live Persona, which answered nothing at all. A Persona that
+    // over-answers is wrong in a way a reader can see and challenge; one that refuses
+    // everything is indistinguishable from a broken deployment and is worth less than no
+    // Persona. So an unusable measurement falls back rather than being enforced.
     return {
-      margin: round(outHigh),
+      floor: RETRIEVAL_FLOOR,
       separation: 'overlapping',
       in_low: round(inLow),
       out_high: round(outHigh),
+      span: null,
       probes,
       note:
         'In-corpus and off-corpus questions did not separate on this embeddings model, so ' +
-        'the margin is set at the off-corpus ceiling. Real questions may be refused.',
+        'the measurement was not used and the shipped default stands. This persona may ' +
+        'answer questions its corpus does not cover.',
     };
   }
 
   return {
-    margin: round(outHigh + (inLow - outHigh) * ANCHOR),
+    floor: round(outHigh + (inLow - outHigh) * ANCHOR),
     separation: 'separated',
     in_low: round(inLow),
     out_high: round(outHigh),
+    span: round(inLow - outHigh),
     probes,
     note:
-      'Measured on this compile: the threshold sits above every off-corpus probe and below ' +
+      'Measured on this compile: the floor sits above every off-corpus probe and below ' +
       'every position this persona holds.',
   };
 }
 
-async function marginsFor(deps: CalibrateDeps, questions: string[]): Promise<number[]> {
+async function topsFor(deps: CalibrateDeps, questions: string[]): Promise<number[]> {
   const vectors = await deps.embedder.embed(questions);
-  const margins: number[] = [];
+  const tops: number[] = [];
 
   for (const vector of vectors) {
     if (!vector) continue;
@@ -192,11 +224,13 @@ async function marginsFor(deps: CalibrateDeps, questions: string[]): Promise<num
       since: null,
       until: null,
     });
-    if (field.top === null || field.median === null) continue;
-    margins.push(field.top - field.median);
+    if (field.top === null) continue;
+    // The top absolute similarity, which is what actually separates a question this
+    // Corpus answers from one it merely sits near.
+    tops.push(field.top);
   }
 
-  return margins;
+  return tops;
 }
 
 function round(value: number): number {
