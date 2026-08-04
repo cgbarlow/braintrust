@@ -13,24 +13,15 @@ import type { Embedder } from '../../src/retrieval/embed.js';
 export const TEST_DIMENSION = 1024;
 
 /**
- * The suite calibrates its own embedder, because it has one.
+ * The suite needs no calibration of its own any more.
  *
- * `SELECTIVITY_MARGIN` is a property of whichever embeddings model a deployment points at
- * — that is the whole reason `npm run calibrate` exists and the reason #115 called an
- * absolute floor the wrong instrument. The fake below is an embeddings model: a bag of
- * words, whose similarities are far more sharply separated than a real model's. The
- * production default is measured for neither, and on this fake it refused a question the
- * corpus plainly answers — `bluesky-cycle.integration.test.ts` went red on main for
- * exactly that reason and nobody was told, because no test asserted the gate's behaviour
- * in either direction.
- *
- * `0.01` is where the two groups separate *here*: real matches survive it and the
- * moon-landing question in `find-positions.integration.test.ts` still comes back empty. It
- * is set in the `test` script rather than here, because find.ts reads the environment once
- * at module load. **It says nothing about the right value for a real endpoint** — that is
- * measured, per deployment, by the calibrator.
+ * It briefly did: the selectivity margin was a property of the embeddings model, this fake
+ * is an embeddings model, and the production default refused a question the test corpus
+ * plainly answered. That whole problem belonged to the margin, which measured the model
+ * rather than the corpus and has been replaced by an absolute floor (see
+ * src/compile/selectivity.ts). The shipped fallback floor suits the bag of words below, so
+ * the `test` script sets nothing.
  */
-export const TEST_SELECTIVITY_MARGIN = 0.01;
 
 export type FakeEmbeddings = {
   fetcher: Fetcher;

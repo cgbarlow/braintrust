@@ -504,7 +504,7 @@ compiles. The known-out set stays fixed and generic, and is the only authored th
 
 So **every Compile measures its own Persona's margin**, through the same `selectivity()` the server calls, and
 stores it in `corpus_stats` beside the Coverage counts. Serving reads it per Persona.
-`BRAINTRUST_SELECTIVITY_MARGIN` is demoted to a pure override, the startup warning is deleted, and **no
+`BRAINTRUST_RETRIEVAL_FLOOR` is a pure override, the startup warning is deleted, and **no
 document tells anybody to calibrate anything.**
 
 **The threshold anchors near the off-corpus ceiling rather than midway between the groups.** Position
