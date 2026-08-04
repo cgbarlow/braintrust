@@ -481,6 +481,10 @@ a *distance* is not was true in principle and false in fact.
 
 **`did_not_select` is gone from `nothing_matched`.** It named the margin test and has nothing left to mean: a
 question either reaches this Corpus or it does not. Two reasons remain — `below_floor` and `nothing_indexed`.
+It outlived the enum by two releases in the one place clients actually read — the tool description — where a
+test asserted its presence and so kept it there. **The description is surface, not commentary**: a reason
+code advertised to callers that the server can never return is a lie in the contract, and the assertion now
+pins the reasons that exist and the absence of the one that does not.
 
 **And the `overlapping` fallback reversed.** It used to enforce the off-corpus ceiling, on the reasoning that
 refusing too much is the safer failure. It then did exactly that to a live Persona, which answered nothing at
@@ -550,6 +554,16 @@ the best-matching Position scored exactly `1.0` and graded `close` **for every q
 `fit` exists for the single purpose of being able to say *this does not answer you*. The thresholds are
 multiples of the selectivity margin, so the gate and the grade share **one** notion of *clear* and one
 calibration moves both. Corrected by [#122](https://github.com/cgbarlow/braintrust/issues/122).
+
+**Every result also carries the `similarity` the grade was computed from.** `fit` has now shipped wrong
+twice, and both times it was caught by a person noticing an answer that read oddly — never by the payload,
+because the number behind the grade was computed and discarded. That left `close` on a question the Corpus
+does not cover indistinguishable from `close` on one it does, which is precisely the distinction `fit`
+exists to draw. A grade nobody can check is a grade nobody can correct, so the input travels with the
+output, rounded to the same three decimals as `nothing_matched.nearest_similarity` so the two can be read
+against each other. **This is deliberately a measurement and not a third grade**: it says what happened,
+carries no threshold of its own, and is the evidence by which the next `fit` defect gets found from a
+payload instead of from someone's unease.
 
 **Correction to [#106](https://github.com/cgbarlow/braintrust/issues/106)**, which recorded *"thin and thick
 corpora do not differ here."* They differ in how loudly they fail. Nate's off-corpus top result came back
