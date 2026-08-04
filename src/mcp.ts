@@ -262,14 +262,19 @@ export function buildServer({
           'them.\n\n' +
           'Each position carries two grades and they mean different things. `confidence` is how ' +
           'well braintrust knows the position. `fit` is how well it answers the question you ' +
-          'asked. A `high` position with `distant` fit is well evidenced and not an answer.\n\n' +
+          'asked. A `high` position with `distant` fit is well evidenced and not an answer. ' +
+          '`similarity` is the number `fit` was graded from, on the same scale as the floor in ' +
+          '`nothing_matched` — so you can see how near a returned position came to not being ' +
+          'returned at all.\n\n' +
           '**Quotes are verbatim.** Most of the corpus is auto-generated video captions, so they ' +
           'arrive unpunctuated and sometimes mishearing names. Tidy them for display if you like, ' +
           'but the tidied version is not the quote.\n\n' +
           'An empty answer carries `nothing_matched`, including which kind of empty it is: ' +
-          '`did_not_select` means the question never engaged this corpus at all, `below_floor` ' +
-          'means it did and nothing was close enough, `nothing_indexed` means there is nothing to ' +
-          'search. **An empty answer cannot tell you they never said it** — it may be in a ' +
+          '`below_floor` means the question reached this corpus and nothing came close enough, ' +
+          'and `nothing_indexed` means there is nothing to search. It also carries how close the ' +
+          'nearest passage came and the floor it had to clear, so *they never said this* is ' +
+          'distinguishable from *this braintrust is tuned wrong*. ' +
+          '**An empty answer cannot tell you they never said it** — it may be in a ' +
           'paywalled post braintrust never fetched. Rephrasing in the words the person would use ' +
           'is worth one retry.',
         inputSchema: {

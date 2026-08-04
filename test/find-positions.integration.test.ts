@@ -347,6 +347,27 @@ describe('finding positions, against real Postgres', { skip }, () => {
     assert.equal(answer.nothing_matched, undefined);
   });
 
+  it('carries the similarity each position was graded from, on the same scale as the floor', async () => {
+    await compile();
+
+    const answer = await find({ query: await chunkTextOf('evals') });
+    const top = answer.positions[0]!;
+
+    // The grade alone could not be checked: `fit` has shipped wrong twice and both times the
+    // number behind it was computed and discarded, so a `close` on an uncovered question and
+    // a `close` on a real one were indistinguishable from the payload.
+    assert.ok(top.similarity >= MATCH_FLOOR, `${top.similarity} cleared the floor to be here`);
+    assert.ok(top.similarity <= 1);
+
+    // Same scale as the empty answer reports, so the two can be read against each other.
+    assert.equal(top.similarity, Math.round(top.similarity * 1000) / 1000);
+
+    // Ranked order is similarity order, which is what makes a mid-list `close` visible as
+    // one rather than having to be taken on trust.
+    const scores = answer.positions.map((one) => one.similarity);
+    assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
+  });
+
   it('returns a one-item position graded low rather than hiding it', async () => {
     await compile();
     const answer = await find({ query: await chunkTextOf('evals') });

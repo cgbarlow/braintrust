@@ -247,10 +247,15 @@ describe('the retrieval tool, on a server that has an embeddings endpoint', () =
     // answer a question the corpus never covered.
     assert.match(find.description!, /`confidence` is how well braintrust knows the position/);
     assert.match(find.description!, /`fit` is how well it answers the question you\s*\n?\s*asked/);
-    // Which kind of empty, because "nothing came close" and "everything came equally
-    // close" are different facts about a corpus.
-    assert.match(find.description!, /did_not_select/);
+    // Which kind of empty, because "nothing came close" and "nothing is indexed" are
+    // different facts about a corpus. `did_not_select` was the third and named the
+    // discredited margin test; the description outlived the enum by two releases, which is
+    // why this asserts the reasons that exist rather than merely that some are described.
     assert.match(find.description!, /below_floor/);
+    assert.match(find.description!, /nothing_indexed/);
+    assert.doesNotMatch(find.description!, /did_not_select/);
+    // The number behind `fit`, without which neither grade can be checked.
+    assert.match(find.description!, /`similarity` is the number `fit` was graded from/);
     // An empty answer still cannot tell you they never said it.
     assert.match(find.description!, /cannot tell you they never said it/);
     // Quotes stay a must-not-get-wrong.

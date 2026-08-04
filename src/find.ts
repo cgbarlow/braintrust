@@ -208,6 +208,18 @@ export type FoundPosition = {
    * weakly-fitting Position must stay visibly weak however well evidenced it is.
    */
   fit: 'close' | 'partial' | 'distant';
+  /**
+   * The number `fit` was graded from, on the same scale as `nothing_matched.nearest_similarity`.
+   *
+   * **A grade whose input is invisible cannot be checked, and this one has been wrong twice.**
+   * Both times it was found by someone noticing an answer that read oddly and having no way
+   * to tell whether the grade or the retrieval produced it — `close` on a question the Corpus
+   * does not cover looks identical either way. Carrying the similarity makes the two
+   * distinguishable from the payload alone: against the floor it says whether this Position
+   * should have been returned at all, and against the other results whether the grade
+   * separated them.
+   */
+  similarity: number;
   item_count: number;
   /** False only when this Position is the earlier side of a `revised` relation. */
   current: boolean;
@@ -547,6 +559,9 @@ async function withEvidence(
     const mine = citations.rows.filter((one) => one.position_id === row.id);
     const bound = full ? mine.length : DEFAULT_CITATIONS;
     const related = relations.rows.filter((one) => one.position_id === row.id);
+    // Rounded the same way `nearest_similarity` is, because the two only mean anything read
+    // against each other and one of them printing three more digits invites false precision.
+    const similarity = Math.round((1 - Number(row.distance)) * 1000) / 1000;
 
     const position: FoundPosition = {
       slug: row.slug,
@@ -556,7 +571,8 @@ async function withEvidence(
       days_spanned: row.days_spanned === null ? null : Number(row.days_spanned),
       basis: row.basis,
       confidence: row.confidence,
-      fit: fitOf(1 - Number(row.distance), floor, span),
+      fit: fitOf(similarity, floor, span),
+      similarity,
       item_count: row.item_count,
       current: !related.some((one) => one.side === 'from' && one.relation === 'revised'),
       relations: related.map((one) => ({
