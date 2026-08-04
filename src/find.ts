@@ -117,6 +117,34 @@ export const MATCH_FLOOR = 0.35;
  */
 export const SELECTIVITY_MARGIN = Number(process.env.BRAINTRUST_SELECTIVITY_MARGIN ?? 0.06);
 
+/**
+ * The operator's override, or nothing.
+ *
+ * **`SELECTIVITY_MARGIN` above is now a fallback, not a setting.** Every Compile measures
+ * this Person's own margin against this Person's own Corpus and stores it — see
+ * compile/selectivity.ts — so the number in force is normally a measurement, and nobody
+ * configures anything. This exists for the operator who has a reason to overrule that, and
+ * when it is set it wins everywhere.
+ *
+ * Read once at module load, like the constant it overrides.
+ */
+export const SELECTIVITY_OVERRIDE =
+  process.env.BRAINTRUST_SELECTIVITY_MARGIN === undefined
+    ? null
+    : Number(process.env.BRAINTRUST_SELECTIVITY_MARGIN);
+
+/**
+ * The margin in force for one Persona: the override if an operator set one, else what that
+ * Persona's last Compile measured, else the unmeasured shipped default.
+ *
+ * The fallback is reached by Personas compiled before calibration existed, and it resolves
+ * itself on their next rebuild — the same shape as every other Compile-derived improvement.
+ */
+export function marginFor(measured: number | null): number {
+  if (SELECTIVITY_OVERRIDE !== null) return SELECTIVITY_OVERRIDE;
+  return measured ?? SELECTIVITY_MARGIN;
+}
+
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;
 
@@ -226,6 +254,8 @@ export type FindPayload = {
   nothing_matched?: {
     nearest_similarity: number | null;
     floor: number;
+    /** The gate in force for this Persona — measured on its last Compile unless overridden. */
+    margin: number;
     /**
      * *Nothing came close* and *everything came equally close* are different facts about a
      * Corpus and an operator reads them differently: the first is an honest empty answer,
@@ -237,7 +267,13 @@ export type FindPayload = {
   };
 };
 
-type CurrentCompile = { id: string; display_name: string; compiled_at: Date | null };
+type CurrentCompile = {
+  id: string;
+  display_name: string;
+  compiled_at: Date | null;
+  /** What this Persona's Compile measured. Null before calibration existed. */
+  measured_margin: number | null;
+};
 
 export async function findPositions(args: FindArgs, deps: FindDeps): Promise<FindPayload> {
   const slug = args.person.trim();
@@ -282,16 +318,17 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // The gate, before anything is ranked. A question that merely lands in this Corpus gets
   // no answer at all — not a weakly-graded one — because the ranking behind a landed
   // question is the Corpus's own centroid rather than anything about what was asked.
+  const margin = marginFor(compile.measured_margin);
   const field = await selectivity(deps.db, vectorLiteral(vector), search);
   const selected =
-    field.top !== null && field.median !== null && field.top - field.median >= SELECTIVITY_MARGIN;
+    field.top !== null && field.median !== null && field.top - field.median >= margin;
 
   const matched = selected
     ? await matchingPositions(deps.db, compile.id, vectorLiteral(vector), search)
     : [];
 
   const shown = matched.slice(0, limit);
-  const positions = await withEvidence(deps.db, shown, args.full === true, field);
+  const positions = await withEvidence(deps.db, shown, args.full === true, field, margin);
 
   const payload: FindPayload = {
     subject: subjectFor(compile.display_name),
@@ -336,6 +373,7 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
     payload.nothing_matched = {
       nearest_similarity: nearest,
       floor: MATCH_FLOOR,
+      margin,
       reason,
       say:
         reason === 'nothing_indexed'
@@ -352,14 +390,24 @@ function bounded(value: number, low: number, high: number): number {
 }
 
 async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | undefined> {
-  const { rows } = await db.query<CurrentCompile>(
-    `select c.id, p.display_name, c.finished_at as compiled_at
+  const { rows } = await db.query<CurrentCompile & { measured_margin: string | null }>(
+    // The margin this Persona's own Compile measured. Null for anything compiled before
+    // calibration existed, which is what marginFor() falls back for.
+    `select c.id, p.display_name, c.finished_at as compiled_at,
+            (c.corpus_stats -> 'selectivity' ->> 'margin') as measured_margin
        from braintrust_people p
        join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
       where p.slug = $1`,
     [slug],
   );
-  return rows[0];
+
+  const row = rows[0];
+  if (!row) return undefined;
+  const measured = row.measured_margin === null ? null : Number(row.measured_margin);
+  return {
+    ...row,
+    measured_margin: Number.isFinite(measured as number) ? (measured as number) : null,
+  };
 }
 
 export type Search = { model: string; person: string; since: string | null; until: string | null };
@@ -442,6 +490,7 @@ async function withEvidence(
   rows: PositionRow[],
   full: boolean,
   field: { median: number | null },
+  margin: number,
 ): Promise<FoundPosition[]> {
   if (rows.length === 0) return [];
 
@@ -509,7 +558,7 @@ async function withEvidence(
       days_spanned: row.days_spanned === null ? null : Number(row.days_spanned),
       basis: row.basis,
       confidence: row.confidence,
-      fit: fitOf(1 - Number(row.distance), field.median),
+      fit: fitOf(1 - Number(row.distance), field.median, margin),
       item_count: row.item_count,
       current: !related.some((one) => one.side === 'from' && one.relation === 'revised'),
       relations: related.map((one) => ({
@@ -647,14 +696,18 @@ export async function selectivity(
  * grading carries no information about the answer, and the one thing `fit` exists to do is
  * say *this does not answer you*. See test/fit.test.ts.
  */
-export function fitOf(similarity: number, median: number | null): 'close' | 'partial' | 'distant' {
+export function fitOf(
+  similarity: number,
+  median: number | null,
+  margin: number = SELECTIVITY_MARGIN,
+): 'close' | 'partial' | 'distant' {
   // No middle to measure against — an empty or single-Chunk field. Neither a warning nor
   // an endorsement: braintrust declines to grade rather than guessing a direction.
   if (median === null) return 'partial';
 
   const clearance = similarity - median;
-  if (clearance >= SELECTIVITY_MARGIN * 2) return 'close';
-  if (clearance >= SELECTIVITY_MARGIN) return 'partial';
+  if (clearance >= margin * 2) return 'close';
+  if (clearance >= margin) return 'partial';
   return 'distant';
 }
 

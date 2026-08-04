@@ -1,187 +1,108 @@
 /**
- * `npm run calibrate` — measure where `SELECTIVITY_MARGIN` belongs, on this endpoint.
+ * `npm run calibrate` — report what braintrust measured its own gates to be, and why.
  *
- * The fourth entry point beside the server, the job and the eval, and an operator's tool
- * for the same reason the eval is one: the answer is a property of whichever embeddings
- * model this deployment points at, so braintrust cannot ship it and must not guess it.
+ * **This used to be an instruction and is now a report.** It shipped telling an operator to
+ * run a probe set and set `BRAINTRUST_SELECTIVITY_MARGIN` from the result, which made a
+ * maintenance task out of something braintrust already had everything to answer: every
+ * Compile now measures its own Persona's margin, from that Persona's own Positions, and
+ * stores it with the Compile that measured it. See compile/selectivity.ts and
+ * https://github.com/cgbarlow/braintrust/issues/128.
  *
- * #115 replaced `MATCH_FLOOR` with a relative margin **and named this step required**:
+ * So nothing here sets anything, and nothing here is a step in anybody's setup. It exists
+ * because a measurement nobody can inspect is a measurement nobody can trust — the same
+ * reason `voice` returns its evidence beside its instruction.
  *
- *   > Run a probe set of known-in and known-out questions against the operator's endpoint
- *   > and put the threshold where the two groups separate; if they do not separate, the
- *   > endpoint is wrong for the job.
+ *   npm run calibrate                    every Persona
+ *   npm run calibrate -- --person SLUG   one
  *
- * That step was never run, and the consequence was live: on `ethan-mollick`, *"the correct
- * water temperature for poaching an egg"* returned three Positions — the exact failure the
- * gate was built to stop, still happening after the gate shipped. An unmeasured constant in
- * a gate is a gate that is open.
- *
- *   npm run calibrate                          the shipped probe set, every Person in it
- *   npm run calibrate -- --person SLUG         one Person
- *   npm run calibrate -- --probes ./mine.json  your own probe set, same shape as ProbeSet
- *
- * What it prints is a recommendation and the evidence for it. Setting the value is still
- * the operator's act — `BRAINTRUST_SELECTIVITY_MARGIN` in the environment.
- *
- * See src/find.ts (`SELECTIVITY_MARGIN`, `selectivity`) and docs/design/mcp-surface.md.
+ * Reads rows only: no embeddings calls, no model, no writes.
  */
-
-import { readFile } from 'node:fs/promises';
 
 import { ConfigError, loadConfig } from '../config.js';
 import { createDb, type Db } from '../db.js';
-import { selectivity, SELECTIVITY_MARGIN } from '../find.js';
+import { marginFor, SELECTIVITY_MARGIN, SELECTIVITY_OVERRIDE } from '../find.js';
 import { SERVER_NAME } from '../mcp.js';
-import { createFetcher } from '../net/fetch.js';
-import { createEmbedder, vectorLiteral } from '../retrieval/embed.js';
-import { DEFAULT_PROBES, type ProbeSet } from './probes.js';
 
-type Measured = { question: string; margin: number | null };
-type Group = { label: 'in' | 'out'; measured: Measured[] };
+type Row = {
+  person: string;
+  compiled_at: Date | null;
+  selectivity: {
+    margin?: number;
+    separation?: string;
+    in_low?: number | null;
+    out_high?: number | null;
+    probes?: { in?: number; out?: number };
+    note?: string;
+  } | null;
+};
 
-/**
- * One question's margin: how far the best-matching Chunk stands clear of the middle of the
- * field. Exactly what `findPositions` computes before it decides whether to answer at all.
- */
-async function marginFor(
-  db: Db,
-  embedder: { model: string; embed(inputs: string[]): Promise<number[][]> },
-  person: string,
-  question: string,
-): Promise<number | null> {
-  const [vector] = await embedder.embed([question]);
-  if (!vector) return null;
-
-  const field = await selectivity(db, vectorLiteral(vector), {
-    model: embedder.model,
-    person,
-    since: null,
-    until: null,
-  });
-
-  if (field.top === null || field.median === null) return null;
-  return field.top - field.median;
-}
-
-function summarise(measured: Measured[]): { lo: number; hi: number; n: number } | null {
-  const values = measured.map((m) => m.margin).filter((m): m is number => m !== null);
-  if (values.length === 0) return null;
-  return { lo: Math.min(...values), hi: Math.max(...values), n: values.length };
-}
-
-/**
- * Where the two groups separate — or the fact that they do not.
- *
- * The threshold goes **between** the worst in-corpus question and the best off-corpus one.
- * Placed at the midpoint rather than hard against either edge: a value touching the lowest
- * real question turns the next slightly-thinner real question into a shrug, and a value
- * touching the best off-corpus one lets the next slightly-nearer irrelevance through.
- *
- * Overlap is the interesting answer. It means no constant separates these groups on this
- * endpoint, so raising the number trades false answers for refused real ones at a rate the
- * operator should see rather than have chosen for them.
- */
-function recommend(inGroup: Measured[], outGroup: Measured[]): string[] {
-  const ins = summarise(inGroup);
-  const outs = summarise(outGroup);
-  const lines: string[] = [];
-
-  if (!ins || !outs) {
-    return ['  not enough measured probes to recommend a value.'];
-  }
-
-  lines.push(`  in-corpus   ${ins.n} questions, margin ${fmt(ins.lo)} – ${fmt(ins.hi)}`);
-  lines.push(`  off-corpus  ${outs.n} questions, margin ${fmt(outs.lo)} – ${fmt(outs.hi)}`);
-
-  if (ins.lo > outs.hi) {
-    const value = (ins.lo + outs.hi) / 2;
-    lines.push(`  separated by ${fmt(ins.lo - outs.hi)} — set BRAINTRUST_SELECTIVITY_MARGIN=${fmt(value)}`);
-    if (SELECTIVITY_MARGIN <= outs.hi) {
-      lines.push(
-        `  the value in force (${fmt(SELECTIVITY_MARGIN)}) is at or below the best off-corpus ` +
-          `question, so off-corpus questions are being answered right now.`,
-      );
-    }
-    return lines;
-  }
-
-  lines.push(
-    `  THEY OVERLAP by ${fmt(outs.hi - ins.lo)}. No value separates these groups on this ` +
-      `endpoint: every threshold that refuses the off-corpus questions also refuses at least ` +
-      `one real one.`,
-    `  #115's own reading of this outcome: the endpoint is wrong for the job. Before ` +
-      `accepting that, check the probe set — an "in" question about something braintrust ` +
-      `never actually read is an off-corpus question wearing the wrong label.`,
+async function measured(db: Db, person?: string): Promise<Row[]> {
+  const { rows } = await db.query<Row>(
+    `select p.slug as person, c.finished_at as compiled_at,
+            c.corpus_stats -> 'selectivity' as selectivity
+       from braintrust_people p
+       join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
+      where ($1::text is null or p.slug = $1)
+      order by p.slug`,
+    [person ?? null],
   );
-  return lines;
+  return rows;
 }
 
-function fmt(value: number): string {
-  return value.toFixed(3);
-}
-
-function readArgs(argv: string[]): { person?: string; probes?: string } {
-  const args: { person?: string; probes?: string } = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '--person' && argv[i + 1]) args.person = argv[(i += 1)];
-    else if (argv[i] === '--probes' && argv[i + 1]) args.probes = argv[(i += 1)];
-  }
-  return args;
+function fmt(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : value.toFixed(4);
 }
 
 async function main(): Promise<void> {
-  const args = readArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const at = argv.indexOf('--person');
+  const person = at >= 0 ? argv[at + 1] : undefined;
+
   const config = loadConfig();
   const db = createDb(config.databaseUrl);
 
-  const probes: ProbeSet = args.probes
-    ? (JSON.parse(await readFile(args.probes, 'utf8')) as ProbeSet)
-    : DEFAULT_PROBES;
-
-  const embedder = createEmbedder(config.embeddings, createFetcher({}));
-
   try {
-    const people = args.person ? [args.person] : Object.keys(probes.people);
+    const rows = await measured(db, person);
 
-    console.log(
-      `${SERVER_NAME}: calibrating against ${embedder.model} at ${embedder.url}. ` +
-        `In force: BRAINTRUST_SELECTIVITY_MARGIN=${fmt(SELECTIVITY_MARGIN)}.`,
-    );
+    if (rows.length === 0) {
+      console.log(`${SERVER_NAME}: no compiled personas${person ? ` matching "${person}"` : ''}.`);
+      return;
+    }
 
-    for (const person of people) {
-      const inQuestions = probes.people[person];
-      if (!inQuestions) {
-        console.log(`\n${person}: no in-corpus probes for this person. Skipped.`);
-        continue;
+    if (SELECTIVITY_OVERRIDE !== null) {
+      console.log(
+        `${SERVER_NAME}: BRAINTRUST_SELECTIVITY_MARGIN=${SELECTIVITY_OVERRIDE} is set, so it ` +
+          `overrides every measurement below. Unset it to let each persona use its own.\n`,
+      );
+    }
+
+    for (const row of rows) {
+      const s = row.selectivity;
+      const inForce = marginFor(typeof s?.margin === 'number' ? s.margin : null);
+
+      console.log(row.person);
+      console.log(`  in force     ${fmt(inForce)}`);
+      console.log(`  separation   ${s?.separation ?? 'never measured'}`);
+      if (s?.separation && s.separation !== 'not_measurable') {
+        console.log(`  weakest position  ${fmt(s.in_low)}   (the corpus must answer this)`);
+        console.log(`  best off-corpus   ${fmt(s.out_high)}   (the corpus must refuse this)`);
+        console.log(`  probes       ${s.probes?.in ?? 0} in, ${s.probes?.out ?? 0} out`);
       }
-
-      const groups: Group[] = [
-        { label: 'in', measured: [] },
-        { label: 'out', measured: [] },
-      ];
-
-      for (const question of inQuestions) {
-        groups[0]!.measured.push({ question, margin: await marginFor(db, embedder, person, question) });
-      }
-      for (const question of probes.out) {
-        groups[1]!.measured.push({ question, margin: await marginFor(db, embedder, person, question) });
-      }
-
-      console.log(`\n${person}`);
-      for (const group of groups) {
-        for (const { question, margin } of group.measured) {
-          const mark = margin === null ? '   —  ' : fmt(margin).padStart(6);
-          console.log(`  ${group.label === 'in' ? 'in ' : 'out'} ${mark}  ${question}`);
-        }
+      if (s?.note) console.log(`  ${s.note}`);
+      if (!s) {
+        console.log(
+          `  Compiled before braintrust measured its own gates. Falls back to ` +
+            `${SELECTIVITY_MARGIN}, and fixes itself on the next rebuild.`,
+        );
       }
       console.log('');
-      for (const line of recommend(groups[0]!.measured, groups[1]!.measured)) console.log(line);
     }
 
     console.log(
-      `\nThe margin is a property of the embeddings model, not of braintrust. Re-run this ` +
-        `whenever ${'BRAINTRUST_EMBEDDINGS_MODEL'} changes — a value measured against one ` +
-        `model says nothing about another.`,
+      'Measured on every compile, per person, from that person’s own positions. Nothing here ' +
+        'is a setting and nothing needs doing — a persona whose separation reads `overlapping` is ' +
+        'saying this embeddings model cannot tell covered from uncovered on that corpus, which ' +
+        'is a reason to change the model rather than the number.',
     );
   } finally {
     await db.close();
@@ -193,6 +114,6 @@ main().catch((error: unknown) => {
     console.error(error.message);
     process.exit(78);
   }
-  console.error(`${SERVER_NAME}: the calibration failed.`, error);
+  console.error(`${SERVER_NAME}: could not read the calibration.`, error);
   process.exit(1);
 });
