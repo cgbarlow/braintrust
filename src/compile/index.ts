@@ -25,6 +25,7 @@ import { checkCompile } from './gate.js';
 import { inferLayer, INFERRED_LAYERS } from './infer.js';
 import { compilePositions } from './positions.js';
 import { compileRevisions } from './revisions.js';
+import { calibrateSelectivity, notMeasurable } from './selectivity.js';
 import {
   abandonStale,
   backlogOwed,
@@ -364,7 +365,36 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       return { kind: 'rejected', reason: verdict.reason! };
     }
 
+    // Calibrate this Persona's own off-corpus gate, using the Positions just written as
+    // the questions the Corpus must be able to answer. After the gate, because there is no
+    // point measuring a Compile that will not be published; before promote, because the
+    // measurement travels in the same row it describes.
+    //
+    // Wrapped, and deliberately: nothing about calibration may cost a Persona its rebuild.
+    // A Compile that could not be measured still serves — it falls back and says so.
+    let calibrated = notMeasurable('No embeddings endpoint is configured.');
+    if (deps.embedder) {
+      calibrated = await calibrateSelectivity({
+        db: deps.db,
+        embedder: deps.embedder,
+        person: person.slug,
+        statements: grouped.positions.map((position) => position.statement),
+      }).catch((error: unknown) => {
+        log(
+          `braintrust: could not calibrate the gate for ${person.slug} — ${String(error)}. The ` +
+            'persona is unaffected and falls back to the shipped default.',
+        );
+        return notMeasurable('The calibration pass failed.');
+      });
+    }
+
+    log(
+      `braintrust: gate for ${person.slug} is ${calibrated.margin} (${calibrated.basis}` +
+        `${calibrated.basis === 'separated' ? `, ${calibrated.probes.in} in / ${calibrated.probes.out} out` : ''}).`,
+    );
+
     await promote(deps.db, person.id, compileId, {
+      selectivity: calibrated,
       items_retrieved: coverage.evidence.retrieved,
       items_skipped_paywall: coverage.evidence.skipped_paywall,
       items_skipped_short: coverage.evidence.skipped_short,

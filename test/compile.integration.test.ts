@@ -496,6 +496,45 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       assert.match(await storedVersion(), /revisions-1$/);
     });
 
+    it('measures its own off-corpus gate and stores it with the compile that measured it', async () => {
+      // The claim that makes calibration an operator's job no longer: a compile with an
+      // embedder writes a margin measured against this persona's own corpus, using this
+      // persona's own positions as the questions the corpus must be able to answer.
+      await compile({ embedder: fakeEmbedder() });
+
+      const { rows } = await db.query<{ selectivity: Record<string, unknown> | null }>(
+        `select corpus_stats -> 'selectivity' as selectivity
+           from braintrust_compiles where status = 'current'`,
+      );
+
+      const measured = rows[0]?.selectivity;
+      assert.ok(measured, 'every compile records what its gate was set to and why');
+      assert.ok(
+        ['separated', 'overlapping', 'not_measurable'].includes(measured.basis as string),
+        `basis was ${String(measured.basis)}`,
+      );
+      assert.equal(typeof measured.margin, 'number');
+      // Never a measured basis without the evidence for one.
+      if (measured.basis === 'not_measurable') {
+        assert.equal(measured.in_low, null);
+      } else {
+        assert.equal(typeof measured.in_low, 'number');
+        assert.equal(typeof measured.out_high, 'number');
+      }
+    });
+
+    it('still promotes a persona when there is no embedder to calibrate with', async () => {
+      // Nothing about calibration may cost a persona its rebuild.
+      const report = await compile();
+      assert.deepEqual(report.compiled, ['nate']);
+
+      const { rows } = await db.query<{ basis: string | null }>(
+        `select corpus_stats -> 'selectivity' ->> 'basis' as basis
+           from braintrust_compiles where status = 'current'`,
+      );
+      assert.equal(rows[0]?.basis, 'not_measurable');
+    });
+
     it('rebuilds exactly once, then goes quiet', async () => {
       await compile();
       await compile({ embedder: fakeEmbedder() });
