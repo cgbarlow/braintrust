@@ -62,8 +62,17 @@ import { voiceLayer } from './voice.js';
  * same counts; *which Items they are counted over* is not, and a Persona has to be able
  * to say which rule measured it. `VOICE_MIN_WORDS` rides here too, so tuning the floor
  * rebuilds every Persona and the change is visible rather than silent.
+ *
+ * **`measured-3` is the self-calibrated gate**: a Compile now measures its own Persona's
+ * selectivity margin and stores it (see ./selectivity.ts). A new measured fact is exactly
+ * what this constant is for — and here it is load-bearing rather than documentary. A
+ * Persona whose Corpus has not moved has no `has_unseen`, so **the only thing that can
+ * rebuild it is this version changing.** Without the bump, every Persona compiled before
+ * the calibration shipped would keep serving on the unmeasured fallback indefinitely,
+ * waiting for its subject to publish something — which is the one condition that has
+ * nothing to do with whether braintrust can now measure its gate.
  */
-export const MEASUREMENT_VERSION = 'measured-2';
+export const MEASUREMENT_VERSION = 'measured-3';
 
 /**
  * What a Compile that could not compare revisions records instead of `revisions-1`.
