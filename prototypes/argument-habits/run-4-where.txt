@@ -1,0 +1,155 @@
+##############################################################################
+# ARM 1 — FORCED: verdict on every entry, 2 independent runs
+##############################################################################
+
+chris-barlow  run 1: 7 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  reasons-by-analogy  builds-a-named-frame  moved-by-the-worked-example  moved-by-what-was-built  rejects-the-standard-framing  closes-on-an-invitation
+
+chris-barlow  run 2: 4 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  builds-a-named-frame  moved-by-what-was-built  rejects-the-standard-framing
+
+ethan-mollick  run 1: 21 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-a-case  opens-on-own-experiment  reasons-by-analogy  builds-a-named-frame  reasons-from-first-principles  extrapolates-a-trend  separates-conflated-questions  argues-from-cost-shift  moved-by-the-worked-example  moved-by-measurement  moved-by-what-was-built  discounts-the-official-account  concedes-then-narrows  rejects-the-standard-framing  flags-its-own-limits  refuses-the-monolith  closes-on-a-procedure  closes-on-a-condition  closes-on-an-invitation  closes-on-what-it-costs-us
+
+ethan-mollick  run 2: 19 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-a-case  opens-on-own-experiment  opens-on-the-buried-assumption  builds-a-named-frame  reasons-from-first-principles  extrapolates-a-trend  separates-conflated-questions  argues-from-cost-shift  moved-by-the-worked-example  moved-by-measurement  moved-by-what-was-built  discounts-the-official-account  concedes-then-narrows  rejects-the-standard-framing  flags-its-own-limits  refuses-the-monolith  closes-on-a-condition  closes-on-what-it-costs-us
+
+matt-pocock  run 1: 17 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-a-case  opens-on-own-experiment  opens-on-the-buried-assumption  builds-a-named-frame  reasons-from-first-principles  extrapolates-a-trend  separates-conflated-questions  argues-from-cost-shift  moved-by-the-worked-example  moved-by-what-was-built  discounts-the-official-account  concedes-then-narrows  rejects-the-standard-framing  flags-its-own-limits  closes-on-a-procedure  closes-on-an-invitation
+
+matt-pocock  run 2: 23 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-a-case  opens-on-own-experiment  opens-on-the-buried-assumption  reasons-by-analogy  builds-a-named-frame  reasons-from-first-principles  extrapolates-a-trend  separates-conflated-questions  dissolves-rather-than-answers  argues-from-cost-shift  moved-by-the-worked-example  moved-by-measurement  moved-by-what-was-built  discounts-the-official-account  concedes-then-narrows  rejects-the-standard-framing  flags-its-own-limits  refuses-the-monolith  closes-on-a-procedure  closes-on-a-condition  closes-on-an-invitation  closes-on-what-it-costs-us
+
+nate-b-jones  run 1: 12 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-a-case  opens-on-the-buried-assumption  builds-a-named-frame  extrapolates-a-trend  separates-conflated-questions  argues-from-cost-shift  moved-by-the-worked-example  moved-by-measurement  rejects-the-standard-framing  closes-on-a-procedure  closes-on-a-condition
+
+nate-b-jones  run 2: 16 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-a-case  opens-on-own-experiment  opens-on-the-buried-assumption  builds-a-named-frame  reasons-from-first-principles  separates-conflated-questions  argues-from-cost-shift  moved-by-the-worked-example  moved-by-measurement  discounts-the-official-account  concedes-then-narrows  rejects-the-standard-framing  refuses-the-monolith  closes-on-a-condition  closes-on-what-it-costs-us
+
+stuart-winter-tear  run 1: 15 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-a-case  opens-on-the-buried-assumption  builds-a-named-frame  extrapolates-a-trend  separates-conflated-questions  dissolves-rather-than-answers  argues-from-cost-shift  moved-by-the-worked-example  moved-by-measurement  discounts-the-official-account  rejects-the-standard-framing  flags-its-own-limits  closes-on-a-procedure  closes-on-a-condition
+
+stuart-winter-tear  run 2: 13 yes of 23 answered (menu is 23)
+  opens-on-the-mistaken-instinct  opens-on-the-buried-assumption  builds-a-named-frame  reasons-from-first-principles  extrapolates-a-trend  separates-conflated-questions  dissolves-rather-than-answers  argues-from-cost-shift  moved-by-measurement  discounts-the-official-account  concedes-then-narrows  rejects-the-standard-framing  refuses-the-monolith
+
+##############################################################################
+# ARM 2 — FREE: no menu, own words, 2 independent runs
+##############################################################################
+
+chris-barlow  run 1: 5 moves
+  - Open by critiquing the status‑quo — Across the pieces the author starts with a complaint about existing goal‑setting, development planning, or to‑do lists, framing them as uninspiring or burdensome before proposing a new approach.
+  - Reframe the problem with a quest/gamification metaphor — Every item pivots to the idea that work can be seen as an adventure or game, using quests, badges, cards, or NPC guides to recast ordinary tasks as narrative‑driven challenges.
+  - Show a concrete artifact that embodies the metaphor — The author consistently follows the metaphor with a tangible design – a platform, digital badge system, card game, character‑card compendium, or NPC guide – to demonstrate how the idea works in practice.
+  - Project a future of widespread adoption — Several arguments extend the specific artifact into a broader vision where quests or badges become ubiquitous evidence of learning and business processes transform into adventure narratives.
+  - Close with an invitation to join or adopt — Each piece ends by urging readers to engage with the quest‑based model, whether by using the platform, earning badges, playing the game, or applying the approach in their own organizations.
+
+chris-barlow  run 2: 5 moves
+  - Open with a critique of the status‑quo — Each piece begins by highlighting how current goal‑setting, to‑do lists, or career‑development processes feel dull, obligatory, or ineffective.
+  - Reframe the problem through a quest/game metaphor — The author consistently recasts work, learning, or career steps as quests, adventures, or card‑game mechanics to give them narrative and intrinsic motivation.
+  - Introduce a concrete artifact that embodies the metaphor — Every item presents a tangible implementation—a platform, digital badge system, card game, NPC guide, or gamified handbook—that operationalises the quest framing.
+  - Supply anecdotal or observational evidence of success — The author cites real‑world usage, observed engagement gains, or “proven effective” outcomes to validate the new approach.
+  - Close with an invitation or vision for broader adoption — Each conclusion urges readers to join, adopt, or imagine a future where the quest‑based model reshapes individuals, teams, or whole organizations.
+
+ethan-mollick  run 1: 7 moves
+  - Open with a concrete observation or recent data point — Nearly every piece starts by noting a real‑world shift, experiment, or metric (e.g., AI usage moving to agentic systems, exponential capability curves, a personal Claude 5 demo) to ground the argument.
+  - Use hands‑on personal demos as primary evidence — The author repeatedly cites their own experiments—building a website with Claude Code, generating a tabletop RPG with GPT‑5.5, reproducing an economics paper—to demonstrate capability and make abstract claims tangible.
+  - Reframe the human‑AI relationship from co‑intelligence to autonomous agents — Across the items the narrative shifts from AI as a helper to AI as an independent worker, arguing that the dominant workflow is now delegating tasks to agents.
+  - Invoke exponential or jagged progress as a backdrop — The writer consistently references accelerating, uneven improvement curves (exponential gains, jagged frontier, RSI roadmaps) to explain why rapid paradigm shifts are inevitable.
+  - Introduce a structured decision framework or layered model — Several articles present a formal tool—e.g., the Equation of Agentic Work, the three‑layer model (models, apps, harnesses), or a task‑selection matrix—to translate observations into actionable guidance.
+  - Acknowledge limitations then downplay their impact — Each argument concedes specific flaws (hallucinations, guardrails, lack of transparency) but argues these do not overturn the overall thesis, often suggesting mitigations.
+  - Close with prescriptive advice or a call to shape the future — The conclusions invariably give concrete recommendations (which model to pick, how to manage AI, why to set responsible precedents) or urge readers to act now.
+
+ethan-mollick  run 2: 7 moves
+  - Open with a concrete observation or trend — Each piece starts by pointing to a measurable shift—e.g., the move from chatbots to agentic systems, exponential capability growth, or the flood of AI‑generated content—to set up the premise for the argument.
+  - Ground claims with hands‑on demos or internal data — The author repeatedly cites personal experiments, benchmark results, or proprietary usage statistics (e.g., Claude 5 Fable projects, OpenAI internal agent usage, GDPval study) as primary evidence for their points.
+  - Reframe the human‑AI relationship from co‑intelligence to delegation/management — Across many items the narrative shifts from humans guiding AI to humans commissioning outcomes and managing autonomous agents, positioning management skills as the new scarce resource.
+  - Emphasize the ‘harness’ or application layer over raw model choice — Guides repeatedly argue that the same model can behave very differently depending on the app/harness, making the selection of tools and integrations the decisive factor.
+  - Introduce a simple quantitative or formal framework to decide when to delegate — The author creates concise decision tools (e.g., the Equation of Agentic Work) to translate observations into actionable criteria for AI delegation.
+  - Acknowledge limitations then prescribe safeguards or mitigations — Limitations such as hallucinations, lack of transparency, or jagged performance are openly admitted, followed by concrete recommendations (permissions, review loops, guardrails) to manage the risk.
+  - Close with a concrete prescription or call to shape the future — Every article ends by telling readers exactly what to adopt—specific models, pricing tiers, workflow changes, or societal actions—framing the piece as a practical guide rather than a pure analysis.
+
+matt-pocock  run 1: 7 moves
+  - Problem‑first framing — Across the items the author consistently opens by diagnosing a concrete limitation (e.g., single‑session planning, token overflow, noisy backlogs, hallucinations) before introducing any solution.
+  - Introduce a modular skill as the remedy — The core argumentative step is to present a new, narrowly scoped skill (Wayfinder, handoff, prototype, triage, etc.) that directly patches the identified problem, often emphasizing naming or composability.
+  - Token/context‑window awareness — Many arguments hinge on the finite context window of LLMs, framing the solution as a way to stay within token limits, split work into tickets, or hand off context.
+  - Prefer incremental prototyping over exhaustive specs — The author repeatedly argues that cheap, high‑fidelity prototypes replace over‑specification, using this contrast to justify the workflow and skill design.
+  - Empirical demo / concrete example — Each claim is backed by a short demonstration (Rubik’s Cube tutorial, PRD generation, code‑base refactor, sandbox run) that shows the skill in action and validates the argument.
+  - Critique of existing tools or alternatives — The author habitually compares the new skill to prior versions, competing products, or default workflows, highlighting their flaws to strengthen the case for the proposed approach.
+  - Close with disciplined process adoption — Conclusions always urge the audience to adopt a strict, repeatable process (e.g., token‑aware modular workflow, TDD, shared ubiquitous language) and often invite further learning or community uptake.
+
+matt-pocock  run 2: 5 moves
+  - Open by diagnosing a concrete pain point — Across the items the author consistently begins with a specific limitation—whether it’s single‑session planning, over‑specification, context‑window overflow, or hallucinations—to frame the need for a new approach.
+  - Introduce a bespoke skill or tool as the remedy — Each piece then presents a custom skill (e.g., /wayfinder, /prototype, /handoff, /triage) or utility (Sandcastle) that directly addresses the diagnosed problem, positioning it as the core solution.
+  - Anchor the solution in token/context‑window management — The author repeatedly emphasizes staying within LLM token limits, breaking work into tickets/specs, using hand‑offs, or modular sub‑agents to keep the agent in its “smart zone,” making this a central argumentative thread.
+  - Contrast with existing tools or conventions and expose their flaws — The narrative habitually critiques current practices—misnamed skills, bulky init scripts, over‑ambitious review guidelines, or Anthropic’s credit split—showing why they fall short before championing the new skill.
+  - Close with an adoption call and broader implication — Every article ends by urging readers to adopt the skill, linking it to higher productivity, better code quality, or a shift in how AI‑assisted development is practiced, thereby reinforcing the proposed paradigm.
+
+nate-b-jones  run 1: 5 moves
+  - Open with a concrete real‑world incident — Across items the author kicks off by recounting a specific case (e.g., the Situational Awareness fund collapse, the support‑inbox experiment, the Hugging Face breach, the K3 model rollout) to ground the argument in observable reality.
+  - Introduce a structured decision‑making framework or checklist — The pieces repeatedly present multi‑step frameworks (two‑clock + five questions, three‑level token‑saving system, Chinese‑model evaluation matrix, workflow‑mapping loop, Airlock redaction process) that turn the discussion into a step‑by‑step guide.
+  - Debunk a prevailing simplification or myth — The author habitually challenges common shortcuts—treating Chinese models as monolithic, assuming open‑source models are cheap, believing token limits are only a usage issue, or that AI‑generated text is harmless—by supplying nuanced evidence.
+  - Shift responsibility to the user/reader — Many arguments conclude that the burden of mitigation lies with the audience (e.g., users must manage token waste, embed privacy controls into their workflow, retain human oversight in AI‑augmented processes).
+  - Close with concrete actionable recommendations or tools — Each piece ends by prescribing specific actions or artifacts—five evaluation questions, a Token Saver skill, the Airlock tool, a pre‑authorized safety harness, or a diversified multimodel strategy.
+
+nate-b-jones  run 2: 5 moves
+  - Open with a concrete, recent incident or case study — Each essay starts by describing a specific, timely event (e.g., the Situational Awareness fund collapse, a token‑limit crisis, an OpenAI sandbox breach) to ground the discussion.
+  - Extract a broad principle or framework from the anecdote — The author repeatedly turns the story into a general tool – the two‑clock model, a three‑level token‑saving framework, a decision matrix for Chinese models, a workflow‑mapping method, or safety‑layer architecture.
+  - Present a step‑by‑step, habit‑oriented prescription — Across items the author lists concrete rules, tools, or processes (15 token‑saving habits, the Airlock redaction flow, the Ringer multi‑agent system, automation loops for support tickets) that readers can immediately adopt.
+  - Debunk a prevailing simplification or myth — The writer routinely challenges common narratives – conspiracy about the hedge‑fund sale, the idea that labs will fix token waste, the notion that all Chinese models are cheap, or that open‑source models are inherently low‑cost.
+  - Close with a conditional recommendation or forward‑looking call to action — Each piece ends by advising a nuanced stance (use Chinese models selectively, diversify multimodel strategies, embed safety layers, adopt transparency signals) and urging readers to implement the proposed framework.
+
+stuart-winter-tear  run 1: 6 moves
+  - Open with a concrete mismatch observation — Across the items the author routinely starts by pointing out a gap between hype, common practice, or surface‑level metrics and the underlying reality of organisational dysfunction or market pressure
+  - Reframe the core constraint from technology to organisational design/absorption — The argument repeatedly shifts the focus from model choice or tool deployment to the organisation’s ability to redesign decision‑making, governance, and work flows as the true limiter of AI value
+  - Propose bounded, incremental pilots that generate learning loops — A recurring prescription is to launch small, complete deployments, capture the emergent knowledge, and let that evidence iteratively shape the operating model rather than attempting full‑scale design up‑front
+  - Insist on clear authority or mandate for AI initiatives — Multiple pieces argue that without an explicit decision‑making mandate or operating authority (e.g., a CAIO with power, a translator role), AI projects stall and cannot scale
+  - Ground claims with evidence from regulated sectors or field experiments — The author repeatedly cites banks, private‑equity, or controlled studies as concrete proof points that validate the need for organisational redesign and outcome‑focused metrics
+  - Close with a call to redesign governance and measure outcomes, not activity — Each argument ends by urging leaders to shift metrics from usage or delivery counts to outcome‑based, governed measures that reflect true operating leverage
+
+stuart-winter-tear  run 2: 6 moves
+  - Open with a concrete mismatch observation — Across the notes the author repeatedly starts by pointing out a gap between AI hype, technology focus, or surface‑level activity and the reality of organisational practice or constraints.
+  - Reframe the problem from technology‑centric to operating‑model‑centric — The argument is habitually shifted from ‘how to build or choose a model’ to ‘how to redesign governance, decision‑rights and workflows to absorb intelligent systems.’
+  - Champion incremental, bounded pilots that generate learning loops — Multiple items advocate launching small, complete work‑units, observing the AI’s interaction, and using that evidence to iteratively shape the operating model rather than designing it up‑front.
+  - Replace usage‑or‑activity metrics with outcome‑oriented evidence and a maturity ladder — The author consistently moves the success criteria from seats, prompts or deployments to measurable business outcomes, cost‑per‑outcome and governed scale, often presenting a staged maturity model.
+  - Insist on explicit authority/mandate structures to translate AI capability into impact — A recurring move is to demand a clear decision‑making mandate, operating authority or ‘translator’ role that can own, approve and govern AI actions, arguing that without it pilots cannot scale.
+  - Use AI‑induced failures or emergent behaviour as proof of underlying organisational dysfunction — The author repeatedly points to failed pilots, unexpected emergence, or the ‘AI reversal’ as evidence that the real bottleneck is organisational design, not model performance.
+
+##############################################################################
+# AGREEMENT BETWEEN THE TWO RUNS
+##############################################################################
+
+person                forced  forced*   free   (forced* = genre entries removed)
+chris-barlow          57%     40%    67%   forced 7/4, free 5/5 matched 4
+      matched: Open with critique of the status‑quo
+      matched: Reframe problem using quest/gamification metaphor
+      matched: Introduce concrete artifact embodying the metaphor
+      matched: Close with invitation or vision for broader adoption
+ethan-mollick         82%     80%    75%   forced 21/19, free 7/7 matched 6
+      matched: Open with a concrete observation or measurable trend to set up the argument
+      matched: Ground claims with hands‑on personal demos or internal data as primary evidence
+      matched: Reframe the human‑AI relationship from co‑intelligence to delegation/management of autonomous agents
+      matched: Introduce a formal/quantitative decision framework (e.g., the Equation of Agentic Work) to guide delegation
+      matched: Acknowledge limitations and then propose mitigations or downplay their impact
+      matched: Close with a concrete prescription or call to shape the future
+matt-pocock           74%     71%    71%   forced 17/23, free 7/5 matched 5
+      matched: Problem‑first framing / diagnosing a concrete pain point
+      matched: Introduce a bespoke modular skill as the remedy
+      matched: Emphasize token/context‑window management
+      matched: Critique existing tools or practices
+      matched: Close with a call to adopt the process
+nate-b-jones          56%     50%    67%   forced 12/16, free 5/5 matched 4
+      matched: Open with a concrete real‑world incident or case study
+      matched: Introduce/extract a general framework or decision‑making model from the anecdote
+      matched: Debunk a prevailing simplification or myth
+      matched: Close with actionable recommendations or a forward‑looking call to action
+stuart-winter-tear    56%     50%    71%   forced 15/13, free 6/6 matched 5
+      matched: Open with a concrete mismatch observation between hype/metrics and organisational reality
+      matched: Reframe the problem from technology focus to organisational/operating‑model design
+      matched: Advocate bounded, incremental pilots that generate learning loops
+      matched: Insist on explicit authority/mandate (e.g., CAIO, translator) for AI initiatives
+      matched: Replace usage/activity metrics with outcome‑oriented measures and a maturity ladder
+
+mean             65%     58%    70%
+
+#145 for comparison: free choice from the menu, single ask, 39%; 3-ask majority, 54%;
+                      3-ask majority with the genre entries cut, 37%.
