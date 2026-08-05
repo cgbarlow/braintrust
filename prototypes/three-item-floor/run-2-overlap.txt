@@ -1,0 +1,44 @@
+TWINS — lines that cleared the floor citing the identical set of items
+
+chris-barlow  —  8 lines ship, 4 of them are a twin of another
+    4 lines share [1,4,5]:
+        opens-on-the-mistaken-instinct
+        opens-on-the-buried-assumption
+        discounts-the-official-account
+        rejects-the-standard-framing
+ethan-mollick  —  14 lines ship, 3 of them are a twin of another
+    3 lines share [5,12,15]:
+        opens-on-the-buried-assumption
+        rejects-the-standard-framing
+        refuses-the-monolith
+matt-pocock  —  9 lines ship, 0 of them are a twin of another
+nate-b-jones  —  6 lines ship, 0 of them are a twin of another
+stuart-winter-tear  —  15 lines ship, 2 of them are a twin of another
+    2 lines share [1,2,3,4,5,6,9,11,12,13,14,15,16,17,18,19,20,21,22,23]:
+        opens-on-the-mistaken-instinct
+        opens-on-the-buried-assumption
+
+9 of 52 shipping lines carry evidence identical to another line (17%)
+
+
+NEAR-TOTAL — lines true of more than half of everything the person published
+
+  chris-barlow         opens-on-the-mistaken-instinct     3/5 items (60%)
+  chris-barlow         opens-on-the-buried-assumption     3/5 items (60%)
+  chris-barlow         reasons-by-analogy                 5/5 items (100%)
+  chris-barlow         builds-a-named-frame               3/5 items (60%)
+  chris-barlow         moved-by-the-worked-example        3/5 items (60%)
+  chris-barlow         moved-by-what-was-built            4/5 items (80%)
+  chris-barlow         discounts-the-official-account     3/5 items (60%)
+  chris-barlow         rejects-the-standard-framing       3/5 items (60%)
+  ethan-mollick        moved-by-the-worked-example        11/19 items (58%)
+  ethan-mollick        flags-its-own-limits               10/19 items (53%)
+  nate-b-jones         builds-a-named-frame               6/9 items (67%)
+  stuart-winter-tear   opens-on-the-mistaken-instinct     20/23 items (87%)
+  stuart-winter-tear   opens-on-the-buried-assumption     20/23 items (87%)
+  stuart-winter-tear   builds-a-named-frame               12/23 items (52%)
+  stuart-winter-tear   reasons-from-first-principles      17/23 items (74%)
+  stuart-winter-tear   separates-conflated-questions      18/23 items (78%)
+  stuart-winter-tear   discounts-the-official-account     22/23 items (96%)
+
+17 of 52 shipping lines describe more than half the corpus (33%)

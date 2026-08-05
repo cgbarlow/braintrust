@@ -1,0 +1,27 @@
+{
+  "verdicts": [
+    { "slug": "opens-on-the-mistaken-instinct", "yes": true, "items": [2, 3, 4, 9] },
+    { "slug": "opens-on-a-case", "yes": true, "items": [1, 4, 6] },
+    { "slug": "opens-on-own-experiment", "yes": false, "items": [] },
+    { "slug": "opens-on-the-buried-assumption", "yes": true, "items": [3, 4, 6, 9] },
+    { "slug": "reasons-by-analogy", "yes": false, "items": [] },
+    { "slug": "builds-a-named-frame", "yes": true, "items": [1, 2, 6] },
+    { "slug": "reasons-from-first-principles", "yes": true, "items": [1, 9] },
+    { "slug": "extrapolates-a-trend", "yes": false, "items": [] },
+    { "slug": "separates-conflated-questions", "yes": true, "items": [3, 6] },
+    { "slug": "dissolves-rather-than-answers", "yes": false, "items": [] },
+    { "slug": "argues-from-cost-shift", "yes": true, "items": [9] },
+    { "slug": "moved-by-the-worked-example", "yes": true, "items": [4, 6] },
+    { "slug": "moved-by-measurement", "yes": true, "items": [1, 2, 4, 7, 8, 9] },
+    { "slug": "moved-by-what-was-built", "yes": true, "items": [4] },
+    { "slug": "discounts-the-official-account", "yes": true, "items": [1] },
+    { "slug": "concedes-then-narrows", "yes": true, "items": [3, 7] },
+    { "slug": "rejects-the-standard-framing", "yes": true, "items": [3, 9] },
+    { "slug": "flags-its-own-limits", "yes": true, "items": [3, 8, 9] },
+    { "slug": "refuses-the-monolith", "yes": true, "items": [3] },
+    { "slug": "closes-on-a-procedure", "yes": true, "items": [1, 2, 4] },
+    { "slug": "closes-on-a-condition", "yes": true, "items": [3] },
+    { "slug": "closes-on-an-invitation", "yes": true, "items": [7, 8] },
+    { "slug": "closes-on-what-it-costs-us", "yes": true, "items": [1, 9] }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "verdicts": [
+    {
+      "slug": "opens-on-the-mistaken-instinct",
+      "yes": true,
+      "items": [1,2,3,4,5,6,9,11,12,13,14,15,16,17,18,19,20,21,22,23]
+    },
+    {
+      "slug": "opens-on-a-case",
+      "yes": true,
+      "items": [10]
+    },
+    {
+      "slug": "opens-on-own-experiment",
+      "yes": false,
+      "items": []
+    },
+    {
+      "slug": "opens-on-the-buried-assumption",
+      "yes": true,
+      "items": [1,2,3,4,5,6,9,11,12,13,14,15,16,17,18,19,20,21,22,23]
+    },
+    {
+      "slug": "reasons-by-analogy",
+      "yes": true,
+      "items": [1]
+    },
+    {
+      "slug": "builds-a-named-frame",
+      "yes": true,
+      "items": [3,4,7,9,11,20,21,23]
+    },
+    {
+      "slug": "reasons-from-first-principles",
+      "yes": true,
+      "items": [2,3,5,6,7,8,11,13,14,15,16,17,18,20,22,23]
+    },
+    {
+      "slug": "extrapolates-a-trend",
+      "yes": true,
+      "items": [5,6,11,12,15]
+    },
+    {
+      "slug": "separates-conflated-questions",
+      "yes": true,
+      "items": [2,8,9,10,18,23]
+    },
+    {
+      "slug": "dissolves-rather-than-answers",
+      "yes": false,
+      "items": []
+    },
+    {
+      "slug": "argues-from-cost-shift",
+      "yes": true,
+      "items": [8,11,15]
+    },
+    {
+      "slug": "moved-by-the-worked-example",
+      "yes": true,
+      "items": [10,16]
+    },
+    {
+      "slug": "moved-by-measurement",
+      "yes": true,
+      "items": [1,2,8,10,11,15,18,20,23]
+    },
+    {
+      "slug": "moved-by-what-was-built",
+      "yes": false,
+      "items": []
+    },
+    {
+      "slug": "discounts-the-official-account",
+      "yes": true,
+      "items": [1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
+    },
+    {
+      "slug": "concedes-then-narrows",
+      "yes": false,
+      "items": []
+    },
+    {
+      "slug": "rejects-the-standard-framing",
+      "yes": true,
+      "items": [4,6,11,14,21]
+    },
+    {
+      "slug": "flags-its-own-limits",
+      "yes": true,
+      "items": [1,2,3,5,7,10,15,16,20,22]
+    },
+    {
+      "slug": "refuses-the-monolith",
+      "yes": false,
+      "items": []
+    },
+    {
+      "slug": "closes-on-a-procedure",
+      "yes": true,
+      "items": [7,16]
+    },
+    {
+      "slug": "closes-on-a-condition",
+      "yes": false,
+      "items": []
+    },
+    {
+      "slug": "closes-on-an-invitation",
+      "yes": false,
+      "items": []
+    },
+    {
+      "slug": "closes-on-what-it-costs-us",
+      "yes": false,
+      "items": []
+    }
+  ]
+}
