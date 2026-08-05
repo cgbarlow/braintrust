@@ -137,8 +137,40 @@ describe('walking the channel listing', () => {
     // empty channel and quietly halve a Corpus.
     await assert.rejects(
       () => walkChannel(source, deps(fetcher), async () => {}),
-      /could not find any videos/,
+      /could not read the YouTube listing at all/,
     );
+  });
+
+  // A channel with no videos has no Videos tab: YouTube answers the same browse with
+  // Home instead. Measured 2026-08-05 against UC05PHiH74VWHuqh_AF9h21Q, which braintrust
+  // had been recording as a failed fetch and retrying every night for as long as anyone
+  // followed that person.
+  const EMPTY_CHANNEL = JSON.stringify({
+    contents: {
+      twoColumnBrowseResultsRenderer: {
+        tabs: [{ tabRenderer: { title: 'Home', selected: true, content: { sectionListRenderer: {} } } }],
+      },
+    },
+  });
+
+  it('reads a channel with no videos as empty rather than unreadable', () => {
+    const listing = readListing(EMPTY_CHANNEL);
+
+    assert.deepEqual(listing.videos, []);
+    assert.equal(listing.empty, true);
+  });
+
+  it('finishes the backfill of an empty channel instead of failing it', async () => {
+    const fetcher = fakeFetcher([{ match: (url) => url.endsWith('/browse'), body: EMPTY_CHANNEL }]);
+
+    const outcome = await walkChannel(source, deps(fetcher), async () => {
+      assert.fail('an empty channel has nothing to record');
+    });
+
+    assert.equal(outcome.seen, 0);
+    // The half that matters: a source that reached the end of a listing it could read
+    // has completed its backfill, and there is nothing here to come back for tomorrow.
+    assert.equal(outcome.reachedFloor, true);
   });
 
   it('refuses a listing that is not JSON', () => {
