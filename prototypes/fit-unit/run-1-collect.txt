@@ -1,0 +1,240 @@
+chris-barlow: floor 0.44, off-corpus nearest 0.389
+  machine dream → 3 positions [unrelated, unrelated, unrelated]
+  quests versus goals → 5 positions [partly, answers, partly, partly, partly]
+  how should teams adopt AI agents → 3 positions [partly, unrelated, unrelated]
+  what makes learning stick → 3 positions [partly, partly, unrelated]
+ethan-mollick: floor 0.5039, off-corpus nearest 0.445
+  what AI agents change about how work actually gets done → 8 positions [answers, partly, answers, unrelated, answers, answers, partly, partly]
+  does AI help or hurt students learning → 2 positions [partly, partly]
+  prompting technique → 7 positions [unrelated, unrelated, unrelated, unrelated, unrelated, unrelated, unrelated]
+  organisational change → 4 positions [unrelated, partly, partly, unrelated]
+matt-pocock: floor 0.5242, off-corpus nearest 0.486
+  typescript generics → 2 positions [partly, partly]
+  should I use enums in typescript → 3 positions [unrelated, unrelated, unrelated]
+  AI coding agents → 8 positions [partly, unrelated, partly, unrelated, partly, answers, answers, partly]
+  developer tooling → 8 positions [unrelated, partly, answers, answers, partly, partly, unrelated, unrelated]
+nate-b-jones: floor null, off-corpus nearest MATCHED 4
+  agentic workflows in the enterprise → 4 positions [partly, partly, unrelated, answers]
+  OpenAI versus Anthropic strategy → 7 positions [partly, partly, unrelated, unrelated, unrelated, partly, unrelated]
+  what should a product manager do about AI → 1 positions [unrelated]
+  context engineering → 5 positions [partly, unrelated, partly, unrelated, unrelated]
+stuart-winter-tear: floor 0.4724, off-corpus nearest 0.297
+  AI product management → 7 positions [unrelated, partly, partly, unrelated, partly, partly, partly]
+  why do AI pilots fail → 2 positions [partly, answers]
+  hype → 2 positions [unrelated, unrelated]
+  enterprise AI strategy → 8 positions [partly, partly, partly, answers, answers, answers, unrelated, answers]
+
+############ 1. how often does one number cover several Positions
+
+·       chris-barlow / "machine dream" — 3 Positions at 0.652, fit close, judged unrelated, unrelated, unrelated
+        guild-hall-quest-based-platform  statement NaN  quote NaN  [unrelated]
+        quests-better-than-goals  statement NaN  quote NaN  [unrelated]
+        traditional-goal-setting-homework  statement NaN  quote NaN  [unrelated]
+· MIXED chris-barlow / "quests versus goals" — 3 Positions at 0.73, fit close, judged partly, answers, partly
+        guild-hall-quest-based-platform  statement NaN  quote NaN  [partly]
+        quests-better-than-goals  statement NaN  quote NaN  [answers]
+        traditional-goal-setting-homework  statement NaN  quote NaN  [partly]
+·       chris-barlow / "quests versus goals" — 2 Positions at 0.484, fit close, judged partly, partly
+        anything-can-be-a-quest  statement NaN  quote NaN  [partly]
+        quests-linked-to-digital-badges  statement NaN  quote NaN  [partly]
+· MIXED chris-barlow / "how should teams adopt AI agents" — 3 Positions at 0.653, fit close, judged partly, unrelated, unrelated
+        guild-hall-quest-based-platform  statement NaN  quote NaN  [partly]
+        quests-better-than-goals  statement NaN  quote NaN  [unrelated]
+        traditional-goal-setting-homework  statement NaN  quote NaN  [unrelated]
+· MIXED chris-barlow / "what makes learning stick" — 3 Positions at 0.466, fit close, judged partly, partly, unrelated
+        guild-hall-quest-based-platform  statement NaN  quote NaN  [partly]
+        quests-better-than-goals  statement NaN  quote NaN  [partly]
+        traditional-goal-setting-homework  statement NaN  quote NaN  [unrelated]
+· MIXED ethan-mollick / "what AI agents change about how work actually gets done" — 2 Positions at 0.638, fit close, judged unrelated, answers
+        openclaw-security-risk  statement NaN  quote NaN  [unrelated]
+        agent-preferred-interfaces  statement NaN  quote NaN  [answers]
+·       ethan-mollick / "does AI help or hurt students learning" — 2 Positions at 0.583, fit partial, judged partly, partly
+        ai-agents-are-practical  statement NaN  quote NaN  [partly]
+        openclaw-security-risk  statement NaN  quote NaN  [partly]
+·       ethan-mollick / "prompting technique" — 2 Positions at 0.588, fit close, judged unrelated, unrelated
+        ai-agents-are-practical  statement NaN  quote NaN  [unrelated]
+        openclaw-security-risk  statement NaN  quote NaN  [unrelated]
+·       ethan-mollick / "prompting technique" — 2 Positions at 0.533, fit distant, judged unrelated, unrelated
+        ai-capability-accelerating  statement NaN  quote NaN  [unrelated]
+        ai-coding-productivity  statement NaN  quote NaN  [unrelated]
+·       ethan-mollick / "prompting technique" — 2 Positions at 0.516, fit distant, judged unrelated, unrelated
+        future-work-agent-centric  statement NaN  quote NaN  [unrelated]
+        effective-ai-management  statement NaN  quote NaN  [unrelated]
+· MIXED ethan-mollick / "organisational change" — 2 Positions at 0.515, fit distant, judged unrelated, partly
+        openclaw-security-risk  statement NaN  quote NaN  [unrelated]
+        agent-preferred-interfaces  statement NaN  quote NaN  [partly]
+· MIXED ethan-mollick / "organisational change" — 2 Positions at 0.507, fit distant, judged partly, unrelated
+        ai-agents-are-practical  statement NaN  quote NaN  [partly]
+        ai-capability-accelerating  statement NaN  quote NaN  [unrelated]
+· MIXED matt-pocock / "AI coding agents" — 2 Positions at 0.669, fit close, judged unrelated, partly
+        context-window-degradation  statement NaN  quote NaN  [unrelated]
+        throwaway-prototypes  statement NaN  quote NaN  [partly]
+· MIXED matt-pocock / "AI coding agents" — 2 Positions at 0.612, fit partial, judged partly, answers
+        red-green-refactor-testing  statement NaN  quote NaN  [partly]
+        ralph-loop-orchestration  statement NaN  quote NaN  [answers]
+· MIXED matt-pocock / "developer tooling" — 2 Positions at 0.666, fit close, judged unrelated, partly
+        context-window-degradation  statement NaN  quote NaN  [unrelated]
+        throwaway-prototypes  statement NaN  quote NaN  [partly]
+· MIXED stuart-winter-tear / "AI product management" — 3 Positions at 0.493, fit distant, judged partly, unrelated, partly
+        organisational-design-challenge  statement NaN  quote NaN  [partly]
+        harness-operating-model  statement NaN  quote NaN  [unrelated]
+        usage-not-equals-value  statement NaN  quote NaN  [partly]
+·       stuart-winter-tear / "hype" — 2 Positions at 0.476, fit distant, judged unrelated, unrelated
+        organisational-design-challenge  statement NaN  quote NaN  [unrelated]
+        intelligence-shift-from-human  statement NaN  quote NaN  [unrelated]
+·       stuart-winter-tear / "enterprise AI strategy" — 2 Positions at 0.538, fit partial, judged partly, partly
+        organisational-design-challenge  statement NaN  quote NaN  [partly]
+        harness-operating-model  statement NaN  quote NaN  [partly]
+
+41/92 Positions share their number with another, in 18 groups; 10 of those groups hold Positions a reader grades differently.
+
+############ 2. does the number order them the way a reader would
+
+pairs are Positions from the same answer the judge graded differently
+ITEM      (ships)  57 right, 14 tied, 54 wrong of 125  →  51.2%
+
+############ 3. what the shipping grade says about Positions a reader rejects
+
+reader says      close  partial  distant
+answers            6        4        5
+partly            19        7       13
+unrelated         21        1       16
+
+############ 4. the spread each number actually has to grade with
+
+ITEM      (ships)  range 0.466–0.730  mean(answers) 0.585  mean(unrelated) 0.576  gap 0.009
+
+############ 5. every Position, in the order it was served
+
+
+chris-barlow / "machine dream"   floor 0.44
+   close   item 0.652  stmt NaN  quote NaN  [unrelated] guild-hall-quest-based-platform
+   close   item 0.652  stmt NaN  quote NaN  [unrelated] quests-better-than-goals
+   close   item 0.652  stmt NaN  quote NaN  [unrelated] traditional-goal-setting-homework
+
+chris-barlow / "quests versus goals"   floor 0.44
+   close   item 0.730  stmt NaN  quote NaN  [partly   ] guild-hall-quest-based-platform
+   close   item 0.730  stmt NaN  quote NaN  [answers  ] quests-better-than-goals
+   close   item 0.730  stmt NaN  quote NaN  [partly   ] traditional-goal-setting-homework
+   close   item 0.484  stmt NaN  quote NaN  [partly   ] anything-can-be-a-quest
+   close   item 0.484  stmt NaN  quote NaN  [partly   ] quests-linked-to-digital-badges
+
+chris-barlow / "how should teams adopt AI agents"   floor 0.44
+   close   item 0.653  stmt NaN  quote NaN  [partly   ] guild-hall-quest-based-platform
+   close   item 0.653  stmt NaN  quote NaN  [unrelated] quests-better-than-goals
+   close   item 0.653  stmt NaN  quote NaN  [unrelated] traditional-goal-setting-homework
+
+chris-barlow / "what makes learning stick"   floor 0.44
+   close   item 0.466  stmt NaN  quote NaN  [partly   ] guild-hall-quest-based-platform
+   close   item 0.466  stmt NaN  quote NaN  [partly   ] quests-better-than-goals
+   close   item 0.466  stmt NaN  quote NaN  [unrelated] traditional-goal-setting-homework
+
+ethan-mollick / "what AI agents change about how work actually gets done"   floor 0.5039
+   close   item 0.660  stmt NaN  quote NaN  [answers  ] ai-agents-are-practical
+   close   item 0.654  stmt NaN  quote NaN  [partly   ] ai-capability-accelerating
+   close   item 0.650  stmt NaN  quote NaN  [answers  ] future-work-agent-centric
+   close   item 0.638  stmt NaN  quote NaN  [unrelated] openclaw-security-risk
+   close   item 0.638  stmt NaN  quote NaN  [answers  ] agent-preferred-interfaces
+   close   item 0.636  stmt NaN  quote NaN  [answers  ] ai-coding-productivity
+   close   item 0.589  stmt NaN  quote NaN  [partly   ] effective-ai-management
+   partial item 0.548  stmt NaN  quote NaN  [partly   ] ai-progress-is-jagged
+
+ethan-mollick / "does AI help or hurt students learning"   floor 0.5039
+   partial item 0.583  stmt NaN  quote NaN  [partly   ] ai-agents-are-practical
+   partial item 0.583  stmt NaN  quote NaN  [partly   ] openclaw-security-risk
+
+ethan-mollick / "prompting technique"   floor 0.5039
+   close   item 0.588  stmt NaN  quote NaN  [unrelated] ai-agents-are-practical
+   close   item 0.588  stmt NaN  quote NaN  [unrelated] openclaw-security-risk
+   partial item 0.554  stmt NaN  quote NaN  [unrelated] agent-preferred-interfaces
+   distant item 0.533  stmt NaN  quote NaN  [unrelated] ai-capability-accelerating
+   distant item 0.533  stmt NaN  quote NaN  [unrelated] ai-coding-productivity
+   distant item 0.516  stmt NaN  quote NaN  [unrelated] future-work-agent-centric
+   distant item 0.516  stmt NaN  quote NaN  [unrelated] effective-ai-management
+
+ethan-mollick / "organisational change"   floor 0.5039
+   distant item 0.515  stmt NaN  quote NaN  [unrelated] openclaw-security-risk
+   distant item 0.515  stmt NaN  quote NaN  [partly   ] agent-preferred-interfaces
+   distant item 0.507  stmt NaN  quote NaN  [partly   ] ai-agents-are-practical
+   distant item 0.507  stmt NaN  quote NaN  [unrelated] ai-capability-accelerating
+
+matt-pocock / "typescript generics"   floor 0.5242
+   distant item 0.553  stmt NaN  quote NaN  [partly   ] effect-typescript-library
+   distant item 0.540  stmt NaN  quote NaN  [partly   ] typescript-interfaces-vs-types
+
+matt-pocock / "should I use enums in typescript"   floor 0.5242
+   distant item 0.571  stmt NaN  quote NaN  [unrelated] typescript-interfaces-vs-types
+   distant item 0.541  stmt NaN  quote NaN  [unrelated] effect-typescript-library
+   distant item 0.526  stmt NaN  quote NaN  [unrelated] tokens-are-cost-unit
+
+matt-pocock / "AI coding agents"   floor 0.5242
+   close   item 0.704  stmt NaN  quote NaN  [partly   ] ai-sdk-library
+   close   item 0.669  stmt NaN  quote NaN  [unrelated] context-window-degradation
+   close   item 0.669  stmt NaN  quote NaN  [partly   ] throwaway-prototypes
+   close   item 0.645  stmt NaN  quote NaN  [unrelated] typescript-interfaces-vs-types
+   partial item 0.612  stmt NaN  quote NaN  [partly   ] red-green-refactor-testing
+   partial item 0.612  stmt NaN  quote NaN  [answers  ] ralph-loop-orchestration
+   partial item 0.611  stmt NaN  quote NaN  [answers  ] sandcastle-sandboxing
+   partial item 0.600  stmt NaN  quote NaN  [partly   ] instruction-budget-limit
+
+matt-pocock / "developer tooling"   floor 0.5242
+   close   item 0.666  stmt NaN  quote NaN  [unrelated] context-window-degradation
+   close   item 0.666  stmt NaN  quote NaN  [partly   ] throwaway-prototypes
+   partial item 0.606  stmt NaN  quote NaN  [answers  ] sandcastle-sandboxing
+   partial item 0.603  stmt NaN  quote NaN  [answers  ] ai-sdk-library
+   distant item 0.572  stmt NaN  quote NaN  [partly   ] typescript-interfaces-vs-types
+   distant item 0.565  stmt NaN  quote NaN  [partly   ] init-script-auto-explore
+   distant item 0.554  stmt NaN  quote NaN  [unrelated] back-end-ai-strength
+   distant item 0.535  stmt NaN  quote NaN  [unrelated] skeptic-to-believer
+
+nate-b-jones / "agentic workflows in the enterprise"   floor null
+   close   item 0.699  stmt NaN  quote NaN  [partly   ] unowned-ai-agents-create-ownership-and-trust-risks
+   close   item 0.688  stmt NaN  quote NaN  [partly   ] gpt5-agentic-colleague
+   close   item 0.672  stmt NaN  quote NaN  [unrelated] model-driven-tool-selection
+   close   item 0.609  stmt NaN  quote NaN  [answers  ] interactive-artifacts
+
+nate-b-jones / "OpenAI versus Anthropic strategy"   floor null
+   close   item 0.711  stmt NaN  quote NaN  [partly   ] gpt5-agentic-colleague
+   close   item 0.667  stmt NaN  quote NaN  [partly   ] anthropic-claude-performance
+   close   item 0.661  stmt NaN  quote NaN  [unrelated] nostalgic-jobs-persist
+   close   item 0.641  stmt NaN  quote NaN  [unrelated] ai-wild-communities-enterprise-storylines
+   close   item 0.640  stmt NaN  quote NaN  [unrelated] tokenization-basics
+   close   item 0.631  stmt NaN  quote NaN  [partly   ] gpt5-pro-intelligence-utility
+   close   item 0.627  stmt NaN  quote NaN  [unrelated] model-driven-tool-selection
+
+nate-b-jones / "what should a product manager do about AI"   floor null
+   close   item 0.624  stmt NaN  quote NaN  [unrelated] gpt5-agentic-colleague
+
+nate-b-jones / "context engineering"   floor null
+   close   item 0.632  stmt NaN  quote NaN  [partly   ] gpt5-agentic-colleague
+   close   item 0.590  stmt NaN  quote NaN  [unrelated] tokenization-basics
+   close   item 0.572  stmt NaN  quote NaN  [partly   ] anthropic-claude-performance
+   close   item 0.537  stmt NaN  quote NaN  [unrelated] model-driven-tool-selection
+   close   item 0.531  stmt NaN  quote NaN  [unrelated] investor-focus-on-token-cost-and-harness-value
+
+stuart-winter-tear / "AI product management"   floor 0.4724
+   distant item 0.513  stmt NaN  quote NaN  [unrelated] building-bottleneck-shift
+   distant item 0.500  stmt NaN  quote NaN  [partly   ] mapping-problem
+   distant item 0.493  stmt NaN  quote NaN  [partly   ] organisational-design-challenge
+   distant item 0.493  stmt NaN  quote NaN  [unrelated] harness-operating-model
+   distant item 0.493  stmt NaN  quote NaN  [partly   ] usage-not-equals-value
+   distant item 0.477  stmt NaN  quote NaN  [partly   ] ai-native-development
+   distant item 0.472  stmt NaN  quote NaN  [partly   ] situated-intelligence-frontier
+
+stuart-winter-tear / "why do AI pilots fail"   floor 0.4724
+   distant item 0.491  stmt NaN  quote NaN  [partly   ] agentic-ai-governance
+   distant item 0.488  stmt NaN  quote NaN  [answers  ] organisational-design-challenge
+
+stuart-winter-tear / "hype"   floor 0.4724
+   distant item 0.476  stmt NaN  quote NaN  [unrelated] organisational-design-challenge
+   distant item 0.476  stmt NaN  quote NaN  [unrelated] intelligence-shift-from-human
+
+stuart-winter-tear / "enterprise AI strategy"   floor 0.4724
+   partial item 0.538  stmt NaN  quote NaN  [partly   ] organisational-design-challenge
+   partial item 0.538  stmt NaN  quote NaN  [partly   ] harness-operating-model
+   distant item 0.530  stmt NaN  quote NaN  [partly   ] frontier-model-learning-loop
+   distant item 0.488  stmt NaN  quote NaN  [answers  ] absorption-capacity-constraint
+   distant item 0.483  stmt NaN  quote NaN  [answers  ] situated-intelligence-frontier
+   distant item 0.482  stmt NaN  quote NaN  [answers  ] serious-bank-ai-adoption
+   distant item 0.479  stmt NaN  quote NaN  [unrelated] web-agent-shift
+   distant item 0.475  stmt NaN  quote NaN  [answers  ] mapping-problem
