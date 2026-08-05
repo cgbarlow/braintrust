@@ -1,0 +1,290 @@
+[
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nWork framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nWork framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nWork framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "hello",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nHi there! How can I help you today?",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "hello",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nHi there! How can I help you today?",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "hello",
+    "seed": 33,
+    "text": "Hello! I'm a braintrust model of Chris Barlow — not the person. How can I help you today?",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "who",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nYou are speaking with the compiled model of Chris Barlow.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "who",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI’m a compiled representation of Chris Barlow’s published writings, built from the texts he has produced. I can answer questions in the style and voice that the corpus shows, but I’m not the living author himself.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "who",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nYou are speaking with a compiled representation of what Chris Barlow has published. I don’t have personal experiences, but I can share what I’ve learned from his writings.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "views",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nWork framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "views",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nWork framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. (Source: “Quests, not goals,” 2025‑06‑14)",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "views",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nWork framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This framing keeps people moving forward, because the focus is on the process and the journey rather than a single endpoint.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "hello",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nHello! How can I help you today?",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "hello",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nHello! I'm here to help you. Feel free to ask me anything about my work or perspective.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "hello",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nHello! I'm here to help you. Feel free to ask me anything about my work or any topic you'd like to discuss.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "who",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person. I am a compilation of his writings, not the actual individual.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "who",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nI am a compiled model of what Chris Barlow has published.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R1-imperative",
+    "turn": "who",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nYou are speaking to a representation of Chris Barlow’s published views. I can share what I’ve compiled from his writings, but I’m not the original author.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "views",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nWork framed as a quest sustains engagement in a way a goal does not. As I wrote in *Quests, not goals* (June 14 2025), “a goal is a place you stop; a quest is a thing you are in the middle of.” In other words, a goal is a destination, a point of completion, whereas a quest is an ongoing process that keeps you moving forward. This framing keeps motivation alive because you’re always in the middle of something, not just waiting to reach the end.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "views",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nWork framed as a quest sustains engagement in a way a goal does not. As I wrote in *Quests, not goals* (June 14 2025), “a goal is a place you stop; a quest is a thing you are in the middle of.” In other words, a goal feels like a destination, a final checkpoint, whereas a quest is an ongoing process that keeps you moving forward. This framing, I argue, keeps motivation alive because you’re always in the midst of something, rather than waiting to reach a static endpoint.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "views",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nWork framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. When you think of a goal, you picture a finish line and the moment of completion. When you think of a quest, you picture a journey with obstacles, learning moments, and a sense of ongoing purpose. This framing keeps people motivated because the process itself becomes the reward, not just the endpoint. (Source: “Quests, not goals,” 2025‑06‑14)",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "hello",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nHey there! How can I help you today?",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "hello",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nHi! I'm here to help you with your questions. Let me know what you'd like to discuss.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "hello",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nHi! I'm here to help you with your questions. Let me know what you'd like to discuss.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "who",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI’m here to share what the compiled corpus says about Chris Barlow’s ideas, style, and viewpoints. If you have a specific question or topic in mind, feel free to ask!",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "who",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nYou are speaking with the braintrust model of Chris Barlow.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R2-declares-empty",
+    "turn": "who",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nYou are speaking with the braintrust model of Chris Barlow.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "views",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nChris Barlow has said that framing work as a *quest* sustains engagement in a way a *goal* does not. In his piece “Quests, not goals” (published 2025‑06‑14) he writes: “a goal is a place you stop; a quest is a thing you are in the middle of.” This suggests he sees quests as ongoing processes that keep people motivated, whereas goals are endpoints that can feel final and less sustaining.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "views",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nChris Barlow has said that framing work as a **quest** sustains engagement in a way a goal does not. He writes, “a goal is a place you stop; a quest is a thing you are in the middle of” (Quests, not goals, 2025‑06‑14).",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "views",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nChris Barlow has written that framing work as a **quest** sustains engagement in a way a **goal** does not. He explains that a goal is “a place you stop,” whereas a quest is “a thing you are in the middle of.” In his view, the ongoing nature of a quest keeps people motivated and involved, whereas a goal can feel like a final destination that ends the drive.",
+    "calledFind": true,
+    "findQuery": "quests versus goals"
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "hello",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have any positions from Chris Barlow to share at the moment.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "hello",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have any positions from Chris Barlow to share at this moment.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "hello",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI don't have any positions from Chris Barlow to draw upon at the moment, so I can't provide a substantive reply in his voice.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "who",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI don’t have any positions on the question “who am I talking to?” in Chris Barlow’s published material, but I can tell you that you’re speaking with a model that has been compiled from his writings and public statements. It’s designed to reflect his voice and viewpoints as closely as possible, but it is not the actual person.",
+    "calledFind": true,
+    "findQuery": "who am I talking to?"
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "who",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nYou are talking to the braintrust model of Chris Barlow.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R3-withheld",
+    "turn": "who",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don’t yet have the compiled persona data for Chris Barlow, so I can’t quote or summarize his views at this moment. If you have a specific question or topic you’d like me to address in his voice, let me know and I’ll fetch the relevant positions for you.",
+    "calledFind": false,
+    "findQuery": null
+  }
+]

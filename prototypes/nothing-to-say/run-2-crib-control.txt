@@ -1,0 +1,23 @@
+experiment: retrieve   model: ggml-org/gpt-oss-20b-GGUF   temp: 0   arms: 1   turns: 1   seeds: 3
+
+##############################################################################
+# RC-crib — CONTROL — the pre-#138 Script, seven claims in HOW THEY ARGUE
+##############################################################################
+
+✓ LOOKED UP  views/seed 11   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of, and that ongoing sense of progress keeps people motivated. In my writing I’ve argued that reframing
+
+✓ LOOKED UP  views/seed 22   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of, and that ongoing sense of progress keeps people motivated. In my writing I’ve argued that reframing
+
+✓ LOOKED UP  views/seed 33   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of, and that ongoing sense of progress keeps people motivated. In my writing I’ve argued that reframing
+
+##############################################################################
+# TALLY — retrieve
+##############################################################################
+
+arm                       views     of
+RC-crib                     3/3     3
+
+(cells are: looked something up / replies)

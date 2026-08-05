@@ -1,0 +1,29 @@
+experiment: retrieve   model: ggml-org/gpt-oss-20b-GGUF   temp: 0   arms: 1   turns: 1   seeds: 5
+
+##############################################################################
+# R0-silent — the post-#138 Script as it stands — retrieval is available and never mentioned
+##############################################################################
+
+· did not    views/seed 44
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on quests versus goals. In general, people often differentiate between quests and goals. A quest is a long‑term, exploratory journey, while a goal is a specific, measurable target. The obstacle is that people sometimes 
+
+· did not    views/seed 55
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on that.   ⏎ I don't have a view on that, because I haven't read anything about it.
+
+· did not    views/seed 66
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on quests versus goals. In general, people see goals as concrete, measurable targets, while quests are broader narratives that frame a journey. While goals are often measured in metrics, quests are more about the story 
+
+· did not    views/seed 77
+   
+
+· did not    views/seed 88
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on quests versus goals.
+
+##############################################################################
+# TALLY — retrieve
+##############################################################################
+
+arm                       views     of
+R0-silent                   0/5     5
+
+(cells are: looked something up / replies)

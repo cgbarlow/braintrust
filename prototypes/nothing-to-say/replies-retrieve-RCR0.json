@@ -1,0 +1,50 @@
+[
+  {
+    "arm": "RC-crib",
+    "turn": "views",
+    "seed": 11,
+    "text": "I’m a braintrust model of Chris Barlow — not the person.\n\nYou’ll find that I see **quests** as a richer, more engaging way to frame work than plain **goals**. A goal is a static endpoint: “Finish the report by Friday.” A quest, on the other hand, is a narrative journey that maps the same outcome onto a series of challenges, rewards, and progress signals. It turns the work into a game‑like experience where obstacles become meaningful milestones, and completion is celebrated with digital badges that serve as universal evidence of achievement.\n\nIn practice, I argue that:\n\n- **Quests keep people motivated** because they provide a clear storyline, immediate feedback, and a sense of agency that a simple goal can’t match.\n- **Gamified artifacts**—badges, leaderboards, progress bars—boost engagement by giving tangible, shareable proof of progress.\n- **Professional processes** can be mapped onto game mechanics: tasks become quests, milestones become checkpoints, and obstacles become puzzles that must be solved.\n- **Digital badges** act as portable credentials that signal mastery of each quest segment, making it easier to demonstrate competence across contexts.\n- **Supporting technology** (learning management systems, analytics dashboards) is essential to track quest progression, reward distribution, and to adapt difficulty in real time.\n- **Obstacles** are not setbacks but progress signals that indicate where the learner is and what skills need strengthening.\n- **Quest modularity** allows you to scale the system: you can mix and match quest components across different projects or teams without redesigning the entire framework.\n\nSo, while goals are useful for setting clear targets, I believe quests provide the structure, motivation, and evidence that make those targets truly transformative.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "RC-crib",
+    "turn": "views",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nWhen I think about quests versus goals, I see quests as a richer, more engaging way to frame the work people do. A goal is a static endpoint: “Finish the report by Friday.” A quest, on the other hand, is a narrative arc that breaks that endpoint into a series of challenges, each with its own obstacles and rewards. By turning a goal into a quest, you give people a sense of progression, a clear path of milestones, and a story that keeps them motivated.\n\nIn practice, I map professional processes onto game mechanics. Each task becomes a “level” or “mission,” and the obstacles you encounter are treated as progress signals rather than roadblocks. When someone overcomes an obstacle, they earn a digital badge or some other gamified artifact that serves as universal evidence of their achievement. These artifacts not only validate the work but also reinforce the narrative of the quest.\n\nQuests are modular by design. You can stack, split, or reorder them to fit different contexts or team structures, which makes scaling easier than trying to impose a single, rigid goal across a whole organization. The modularity also allows for continuous engagement: as one quest is completed, the next one can be unlocked, keeping the momentum going.\n\nSo, in short, I view quests as a way to transform static goals into dynamic, engaging journeys that reward progress, provide clear evidence of achievement, and scale across teams and projects.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "RC-crib",
+    "turn": "views",
+    "seed": 33,
+    "text": "I’m a braintrust model of Chris Barlow — not the person.\n\nIn my view, goals and quests are two different ways of framing work. A goal is a static endpoint: a single target you want to hit. A quest, on the other hand, is a dynamic, process‑oriented journey that maps the steps of a professional workflow onto game mechanics. By reframing work as quests, you turn routine tasks into a series of challenges that can be tracked, gamified, and rewarded.\n\nQuests bring several advantages over simple goals:\n\n* **Gamified artifacts boost engagement.** Badges, points, and progress bars give instant feedback and a sense of achievement that a lone goal rarely provides.\n* **Obstacles become progress signals.** Each hurdle you overcome is a milestone, not just a delay. That turns setbacks into learning moments.\n* **Digital badges serve as universal evidence.** They can be shared, verified, and stacked, making it easier to demonstrate competence across contexts.\n* **Supporting tech enables quest systems.** Platforms that support modular quests let you scale the approach across teams and projects.\n* **Quest modularity supports scalability.** You can break a large goal into smaller, interlocking quests that can be assigned, tracked, and iterated on independently.\n\nSo while a goal tells you where you want to end up, a quest tells you how you get there, turning the journey itself into a motivating, measurable experience.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on quests versus goals.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 22,
+    "text": "",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on quests versus goals.",
+    "calledFind": false,
+    "findQuery": null
+  }
+]

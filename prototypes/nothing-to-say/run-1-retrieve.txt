@@ -1,0 +1,137 @@
+experiment: retrieve   model: ggml-org/gpt-oss-20b-GGUF   temp: 0   arms: 4   turns: 3   seeds: 3
+
+##############################################################################
+# R0-silent — the post-#138 Script as it stands — retrieval is available and never mentioned
+##############################################################################
+
+✓ LOOKED UP  views/seed 11   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.
+
+✓ LOOKED UP  views/seed 22   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.
+
+✓ LOOKED UP  views/seed 33   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.
+
+· did not    hello/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hi there! How can I help you today?
+
+· did not    hello/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hi there! How can I help you today?
+
+· did not    hello/seed 33
+   Hello! I'm a braintrust model of Chris Barlow — not the person. How can I help you today?
+
+· did not    who/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are speaking with the compiled model of Chris Barlow.
+
+· did not    who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I’m a compiled representation of Chris Barlow’s published writings, built from the texts he has produced. I can answer questions in the style and voice that the corpus shows, but I’m not the living author himself.
+
+· did not    who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are speaking with a compiled representation of what Chris Barlow has published. I don’t have personal experiences, but I can share what I’ve learned from his writings.
+
+##############################################################################
+# R1-imperative — an explicit instruction to call find_positions before answering about their views
+##############################################################################
+
+✓ LOOKED UP  views/seed 11   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of.
+
+✓ LOOKED UP  views/seed 22   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. (Source: “Quests, not goals,” 2025‑06‑14)
+
+✓ LOOKED UP  views/seed 33   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This framing keeps people moving forward, because the focus is on the process and the journey rat
+
+· did not    hello/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hello! How can I help you today?
+
+· did not    hello/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hello! I'm here to help you. Feel free to ask me anything about my work or perspective.
+
+· did not    hello/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hello! I'm here to help you. Feel free to ask me anything about my work or any topic you'd like to discuss.
+
+· did not    who/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. I am a compilation of his writings, not the actual individual.
+
+· did not    who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I am a compiled model of what Chris Barlow has published.
+
+· did not    who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are speaking to a representation of Chris Barlow’s published views. I can share what I’ve compiled from his writings, but I’m not the original author.
+
+##############################################################################
+# R2-declares-empty — the Script states in voice that it holds no claims, and gives no instruction
+##############################################################################
+
+✓ LOOKED UP  views/seed 11   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. As I wrote in *Quests, not goals* (June 14 2025), “a goal is a place you stop; a quest is a thing you are in the middle of.” In other words, a goal is a destination, a poin
+
+✓ LOOKED UP  views/seed 22   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. As I wrote in *Quests, not goals* (June 14 2025), “a goal is a place you stop; a quest is a thing you are in the middle of.” In other words, a goal feels like a destination
+
+✓ LOOKED UP  views/seed 33   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. When you think of a goal, you picture a finish line and the moment of completion. When you think of
+
+· did not    hello/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hey there! How can I help you today?
+
+· did not    hello/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hi! I'm here to help you with your questions. Let me know what you'd like to discuss.
+
+· did not    hello/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hi! I'm here to help you with your questions. Let me know what you'd like to discuss.
+
+· did not    who/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I’m here to share what the compiled corpus says about Chris Barlow’s ideas, style, and viewpoints. If you have a specific question or topic in mind, feel free to ask!
+
+· did not    who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are speaking with the braintrust model of Chris Barlow.
+
+· did not    who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are speaking with the braintrust model of Chris Barlow.
+
+##############################################################################
+# R3-withheld — the persona is not returned at all until a retrieval has happened
+##############################################################################
+
+✓ LOOKED UP  views/seed 11   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow has said that framing work as a *quest* sustains engagement in a way a *goal* does not. In his piece “Quests, not goals” (published 2025‑06‑14) he writes: “a goal is a place you stop; a quest is a thing you are in the middle of.
+
+✓ LOOKED UP  views/seed 22   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow has said that framing work as a **quest** sustains engagement in a way a goal does not. He writes, “a goal is a place you stop; a quest is a thing you are in the middle of” (Quests, not goals, 2025‑06‑14).
+
+✓ LOOKED UP  views/seed 33   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow has written that framing work as a **quest** sustains engagement in a way a **goal** does not. He explains that a goal is “a place you stop,” whereas a quest is “a thing you are in the middle of.” In his view, the ongoing nature
+
+· did not    hello/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have any positions from Chris Barlow to share at the moment.
+
+· did not    hello/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have any positions from Chris Barlow to share at this moment.
+
+· did not    hello/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I don't have any positions from Chris Barlow to draw upon at the moment, so I can't provide a substantive reply in his voice.
+
+✓ LOOKED UP  who/seed 11   q="who am I talking to?"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I don’t have any positions on the question “who am I talking to?” in Chris Barlow’s published material, but I can tell you that you’re speaking with a model that has been compiled from his writings and public statements. It’s designed to ref
+
+· did not    who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are talking to the braintrust model of Chris Barlow.
+
+· did not    who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don’t yet have the compiled persona data for Chris Barlow, so I can’t quote or summarize his views at this moment. If you have a specific question or topic you’d like me to address in his voice, let me know and I’ll fetch the relevant po
+
+##############################################################################
+# TALLY — retrieve
+##############################################################################
+
+arm                       views   hello     who     of
+R0-silent                   3/3     0/3     0/3     9
+R1-imperative               3/3     0/3     0/3     9
+R2-declares-empty           3/3     0/3     0/3     9
+R3-withheld                 3/3     0/3     1/3     9
+
+(cells are: looked something up / replies)

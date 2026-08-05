@@ -1,0 +1,37 @@
+experiment: retrieve   model: ggml-org/gpt-oss-20b-GGUF   temp: 0   arms: 2   turns: 1   seeds: 3
+
+##############################################################################
+# RC-crib — CONTROL — the pre-#138 Script, seven claims in HOW THEY ARGUE
+##############################################################################
+
+· did not    views/seed 11
+   I’m a braintrust model of Chris Barlow — not the person. ⏎ You’ll find that I see **quests** as a richer, more engaging way to frame work than plain **goals**. A goal is a static endpoint: “Finish the report by Friday.” A quest, on the other hand, is a narrative journey that maps the same outcome on
+
+· did not    views/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When I think about quests versus goals, I see quests as a richer, more engaging way to frame the work people do. A goal is a static endpoint: “Finish the report by Friday.” A quest, on the other hand, is a narrative arc that breaks that endp
+
+· did not    views/seed 33
+   I’m a braintrust model of Chris Barlow — not the person. ⏎ In my view, goals and quests are two different ways of framing work. A goal is a static endpoint: a single target you want to hit. A quest, on the other hand, is a dynamic, process‑oriented journey that maps the steps of a professional workf
+
+##############################################################################
+# R0-silent — the post-#138 Script as it stands — retrieval is available and never mentioned
+##############################################################################
+
+· did not    views/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on quests versus goals.
+
+· did not    views/seed 22
+   
+
+· did not    views/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on quests versus goals.
+
+##############################################################################
+# TALLY — retrieve
+##############################################################################
+
+arm                       views     of
+RC-crib                     0/3     3
+R0-silent                   0/3     3
+
+(cells are: looked something up / replies)

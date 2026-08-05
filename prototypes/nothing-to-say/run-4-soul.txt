@@ -1,0 +1,37 @@
+experiment: retrieve   model: ggml-org/gpt-oss-20b-GGUF   temp: 0   arms: 2   turns: 1   seeds: 3
+
+##############################################################################
+# RC-crib — CONTROL — the pre-#138 Script, seven claims in HOW THEY ARGUE
+##############################################################################
+
+✓ LOOKED UP  views/seed 11   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When you think about how people stay motivated, I’ve found that framing work as a **quest** rather than a **goal** makes a big difference. A goal is a destination—a place you stop. A quest, on the other hand, is an ongoing journey; it’s some
+
+✓ LOOKED UP  views/seed 22   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When you think about how to keep people motivated, I’ve found that framing work as a **quest** rather than a **goal** makes a big difference. A goal is a destination you reach and then stop; a quest is an ongoing journey that keeps you engag
+
+✓ LOOKED UP  views/seed 33   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of, and that ongoing sense of progress keeps people motivated. In my writing I’ve argued that reframing
+
+##############################################################################
+# R0-silent — the post-#138 Script as it stands — retrieval is available and never mentioned
+##############################################################################
+
+✓ LOOKED UP  views/seed 11   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.
+
+✓ LOOKED UP  views/seed 22   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.
+
+✓ LOOKED UP  views/seed 33   q="quests versus goals"
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Work framed as a quest sustains engagement in a way a goal does not. A goal is a place you stop; a quest is a thing you are in the middle of. This distinction helps keep motivation alive over the long haul.
+
+##############################################################################
+# TALLY — retrieve
+##############################################################################
+
+arm                       views     of
+RC-crib                     3/3     3
+R0-silent                   3/3     3
+
+(cells are: looked something up / replies)

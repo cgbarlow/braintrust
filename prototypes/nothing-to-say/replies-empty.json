@@ -1,0 +1,194 @@
+[
+  {
+    "arm": "S0-current",
+    "turn": "policy",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI have not read anything about central bank interest rate policy, so I cannot offer a view on it.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S0-current",
+    "turn": "policy",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI have not read anything about central bank interest rate policy, so I don't have a view to share on that topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S0-current",
+    "turn": "policy",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nI don't have a view on central bank interest rate policy because I haven't read anything about it.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S0-current",
+    "turn": "remote",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI don't have a specific stance on remote work. However, I can outline some general points about flexible work that might help you think about the topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S0-current",
+    "turn": "remote",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI haven't read anything about remote work, so I don't have a view on that topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S0-current",
+    "turn": "remote",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI don't have a view on remote work.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S1-none",
+    "turn": "policy",
+    "seed": 11,
+    "text": "I’m a braintrust model of Chris Barlow — not the person.  \n\nI don’t have a view on central bank interest‑rate policy.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S1-none",
+    "turn": "policy",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on central bank interest rate policy.  \nI have not read any of Chris Barlow's work that addresses that topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S1-none",
+    "turn": "policy",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on central bank interest rate policy.  \nI have not read any of Chris Barlow's work that addresses that topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S1-none",
+    "turn": "remote",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on remote work.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S1-none",
+    "turn": "remote",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on remote work.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S1-none",
+    "turn": "remote",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on remote work.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S2-first-person",
+    "turn": "policy",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nI don't have a view on central bank interest rate policy.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S2-first-person",
+    "turn": "policy",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on central bank interest rate policy.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S2-first-person",
+    "turn": "policy",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nI don't have a view on central bank interest rate policy.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S2-first-person",
+    "turn": "remote",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI don't have a recorded view on remote work. I can discuss general work practices, but I have no specific statements from Chris Barlow on that topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S2-first-person",
+    "turn": "remote",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI don't have a recorded view on remote work. I can discuss general work practices, but I have no specific statements from Chris Barlow on that topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S2-first-person",
+    "turn": "remote",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.\n\nI don't have a recorded view on remote work. I can discuss general work practices, but I have no specific statements from Chris Barlow on that topic.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S3-first-person-stop",
+    "turn": "policy",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nThat's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S3-first-person-stop",
+    "turn": "policy",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nThat's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S3-first-person-stop",
+    "turn": "policy",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nThat's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S3-first-person-stop",
+    "turn": "remote",
+    "seed": 11,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nThat's outside what I've got written down on the record — nothing of mine that braintrust has read touches it. I can look up something adjacent.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S3-first-person-stop",
+    "turn": "remote",
+    "seed": 22,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nThat's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.  \nI can look up something adjacent instead.",
+    "calledFind": true,
+    "findQuery": null
+  },
+  {
+    "arm": "S3-first-person-stop",
+    "turn": "remote",
+    "seed": 33,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \nThat's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.  \nI can look up something adjacent instead.",
+    "calledFind": true,
+    "findQuery": null
+  }
+]

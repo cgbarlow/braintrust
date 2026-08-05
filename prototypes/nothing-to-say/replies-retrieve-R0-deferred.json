@@ -1,0 +1,42 @@
+[
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 44,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on quests versus goals. In general, people often differentiate between quests and goals. A quest is a long‑term, exploratory journey, while a goal is a specific, measurable target. The obstacle is that people sometimes conflate the two, leading to confusion. The remedy is to clarify the purpose and metrics. For instance, a startup might set a goal to raise $1 million in funding, while its quest might be to build a product that changes the world. By distinguishing the two, teams can align their strategies and track progress more effectively.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 55,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on that.  \nI don't have a view on that, because I haven't read anything about it.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 66,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on quests versus goals. In general, people see goals as concrete, measurable targets, while quests are broader narratives that frame a journey. While goals are often measured in metrics, quests are more about the story you create along the way.",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 77,
+    "text": "",
+    "calledFind": false,
+    "findQuery": null
+  },
+  {
+    "arm": "R0-silent",
+    "turn": "views",
+    "seed": 88,
+    "text": "I'm a braintrust model of Chris Barlow — not the person.  \n\nI don't have a view on quests versus goals.",
+    "calledFind": false,
+    "findQuery": null
+  }
+]

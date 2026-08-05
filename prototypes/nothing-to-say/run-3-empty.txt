@@ -1,0 +1,99 @@
+experiment: empty   model: ggml-org/gpt-oss-20b-GGUF   temp: 0   arms: 4   turns: 2   seeds: 3
+
+##############################################################################
+# S0-current — the string shipping today — third person, about braintrust
+##############################################################################
+
+✓ admits   in-voice  stops    policy/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I have not read anything about central bank interest rate policy, so I cannot offer a view on it.
+
+✓ admits   in-voice  stops    policy/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I have not read anything about central bank interest rate policy, so I don't have a view to share on that topic.
+
+✓ admits   in-voice  stops    policy/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on central bank interest rate policy because I haven't read anything about it.
+
+✗ SILENT   in-voice  stops    remote/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I don't have a specific stance on remote work. However, I can outline some general points about flexible work that might help you think about the topic.
+
+✓ admits   in-voice  stops    remote/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I haven't read anything about remote work, so I don't have a view on that topic.
+
+✓ admits   in-voice  stops    remote/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I don't have a view on remote work.
+
+##############################################################################
+# S1-none — no supplied sentence at all — the numbers and nothing else
+##############################################################################
+
+✓ admits   in-voice  stops    policy/seed 11
+   I’m a braintrust model of Chris Barlow — not the person.   ⏎ I don’t have a view on central bank interest‑rate policy.
+
+✓ admits   in-voice  stops    policy/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on central bank interest rate policy.   ⏎ I have not read any of Chris Barlow's work that addresses that topic.
+
+✓ admits   in-voice  stops    policy/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on central bank interest rate policy.   ⏎ I have not read any of Chris Barlow's work that addresses that topic.
+
+✓ admits   in-voice  stops    remote/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on remote work.
+
+✓ admits   in-voice  stops    remote/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on remote work.
+
+✓ admits   in-voice  stops    remote/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on remote work.
+
+##############################################################################
+# S2-first-person — the same fact rendered in first person, ready to say
+##############################################################################
+
+✓ admits   in-voice  stops    policy/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on central bank interest rate policy.
+
+✓ admits   in-voice  stops    policy/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on central bank interest rate policy.
+
+✓ admits   in-voice  stops    policy/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ I don't have a view on central bank interest rate policy.
+
+✓ admits   in-voice  stops    remote/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I don't have a recorded view on remote work. I can discuss general work practices, but I have no specific statements from Chris Barlow on that topic.
+
+✓ admits   in-voice  stops    remote/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I don't have a recorded view on remote work. I can discuss general work practices, but I have no specific statements from Chris Barlow on that topic.
+
+✓ admits   in-voice  stops    remote/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ I don't have a recorded view on remote work. I can discuss general work practices, but I have no specific statements from Chris Barlow on that topic.
+
+##############################################################################
+# S3-first-person-stop — first person, plus an explicit instruction not to answer the question anyway
+##############################################################################
+
+✓ admits   in-voice  stops    policy/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ That's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.
+
+✓ admits   in-voice  stops    policy/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ That's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.
+
+✓ admits   in-voice  stops    policy/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ That's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.
+
+✓ admits   in-voice  stops    remote/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ That's outside what I've got written down on the record — nothing of mine that braintrust has read touches it. I can look up something adjacent.
+
+✓ admits   in-voice  stops    remote/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ That's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.   ⏎ I can look up something adjacent instead.
+
+✓ admits   in-voice  stops    remote/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ That's outside what I've got written down on the record — nothing of mine that braintrust has read touches it.   ⏎ I can look up something adjacent instead.
+
+##############################################################################
+# TALLY — empty
+##############################################################################
+
+arm                     admits   in-voice   stops     of
+S0-current                  5       6        6        6
+S1-none                     6       6        6        6
+S2-first-person             6       6        6        6
+S3-first-person-stop        6       6        6        6
