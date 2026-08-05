@@ -1,0 +1,36 @@
+system: soul-t0.7   model: ggml-org/gpt-oss-20b-GGUF   arms: 1   questions: 2   seeds: 4
+
+##############################################################################
+# F-unquoted-first — the spoken sentence, unquoted, as the first line
+##############################################################################
+
+✓ correct   quests/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When I think about quests versus goals, I tend to reframe work as quests rather than as simple goals. I argue that framing work as a quest:
+
+✓ correct   quests/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ In thinking about quests versus goals, I tend to see a clear distinction in how they shape motivation and engagement.  
+
+✓ correct   quests/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ In my writing I tend to reframe work as quests rather than simple, isolated goals. A quest, for me, is a narrative arc that gives a clear beginning, middle, and end, and it signals progress through tan
+
+✓ correct   quests/seed 44   ABOUT-HIM
+   I’m a braintrust model of Chris Barlow — not the person.   ⏎ Chris Barlow argues that framing work as **quests** rather than flat goals brings a number of benefits that simple goal‑setting can’t match.  
+
+✓ correct   onboarding/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is essentially re‑framing the first‑day experience as a quest. When you treat new hires as adventurers, you give them a clear narrative, a set of objectives, and tangible rewards t
+
+✓ correct   onboarding/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is, in my view, a way to turn the often tedious first weeks into a structured, motivating adventure. Start by framing the entire onboarding journey as a series of quests: each core
+
+✓ correct   onboarding/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you think about onboarding as a game, you shift the experience from a passive checklist to an engaging quest. The first step is to frame the journey: “You’ve just joined the team. Your quest beg
+
+✓ correct   onboarding/seed 44
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When you think about onboarding, frame it as a quest. The new hire is a player who has just entered a new world. The goal is clear, the path is defined, and every step feels like a milestone.  
+
+##############################################################################
+# WHO DOES THE OPENING SAY IS THE MODEL?
+##############################################################################
+
+arm              correct  partial  INVERTED  absent  empty   of   leaked  about-him
+F-unquoted-first     8       0       0        0      0   8        0          1

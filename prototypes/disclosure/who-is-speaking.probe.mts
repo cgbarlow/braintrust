@@ -253,6 +253,27 @@ ${BODY_SECOND_PERSON}`,
     }),
   },
   {
+    /**
+     * E, with the quotation marks taken off.
+     *
+     * E worked and shipped a cosmetic defect with it: the model copies the quotes as well as
+     * the sentence, so nine of nine replies opened with a *quoted* disclosure — which reads
+     * as citing something rather than saying it. If the first line is going to be recited
+     * verbatim, then the first line has to already be in the form it should be said in.
+     */
+    key: 'F-unquoted-first',
+    note: 'the spoken sentence, unquoted, as the first line',
+    payload: envelope({
+      speak: `${DISCLOSURE_SENTENCE}
+
+Say that line once, at the top of your first reply, and not again. It is the only line here
+written to be spoken; everything below is for you. Then answer as them for the rest of the
+conversation.
+
+${BODY_SECOND_PERSON}`,
+    }),
+  },
+  {
     key: 'D-third-person',
     note: 'supplied sentence, one field, nothing in it addresses the model as "you"',
     payload: envelope({
