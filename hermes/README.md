@@ -38,6 +38,10 @@ mcp_servers:
     url: "https://your-braintrust.example.com/mcp?key=YOUR_BRAINTRUST_MCP_KEY"
     tools:
       exclude: [braintrust_follow_person, braintrust_unfollow_person]
+
+tools:
+  tool_search:
+    enabled: "off"
 ```
 
 The key goes in the query string — that is braintrust's documented primary, copied from OB1's extension
@@ -48,6 +52,11 @@ spends real money on the extractor while unfollowing throws a corpus away. `brai
 human-gated in the surface anyway, so excluding it costs nothing; excluding `unfollow` is the one that
 matters. `braintrust_refresh_persona` stays — it is AI-callable by design, and an agent noticing its own
 persona is stale and rebuilding it is exactly the behaviour that surface was built for.
+
+**`tool_search` is the top-level key, beside `mcp_servers`** — not the `tools` block inside the server. Set
+it now rather than after a broken session: left on, it can put the braintrust tools out of a small model's
+reach, and the failure does not always announce itself. See
+[Why `tool_search` is off](#why-tool_search-is-off).
 
 **3. Install the soul.**
 
@@ -67,7 +76,8 @@ bt-nate-b-jones chat
 The first reply should open with a line like *"I'm a braintrust model of Nate B. Jones — not the person."*
 and then answer in voice, without repeating that line again for the rest of the session. If a source is
 largely unread — a paywalled newsletter beside a public channel — the line names that scope too. If the
-opening line never appears, check that `braintrust_load_persona` appears in the profile's tool list.
+opening line never appears, check that `braintrust_load_persona` appears in the profile's tool list — and
+read [Why `tool_search` is off](#why-tool_search-is-off), which is the usual reason it doesn't.
 
 **If it opens every reply with that line**, the profile's `SOUL.md` predates this template. `SOUL.md` is
 copied, not linked, so a profile created earlier keeps whatever the template said on the day it was copied —
@@ -75,6 +85,45 @@ including an older non-negotiable that read as a per-reply instruction and outra
 speak once. Re-copy the template and replace the two placeholders again.
 
 **5. Repeat per Person.** A council of six is six profiles pointing at one braintrust.
+
+## Why `tool_search` is off
+
+Hermes defers tools when a profile carries more of them than it will present to a model at once: the extras
+drop off the model-facing list and have to be found through a search step first. braintrust's six sit behind
+that shim by default — and **a small model cannot always get back out of it.**
+
+`gpt-oss-20b` calls `braintrust_load_persona` through the shim and is told:
+
+```
+'braintrust_load_persona' is not a deferrable tool. If it appears in the model-facing tools
+list already, call it directly instead of via tool_call.
+```
+
+It reads the correction, agrees with it in its own reasoning — *"we should call it directly, not via
+tool_call"* — and then makes the same call again. Six retries, five stray `browser_navigate` calls to
+`example.com`, then raw `<|channel|>` tokens the endpoint refuses to parse, and the session dies with no
+answer.
+
+**Expect this to look intermittent, because it is model-size-dependent.** A 120b model hits the identical
+error once and recovers. Switch models and the problem appears and vanishes with nothing else moving, which
+makes it read like a braintrust fault. It isn't one: braintrust cannot see whether its tools ever reached
+the model.
+
+Three symptoms, worst last:
+
+- **The session loops and dies**, as above. Hard to miss.
+- **It talks about the person in the third person, with no opening line.** `braintrust_load_persona` never
+  landed, so there is no persona and no disclosure — just a general assistant discussing someone.
+- **It answers fluently, in voice, from nothing.** The dangerous one, because it does not look like a
+  failure at all. Here `braintrust_load_persona` got through and `braintrust_find_positions` did not, so the
+  model has the voice and cannot reach the record — and it fills the silence from its own knowledge, with no
+  dates and no citations. Measured while resolving
+  [#146](https://github.com/cgbarlow/braintrust/issues/146): with the tool reachable this model retrieves
+  before answering a question about someone's views, 21 of 21 replies; hidden behind the deferral shim, 0 of
+  3, and all three answers invented.
+
+If a profile needs tool search on for other servers, the braintrust tools still have to stay on the
+model-facing list. Deferring them is what breaks this.
 
 ## Why `SOUL.md` is thin
 
