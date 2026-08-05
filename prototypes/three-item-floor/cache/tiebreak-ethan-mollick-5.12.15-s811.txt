@@ -1,0 +1,4 @@
+{
+  "winner": "opens-on-the-buried-assumption",
+  "why": "All three pieces begin by exposing an unstated premise (default AI use, inevitable AI dominance, necessity of larger models) before developing their arguments."
+}

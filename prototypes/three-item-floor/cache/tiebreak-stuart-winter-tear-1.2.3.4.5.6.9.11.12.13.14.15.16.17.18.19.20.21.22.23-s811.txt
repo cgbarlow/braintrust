@@ -1,0 +1,4 @@
+{
+  "winner": "opens-on-the-mistaken-instinct",
+  "why": "Every piece opens by highlighting a widely held habit or default (e.g., focusing on model choice, usage metrics, or technology first) and then frames the article’s work as correcting that mistaken instinct."
+}

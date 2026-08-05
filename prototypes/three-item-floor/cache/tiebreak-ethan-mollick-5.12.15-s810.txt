@@ -1,0 +1,4 @@
+{
+  "winner": "opens-on-the-buried-assumption",
+  "why": "All three items start by exposing an implicit premise (e.g., that AI should be used by default, that AI progress will smoothly eclipse humans, that bigger models are always needed) and then argue against that hidden assumption."
+}

@@ -1,0 +1,4 @@
+{
+  "winner": "opens-on-the-mistaken-instinct",
+  "why": "Each item opens by highlighting a common, often implicit habit or default belief (e.g., over‑valuing models, focusing on technology first, assuming intelligence is human) and then builds the argument around correcting that mistaken instinct."
+}

@@ -1,0 +1,4 @@
+{
+  "winner": "rejects-the-standard-framing",
+  "why": "Each piece opens by dismissing conventional goal‑setting or career‑development framing and then substitutes a quest‑based metaphor before building its argument."
+}

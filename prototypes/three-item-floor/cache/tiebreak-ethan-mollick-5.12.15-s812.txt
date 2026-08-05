@@ -1,0 +1,4 @@
+{
+  "winner": "opens-on-the-buried-assumption",
+  "why": "All three pieces begin by surfacing an implicit premise (e.g., AI’s default use erodes skill, the popular view of AI eclipsing humans is incomplete, free tools suffice for many) before building their arguments."
+}

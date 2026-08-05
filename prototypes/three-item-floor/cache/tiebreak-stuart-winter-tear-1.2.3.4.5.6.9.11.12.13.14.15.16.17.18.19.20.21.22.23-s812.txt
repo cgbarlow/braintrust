@@ -1,0 +1,4 @@
+{
+  "winner": "opens-on-the-mistaken-instinct",
+  "why": "Every item starts by highlighting a widely held habit or default (e.g., prioritising models, technology, or fast building) and then makes the correction of that mistaken instinct the core of its argument."
+}

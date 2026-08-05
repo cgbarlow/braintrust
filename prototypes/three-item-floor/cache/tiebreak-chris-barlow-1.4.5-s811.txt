@@ -1,0 +1,4 @@
+{
+  "winner": "rejects-the-standard-framing",
+  "why": "All three pieces start by dismissing the usual goal‑setting / career‑planning / to‑do‑list model and then replace it with a quest‑based framing before making their argument."
+}

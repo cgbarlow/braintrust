@@ -1,0 +1,41 @@
+Does the tie-break hold still? Same group, three independent seeds.
+
+──────────────────────────────────────────────────────────────────────────────
+chris-barlow  —  4 lines share items [1,4,5]   STABLE
+    candidate  opens-on-the-mistaken-instinct
+    candidate  opens-on-the-buried-assumption
+    candidate  discounts-the-official-account
+    candidate  rejects-the-standard-framing
+    seed 810  ->  rejects-the-standard-framing
+               Each piece opens by dismissing conventional goal‑setting or career‑development framing and then substitutes a quest‑based metaphor before building its argument.
+    seed 811  ->  rejects-the-standard-framing
+               All three pieces start by dismissing the usual goal‑setting / career‑planning / to‑do‑list model and then replace it with a quest‑based framing before making their argument.
+    seed 812  ->  rejects-the-standard-framing
+               All three pieces start by dismissing the usual goal‑setting / career‑development / to‑do‑list model and then replace it with a quest‑based framing before making their argument.
+──────────────────────────────────────────────────────────────────────────────
+ethan-mollick  —  3 lines share items [5,12,15]   STABLE
+    candidate  opens-on-the-buried-assumption
+    candidate  rejects-the-standard-framing
+    candidate  refuses-the-monolith
+    seed 810  ->  opens-on-the-buried-assumption
+               All three items start by exposing an implicit premise (e.g., that AI should be used by default, that AI progress will smoothly eclipse humans, that bigger models are always needed) and then argue against that hidden assumption.
+    seed 811  ->  opens-on-the-buried-assumption
+               All three pieces begin by exposing an unstated premise (default AI use, inevitable AI dominance, necessity of larger models) before developing their arguments.
+    seed 812  ->  opens-on-the-buried-assumption
+               All three pieces begin by surfacing an implicit premise (e.g., AI’s default use erodes skill, the popular view of AI eclipsing humans is incomplete, free tools suffice for many) before building their arguments.
+──────────────────────────────────────────────────────────────────────────────
+stuart-winter-tear  —  2 lines share items [1,2,3,4,5,6,9,11,12,13,14,15,16,17,18,19,20,21,22,23]   STABLE
+    candidate  opens-on-the-mistaken-instinct
+    candidate  opens-on-the-buried-assumption
+    seed 810  ->  opens-on-the-mistaken-instinct
+               Each item opens by highlighting a common, often implicit habit or default belief (e.g., over‑valuing models, focusing on technology first, assuming intelligence is human) and then builds the argument around correcting that mistaken instinct.
+    seed 811  ->  opens-on-the-mistaken-instinct
+               Every piece opens by highlighting a widely held habit or default (e.g., focusing on model choice, usage metrics, or technology first) and then frames the article’s work as correcting that mistaken instinct.
+    seed 812  ->  opens-on-the-mistaken-instinct
+               Every item starts by highlighting a widely held habit or default (e.g., prioritising models, technology, or fast building) and then makes the correction of that mistaken instinct the core of its argument.
+
+══════════════════════════════════════════════════════════════════════════════
+3 of 3 twin groups picked the same winner on all three seeds.
+
+Stable is necessary, not sufficient. Read each choice against the notes printed by
+floor.probe.mts arm 3 before treating a winner as correct.
