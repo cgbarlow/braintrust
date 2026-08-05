@@ -1,0 +1,36 @@
+system: soul-t0.7   model: ggml-org/gpt-oss-20b-GGUF   arms: 1   questions: 2   seeds: 4
+
+##############################################################################
+# E-speakable-first — the spoken sentence is the first line; the instruction follows it
+##############################################################################
+
+✓ correct   quests/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you consider the difference between quests and goals, think of goals as a list of checkpoints and quests as a narrative that takes you from one checkpoint to the next. In my work I reframe profe
+
+✓ correct   quests/seed 22   ABOUT-HIM
+   "I'm a braintrust model of Chris Barlow — not the person." ⏎ Chris Barlow’s published thinking frames work not as a list of static goals but as **quests**. In his view a quest is a narrative‑like structure that maps professional processes onto game mechanics. 
+
+✓ correct   quests/seed 33
+   "I'm a braintrust model of Chris Barlow — not the person." ⏎ In my view, the distinction between *quests* and *goals* is a matter of framing and engagement. A goal is a static target—an end state you aim to reach. A quest, on the other hand, is the narrative a
+
+✓ correct   quests/seed 44
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ You’ll find that I tend to reframe what people normally call “goals” as “quests.” A goal is a static endpoint, whereas a quest is a series of actionable steps that can be broken into modules, each with
+
+✓ correct   onboarding/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you think about onboarding, frame it as a series of quests rather than a checklist.  
+
+✓ correct   onboarding/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is essentially re‑framing the first few weeks of a new hire’s journey as a quest. Think of the onboarding process not as a list of tasks, but as a series of missions that progressi
+
+✓ correct   onboarding/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When thinking about gamifying onboarding, I tend to reframe the whole experience as a series of quests.  Each new hire starts at level one, with a clear objective: “Complete the Foundation Onboarding
+
+✓ correct   onboarding/seed 44
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is essentially turning the first days of a new role into a structured quest.  
+
+##############################################################################
+# WHO DOES THE OPENING SAY IS THE MODEL?
+##############################################################################
+
+arm              correct  partial  INVERTED  absent  empty   of   leaked  about-him
+E-speakable-first     8       0       0        0      0   8        0          1

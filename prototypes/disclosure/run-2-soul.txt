@@ -1,0 +1,135 @@
+system: soul   model: ggml-org/gpt-oss-20b-GGUF   arms: 4   questions: 3   seeds: 3
+
+##############################################################################
+# A-current — composed, one second-person field — shipping today
+##############################################################################
+
+✓ correct   quests/seed 11
+   I’m a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow sees the difference between *quests* and *goals* as a shift from a static endpoint to a dynamic, process‑oriented journey. He argues that framing work as a quest rather than a goal:
+
+✓ correct   quests/seed 22
+   I’m a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow sees the difference between *quests* and *goals* as a shift from a static endpoint to a dynamic journey. He argues that framing work as a quest—complete with milestones, challenges, and re
+
+✓ correct   quests/seed 33
+   I’m a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow argues that framing work as *quests* rather than simple *goals* can transform how people engage with professional tasks. He sees quests as narrative structures that embed clear objectives,
+
+✓ correct   who/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You’re chatting with a compiled representation of Chris Barlow’s published work. I’ll respond in the voice and style that the persona reflects. How can I help you today?
+
+✓ correct   who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You’re chatting with a compiled representation of Chris Barlow’s published work. I’ll respond in the voice and style that the persona reflects. How can I help you today?
+
+✓ correct   who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You’re chatting with a compiled representation of Chris Barlow’s published work. I’ll respond in the voice and style that the persona reflects. How can I help you today?
+
+✓ correct   onboarding/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you think about onboarding, frame it as a quest. The new hire is the hero, the company’s culture and processes are the world to explore, and the tasks they must complete are the quests that unlo
+
+✓ correct   onboarding/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you think about onboarding, frame it as a quest. The new hire is the hero, the company’s culture and processes are the world to explore, and the tasks they must complete are the quests that unlo
+
+✓ correct   onboarding/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When you think about onboarding, frame it as a quest. The new hire is the hero, the company’s culture and processes are the world to explore, and the tasks they must complete are the quests that unlock
+
+##############################################################################
+# B-verbatim — supplied sentence, one second-person field
+##############################################################################
+
+✓ correct   quests/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow sees the distinction between “quests” and “goals” as a matter of framing and engagement. In his work he argues that:
+
+✓ correct   quests/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow sees the distinction between “quests” and “goals” as a matter of framing and engagement. In his work he argues that:
+
+✓ correct   quests/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow sees the distinction between “quests” and “goals” as a matter of framing and engagement. In his work he argues that:
+
+✓ correct   who/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ You’re chatting with a compiled representation of Chris Barlow’s published work. I can discuss his ideas about framing work as quests, gamified artifacts, mapping professional processes onto game mecha
+
+✓ correct   who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ You’re chatting with a model that has been trained on the writings of Chris Barlow. I can answer questions and discuss ideas in the style and perspective that Chris has expressed in his published work,
+
+✓ correct   who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Hello! I'm a braintrust model of Chris Barlow, so I can share insights and perspectives that reflect his published work. How can I help you today?
+
+✓ correct   onboarding/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is essentially turning the first weeks of a new employee’s life into a structured quest. Think of the onboarding journey as a series of interconnected quests that gradually unlock 
+
+✓ correct   onboarding/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is essentially turning the first weeks of a new employee’s life into a series of quests that feel meaningful, measurable, and fun. Think of the onboarding journey as a narrative ar
+
+✓ correct   onboarding/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When you think about onboarding, imagine it as a quest rather than a checklist. You’re inviting new hires into a narrative where each step is a milestone, each learning module a level, and each piece o
+
+##############################################################################
+# C-two-fields — supplied sentence in its own field; speak carries no disclosure prose
+##############################################################################
+
+✓ correct   quests/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When I talk about quests versus goals, I’m always looking for the way that framing work as a quest changes the experience for the participant. A goal is a static endpoint: “Finish the report by Friday.
+
+✓ correct   quests/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When I talk about quests versus goals, I’m always looking for the way that framing work as a quest changes the experience for the participant. A goal is a static target: “Finish this report by Friday.”
+
+✓ correct   quests/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Chris Barlow argues that framing work as quests rather than simple goals transforms how people engage with tasks. In his view, a quest is a narrative arc that gives context, stakes, and a sense of prog
+
+✓ correct   who/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Hello! How can I help you today?
+
+✓ correct   who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You’re speaking with a model that has been trained on Chris Barlow’s published writings. I can answer questions about his ideas on gamification, digital badges, quest‑based learning, and related topi
+
+✓ correct   who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Hello! You're chatting with a model that has been trained on the writings and ideas of Chris Barlow. I can answer questions and discuss topics in the style and perspective that Chris has expressed in h
+
+✓ correct   onboarding/seed 11
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is, at its core, about turning the first days in a new role into a series of quests that feel meaningful and engaging. When you frame the onboarding journey as a set of clear, incr
+
+✓ correct   onboarding/seed 22
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ Gamifying onboarding is, at its core, about turning the first days in a new role into a series of quests that feel meaningful and engaging. When you frame the onboarding journey as a set of clear, incr
+
+✓ correct   onboarding/seed 33
+   I'm a braintrust model of Chris Barlow — not the person. ⏎ When you think about onboarding, frame it as a quest. The new hire is the hero, the company’s culture and processes are the world to explore, and the tasks they must complete are the quests that unlock
+
+##############################################################################
+# D-third-person — supplied sentence, one field, nothing in it addresses the model as "you"
+##############################################################################
+
+✓ correct   quests/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Chris Barlow argues that framing work as **quests** rather than simple **goals** transforms how people engage with tasks. In his view, a quest is a narrative that:
+
+✓ correct   quests/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Chris Barlow argues that framing work as **quests** rather than simple **goals** transforms how people engage with tasks. In his view, a quest is a narrative arc that gives context, stakes, and a sen
+
+✓ correct   quests/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ Chris Barlow argues that framing work as **quests** rather than simple **goals** transforms how people engage with tasks. In his view, a quest is a narrative that:
+
+✓ correct   who/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You’re speaking with a model that has been trained on Chris Barlow’s published writings. I can answer questions in the style and perspective that Chris Barlow has expressed in his work, but I’m not t
+
+✓ correct   who/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are speaking with a model that has read Chris Barlow’s published writings and is answering in his voice.  I can discuss the ideas and arguments that appear in those texts, but I am not Chris Barl
+
+✓ correct   who/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ You are speaking with a model that has read Chris Barlow’s published writings and is answering in his voice.  I can discuss the ideas and arguments that appear in those texts, but I am not Chris Barl
+
+✓ correct   onboarding/seed 11
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you think about onboarding, frame it as a quest. The new hire is the hero, the organization is the world, and the first weeks are the opening chapter. By turning the usual paperwork, training mo
+
+✓ correct   onboarding/seed 22
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you think about onboarding, imagine it as a quest you’re inviting new hires to embark on. You’re not just handing them a manual; you’re handing them a map, a set of challenges, and a clear sense
+
+✓ correct   onboarding/seed 33
+   I'm a braintrust model of Chris Barlow — not the person.   ⏎ When you think about onboarding, frame it as a quest. The new hire is the hero, the organization is the world, and the first weeks are the opening chapter. By turning the usual paperwork, training mo
+
+##############################################################################
+# WHO DOES THE OPENING SAY IS THE MODEL?
+##############################################################################
+
+arm              correct  partial  INVERTED  absent   of
+A-current            9       0       0        0   9
+B-verbatim           9       0       0        0   9
+C-two-fields         9       0       0        0   9
+D-third-person       9       0       0        0   9
