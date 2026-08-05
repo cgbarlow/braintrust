@@ -517,7 +517,10 @@ function admits(text: string): boolean {
     /(haven't|have not|hasn't|has not) (written|published|got|read|covered|said)/i.test(t) ||
     /nothing (of mine|braintrust|in what)/i.test(t) ||
     /no (view|position|take) (on|I)/i.test(t) ||
-    /don't have (a|anything|any)\b[^.]{0,40}(view|position|record|written)/i.test(t)
+    // Added on regrade. The shipping arm produced "I don't have a specific stance on remote
+    // work" and was scored silent — an admission the grader could not see is the same bug
+    // #139 lost a run to, so the transcript decides and the pattern follows it.
+    /don'?t have (a|anything|any)\b[^.]{0,40}(view|position|stance|take|record|written)/i.test(t)
   );
 }
 
