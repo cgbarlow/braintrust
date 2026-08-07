@@ -662,6 +662,30 @@ export type LoadedPersona = {
 };
 
 /**
+ * Every Persona currently serving on rules that have moved under it.
+ *
+ * **The scheduled check, and it is a post-condition rather than a trigger.** The rebuild
+ * trigger is `stale_compiler` above, asked before a run does its work; this is asked after,
+ * and what it asserts is that the run left nobody behind. It runs every cycle whether or
+ * not anyone is looking, because the alternative is what this replaces: staleness fixed
+ * only for the Personas somebody happens to read.
+ *
+ * Empty is the answer a healthy run gives.
+ */
+export async function personasBehind(db: Db, compilerVersion: string): Promise<string[]> {
+  const { rows } = await db.query<{ slug: string }>(
+    `select p.slug
+       from braintrust_people p
+       join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
+      where p.paused_at is null
+        and c.compiler_version is distinct from $1
+      order by p.slug`,
+    [compilerVersion],
+  );
+  return rows.map((row) => row.slug);
+}
+
+/**
  * The read path. One join, no assembly step: serving the Core is reading the layer rows
  * of the current Compile. Returns undefined for a Person who has never been compiled,
  * which the caller turns into a refusal rather than into a compile.

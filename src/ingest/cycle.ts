@@ -14,7 +14,7 @@
  * See docs/design/ingestion.md §3.
  */
 
-import { compileCorpus, type CompileReport, type Synthesiser } from '../compile/index.js';
+import { compileCorpus, personasBehind, type CompileReport, type Synthesiser } from '../compile/index.js';
 import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
@@ -203,6 +203,16 @@ export type CycleReport = {
   notes?: ReadReport;
   /** The rebuild. Absent when no extractor was configured, because a Compile declares a generation. */
   compile?: CompileReport;
+  /**
+   * The scheduled check: personas still serving on rules that have moved, asked after the
+   * run did its work rather than before it.
+   *
+   * **A post-condition, not a trigger.** What rebuilds a persona is `stale_compiler`; this
+   * asserts that the run left nobody behind, and it is asked every cycle whether or not
+   * anyone is looking — because the failure it exists to catch is staleness fixed only for
+   * the people somebody happens to read. Empty is what a healthy run reports.
+   */
+  serving_behind: string[];
 };
 
 export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
@@ -334,7 +344,18 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     index,
     ...(notes ? { notes } : {}),
     ...(compile ? { compile } : {}),
+    serving_behind: compile ? await personasBehind(deps.db, compile.compiler_version) : [],
   };
+
+  // Said out loud, every run. A persona that has differed on part of its compiler version
+  // for three days is exactly the failure nothing was watching for.
+  if (report.serving_behind.length > 0) {
+    log(
+      `braintrust: ${report.serving_behind.join(', ')} ${report.serving_behind.length === 1 ? 'is' : 'are'} ` +
+        'still serving on rules that have moved. Anyone reading them gets a tightened gate and ' +
+        'no prose from the parts that changed; the next run tries the rebuild again.',
+    );
+  }
 
   // A Person whose Corpus changed and who was not rebuilt has a reason, and it is worth
   // a line: nothing here retries later in the run, so the reason is what the next run
@@ -1185,8 +1206,14 @@ export function summarise(report: CycleReport): string {
   const idleCompile =
     !compile ||
     (compile.compiled.length === 0 && compile.failed.length === 0 && compile.rejected.length === 0);
+  // **Before the idle shortcut, because this is the one thing an idle run can still be
+  // wrong about.** A run where nothing was due is exactly when a persona left behind by a
+  // rules change goes unnoticed — which is how one of them differed on part of its
+  // compiler version for three days.
+  const behind = servingBehindLine(report);
+
   if (report.sources.length === 0 && idleIndex && idleNotes && idleCompile) {
-    return 'braintrust: nothing was due.';
+    return behind ? `braintrust: nothing was due.\n${behind}` : 'braintrust: nothing was due.';
   }
 
   // A run where no Source was due can still have real work to report: an endpoint that
@@ -1272,7 +1299,21 @@ export function summarise(report: CycleReport): string {
     lines.push(`  compile: ${built.join(', ')}`);
   }
 
+  if (behind) lines.push(behind);
+
   if (report.stopped_early) lines.push('  stopped early; the next run continues from these rows');
 
   return lines.join('\n');
+}
+
+/**
+ * The scheduled check, in the one line nobody reads unless something is wrong. A check
+ * whose result never reaches the log is not a check.
+ */
+function servingBehindLine(report: CycleReport): string | null {
+  if (report.serving_behind.length === 0) return null;
+  return (
+    `  serving behind the compiler: ${report.serving_behind.join(', ')} — readers get a ` +
+    'tightened gate and no prose from the parts that moved; the next run retries the rebuild'
+  );
 }

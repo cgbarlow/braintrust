@@ -475,11 +475,35 @@ prose, and the prompt that grouped the Positions. Three versions rather than one
 different reasons, and all of them are cheap in a way bumping `notes-1` is not: they re-read Notes that
 already exist rather than re-reading the Corpus.
 
+**A rules change triggers a rebuild in its own right**, not only new content. braintrust watched two clocks
+and only one existed: new content triggered a rebuild, a rules change triggered nothing, reported nothing and
+was watched by nothing — one Persona in the live fleet differed on one part of its compiler version for three
+days. A run now asks two questions of every Person (`has_unseen`, `stale_compiler`) and rebuilds on either.
+
 **The parts say what moved; they do not license rebuilding piecemeal.** A rules change rebuilds the *whole*
 Persona. What the decomposition is for is deciding what a Persona may **serve in the meantime**, and that is
-decided part by part on the read rather than on a clock: a Persona is compared against the running compiler
-when it is loaded, so nobody is served prose built under rules braintrust has since changed while a rebuild
-is pending.
+decided part by part on the read rather than on a clock.
+
+**The catch happens on the read, not on a clock.** Loading a Persona compares its version against the running
+compiler's, and what that comparison changes is immediate and happens *for the reader who arrived*: the
+retrieval gate tightens — a floor measured under rules that have since changed is not a measurement any more,
+so it takes [the unmeasured value](./mcp-surface.md#an-unmeasured-quantity-takes-its-most-conservative-value)
+— and prose written by a part that moved is withheld. **So the staleness window is zero for anyone actually
+reading.** Nobody is ever served a Persona built under rules braintrust has since changed.
+
+**The rebuild is queued behind them, never in front.** It starts after the answer has been handed over and
+nothing awaits it: a read call must never have the most expensive action in the product sitting behind it. A
+reader who triggers a rebuild pays nothing for it and does not see it. **At most one rebuild is in flight per
+Persona**, so a burst of readers on a behind-version Persona cannot stampede the compiler — a process-local
+guard, and the database's own `unique … where status = 'running'` as the real one, which is what makes it hold
+across the two deployments that share the database.
+
+**And a daily sweep rebuilds the Personas nobody asked for**, so staleness is not only fixed for popular
+people. Every cycle then asks a **scheduled check** — *is any serving Persona carrying a version behind the
+compiler's?* — after the run rather than before it, and reports the answer in the summary whether or not
+anyone is looking. It is a post-condition rather than a trigger: what rebuilds a Persona is `stale_compiler`;
+what this asserts is that the run left nobody behind. A paused Person is not counted — a pause is the user
+freezing their Persona.
 
 **Prose governed by a part that has moved is absent, not stale.** A number has a conservative direction and
 takes it; a paragraph a model already wrote does not, so the only honest options are to serve it or not to —
