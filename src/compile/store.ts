@@ -411,10 +411,20 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     [personId],
   );
 
-  const positions = await db.query<{ slug: string; citations: string }>(
-    `select p.slug, count(c.id)::text as citations
+  // `graded_on` is a fingerprint of the vector `fit` would be computed from, never the
+  // vector itself: the check is whether two Positions in one answer would be graded on the
+  // same thing, and md5 answers that in the database rather than dragging 1,024 floats per
+  // Position into the gate. Null where the statement was never embedded.
+  const positions = await db.query<{
+    slug: string;
+    citations: string;
+    graded_on: string | null;
+  }>(
+    `select p.slug, count(distinct c.id)::text as citations,
+            min(md5(pe.embedding::text)) as graded_on
        from braintrust_positions p
        left join braintrust_position_citations c on c.position_id = p.id
+       left join braintrust_position_embeddings pe on pe.position_id = p.id
       where p.compile_id = $1
       group by p.id, p.slug
       order by p.slug`,
@@ -462,7 +472,11 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
       failed: Number(counts.failed),
       pending: Number(counts.pending),
     },
-    positions: positions.rows.map((row) => ({ slug: row.slug, citations: Number(row.citations) })),
+    positions: positions.rows.map((row) => ({
+      slug: row.slug,
+      citations: Number(row.citations),
+      graded_on: row.graded_on,
+    })),
     previous_positions: Number(previous.rows[0]!.count),
     superseded_positions: Number(superseded.rows[0]!.count),
     // Rendered through the same path a reader gets, so the gate checks the thing that
@@ -545,6 +559,43 @@ export async function writePositions(
   });
 
   return ids;
+}
+
+/**
+ * The Position statements, embedded in the same space the Corpus is indexed in.
+ *
+ * **This is what `fit` grades, and the reason it is a row rather than a serve-time
+ * computation.** Embedding twenty statements on every question would put a model call on the
+ * read path for a quantity that does not change between questions; embedding them once per
+ * Compile costs one call in the middle of the expensive part of braintrust.
+ *
+ * Written under `running` with the Positions, so they cascade away with a Compile that is
+ * never promoted, and written **before the gate** — the check that no two Positions in one
+ * answer can carry the same score reads these rows.
+ *
+ * One transaction, for the reason `writePositions` has one: a half-written set would mean
+ * some Positions in an answer are graded and others are not, which reads to a client as
+ * braintrust having an opinion about the ungraded ones.
+ */
+export async function writeStatementVectors(
+  db: TransactionalDb,
+  model: string,
+  vectors: { positionId: string; vector: string }[],
+): Promise<number> {
+  if (vectors.length === 0) return 0;
+
+  await db.transaction(async (tx) => {
+    for (const one of vectors) {
+      await tx.query(
+        `insert into braintrust_position_embeddings (position_id, model, embedding)
+         values ($1, $2, $3::vector)
+         on conflict (position_id, model) do update set embedding = excluded.embedding`,
+        [one.positionId, model, one.vector],
+      );
+    }
+  });
+
+  return vectors.length;
 }
 
 /**

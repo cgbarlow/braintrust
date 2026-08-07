@@ -12,7 +12,14 @@
  *
  * **Thin Positions are returned, never hidden.** `item_count` and `confidence` travel with
  * every Position and the client decides what one mention is worth. A threshold here would
- * be braintrust quietly choosing what you may see.
+ * be braintrust quietly choosing what you may see. That holds for `fit` too: a weak grade
+ * changes a Position's *place in the list*, never whether it is in the list.
+ *
+ * **Two jobs, two numbers, and conflating them is how `fit` was wrong three times.**
+ * Chunks decide whether a question reaches this Corpus at all and which Positions are
+ * candidates — that is what a vector index can answer and what the measured floor is
+ * calibrated for. The Position's own *statement* decides how the candidates that came back
+ * are ordered and graded. See {@link fitOf}.
  *
  * **`passages` is the fallback, labelled as raw material.** When the compiler formed no
  * Position on a topic, the indexed words are still the best answer available — but they
@@ -38,7 +45,7 @@ import { BraintrustError } from './errors.js';
 import { vectorLiteral, type Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
 import { movedParts } from './compile/version.js';
-import { UNMEASURED_FIT_SPAN, UNMEASURED_RETRIEVAL_FLOOR } from './unmeasured.js';
+import { UNMEASURED_RETRIEVAL_FLOOR } from './unmeasured.js';
 
 /**
  * How many **Items** the vector search ranks. The Items are what map to Positions, so this
@@ -120,12 +127,6 @@ export const FLOOR_OVERRIDE =
 export const RETRIEVAL_FLOOR = FLOOR_OVERRIDE ?? UNMEASURED_RETRIEVAL_FLOOR;
 
 /**
- * The scale `fit` grades against when a Compile measured no span of its own. Unmeasured,
- * and deliberately wide — see {@link UNMEASURED_FIT_SPAN}.
- */
-export const DEFAULT_SPAN = UNMEASURED_FIT_SPAN;
-
-/**
  * The floor in force for one Persona: the override, else what its Compile measured, else
  * the fallback.
  *
@@ -145,6 +146,30 @@ export function floorFor(measured: number | null, version?: string | null): numb
     return UNMEASURED_RETRIEVAL_FLOOR;
   }
   return measured ?? UNMEASURED_RETRIEVAL_FLOOR;
+}
+
+/**
+ * The cut and the scale `fit` grades against, for one Persona, or null for *do not grade*.
+ *
+ * **There is no fallback, and that is the difference between this and the floor.** A floor
+ * has a cautious direction — point it up and an uncalibrated Persona declines more. A grade
+ * does not: `distant` on something that answers and `close` on something that does not are
+ * both wrong, in opposite directions, and neither is the careful one. So a Compile that has
+ * not measured its own cut **declines to grade** rather than borrowing a number measured
+ * somewhere else. The Position still comes back, still in its place in the list, with no
+ * grade beside it. See ./unmeasured.ts.
+ *
+ * Measured in *statement* space, which is not the space the floor is measured in — the two
+ * are separate numbers for the separate jobs they do, and a stale cut is refused for the
+ * same reason a stale floor is tightened: on this read, for the reader who arrived.
+ */
+export function cutFor(
+  measured: { cut: number | null; span: number | null },
+  version?: string | null,
+): { cut: number; span: number } | null {
+  if (version !== undefined && movedParts(version).includes('measurement')) return null;
+  if (measured.cut === null || measured.span === null || measured.span <= 0) return null;
+  return { cut: measured.cut, span: measured.span };
 }
 
 /**
@@ -223,23 +248,30 @@ export type FoundPosition = {
    */
   confidence: string;
   /**
-   * How well this Position answers *this query*, against the Corpus's own distribution.
-   * The second grade exists because one grade was being asked to carry two facts, and a
-   * weakly-fitting Position must stay visibly weak however well evidenced it is.
-   */
-  fit: 'close' | 'partial' | 'distant';
-  /**
-   * The number `fit` was graded from, on the same scale as `nothing_matched.nearest_similarity`.
+   * How well this Position answers *this query*, graded on its own statement. The second
+   * grade exists because one grade was being asked to carry two facts, and a weakly-fitting
+   * Position must stay visibly weak however well evidenced it is.
    *
-   * **A grade whose input is invisible cannot be checked, and this one has been wrong twice.**
-   * Both times it was found by someone noticing an answer that read oddly and having no way
-   * to tell whether the grade or the retrieval produced it — `close` on a question the Corpus
-   * does not cover looks identical either way. Carrying the similarity makes the two
-   * distinguishable from the payload alone: against the floor it says whether this Position
-   * should have been returned at all, and against the other results whether the grade
-   * separated them.
+   * `ungraded` is a real answer: this Persona's Compile never measured the cut, so
+   * braintrust has no scale of its own to grade against and declines rather than guessing.
+   * The Position is returned either way, in the same place in the list.
    */
-  similarity: number;
+  fit: Fit;
+  /**
+   * The number `fit` was graded from: how close this Position's **own statement** is to the
+   * question. Null only when nothing was graded.
+   *
+   * **A grade whose input is invisible cannot be checked, and this one has been wrong three
+   * times.** All three were found by someone noticing an answer that read oddly and having
+   * no way to tell whether the grade or the retrieval produced it — `close` on a question
+   * the Corpus does not cover looks identical either way. Carrying the number makes the
+   * grade checkable from the payload alone, and read against the other results it says
+   * whether the grade separated them.
+   *
+   * **Not on the same scale as `nothing_matched.nearest_similarity`**, which is Chunk
+   * similarity and belongs to the gate. Two numbers, because they answer two questions.
+   */
+  similarity: number | null;
   item_count: number;
   /** False only when this Position is the earlier side of a `revised` relation. */
   current: boolean;
@@ -294,8 +326,9 @@ type CurrentCompile = {
   compiled_at: Date | null;
   /** What this Persona's Compile measured. Null before the floor was measured. */
   measured_floor: number | null;
-  /** The gap between the probe groups, which is the scale `fit` grades against. */
-  measured_span: number | null;
+  /** Where `fit` starts calling a statement an answer, and the scale it grades in. */
+  measured_cut: number | null;
+  measured_fit_span: number | null;
   /**
    * Which rules built this Persona. Read here so the gate can be tightened **on this
    * read** when they have moved, rather than when a rebuild eventually catches up.
@@ -347,16 +380,26 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // no answer at all — not a weakly-graded one — because the ranking behind a landed
   // question is the Corpus's own centroid rather than anything about what was asked.
   const floor = floorFor(compile.measured_floor, compile.compiler_version);
-  const span = compile.measured_span ?? DEFAULT_SPAN;
-  const field = await selectivity(deps.db, vectorLiteral(vector), search);
+  const scale = cutFor(
+    { cut: compile.measured_cut, span: compile.measured_fit_span },
+    compile.compiler_version,
+  );
+  const literal = vectorLiteral(vector);
+  const field = await selectivity(deps.db, literal, search);
   const selected = field.top !== null && field.top >= floor;
 
   const matched = selected
-    ? await matchingPositions(deps.db, compile.id, vectorLiteral(vector), search, floor)
+    ? await matchingPositions(deps.db, compile.id, literal, search, floor)
     : [];
 
-  const shown = matched.slice(0, limit);
-  const positions = await withEvidence(deps.db, shown, args.full === true, floor, span);
+  // **Scored and ordered before the readability bound, never after.** The candidates
+  // arrive in Chunk order, which is the order that ordered answers the way a reader would
+  // 51% of the time. Slicing first would let the bound keep ten Positions chosen by the
+  // discredited number and merely re-shuffle them, which is the same defect wearing a
+  // sorted list.
+  const scored = await scoreStatements(deps.db, matched, literal, search.model);
+  const shown = scored.slice(0, limit);
+  const positions = await withEvidence(deps.db, shown, args.full === true, scale);
 
   const payload: FindPayload = {
     subject: subjectFor(compile.display_name),
@@ -419,13 +462,23 @@ function bounded(value: number, low: number, high: number): number {
 
 async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | undefined> {
   const { rows } = await db.query<
-    CurrentCompile & { measured_floor: string | null; measured_span: string | null }
+    CurrentCompile & {
+      measured_floor: string | null;
+      measured_cut: string | null;
+      measured_fit_span: string | null;
+    }
   >(
     // What this Persona's own Compile measured. Null for anything compiled before the
-    // floor was measured, which is what floorFor() falls back for.
+    // floor was measured, which is what floorFor() falls back for — and, under `fit`,
+    // what cutFor() declines to grade for.
+    //
+    // Two blocks rather than one, because the gate and the grade measure different
+    // spaces: `selectivity` is Chunk similarity, `fit` is statement similarity, and one
+    // object holding both invites exactly the conflation that made `fit` a coin.
     `select c.id, p.display_name, c.finished_at as compiled_at, c.compiler_version,
             (c.corpus_stats -> 'selectivity' ->> 'floor') as measured_floor,
-            (c.corpus_stats -> 'selectivity' ->> 'span')  as measured_span
+            (c.corpus_stats -> 'fit' ->> 'cut')           as measured_cut,
+            (c.corpus_stats -> 'fit' ->> 'span')          as measured_fit_span
        from braintrust_people p
        join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
       where p.slug = $1`,
@@ -434,7 +487,12 @@ async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | un
 
   const row = rows[0];
   if (!row) return undefined;
-  return { ...row, measured_floor: numeric(row.measured_floor), measured_span: numeric(row.measured_span) };
+  return {
+    ...row,
+    measured_floor: numeric(row.measured_floor),
+    measured_cut: numeric(row.measured_cut),
+    measured_fit_span: numeric(row.measured_fit_span),
+  };
 }
 
 /** A jsonb text field that should hold a number, or null if it does not. */
@@ -519,13 +577,101 @@ async function matchingPositions(
   return rows.map((row) => ({ ...row, item_count: Number(row.item_count) }));
 }
 
+/** A candidate Position with the number its grade and its place in the list come from. */
+type ScoredPosition = PositionRow & { statement_similarity: number | null };
+
+/**
+ * How close each Position's **own statement** is to the question, by id.
+ *
+ * **Exported so the calibrator measures this and not something like it** — the same reason
+ * `selectivity` is exported. The cut `fit` grades against is measured on every Compile by
+ * calling this function over the statements it just wrote, so a cut can never be calibrated
+ * against a second implementation of the quantity the server actually grades on.
+ *
+ * A Position with no row here is one whose statement was never embedded — a Compile that
+ * ran without an embeddings endpoint, or one whose vectors belong to a model this server is
+ * not configured with. Both are *nothing to grade*, never a zero.
+ */
+export async function statementScores(
+  db: Db,
+  positionIds: string[],
+  vector: string,
+  model: string,
+): Promise<Map<string, number>> {
+  if (positionIds.length === 0) return new Map();
+
+  const { rows } = await db.query<{ position_id: string; similarity: string }>(
+    `select pe.position_id, (1 - (pe.embedding <=> $2::vector))::text as similarity
+       from braintrust_position_embeddings pe
+      where pe.position_id = any($1::uuid[])
+        and pe.model = $3`,
+    [positionIds, vector, model],
+  );
+
+  return new Map(rows.map((row) => [row.position_id, Number(row.similarity)]));
+}
+
+/**
+ * The candidates, scored on their own statements and put in that order.
+ *
+ * **This is the whole of #140.** The candidates arrive in Chunk order — the best Chunk of
+ * the best Item behind each Position — and measured across 92 Positions from five live
+ * Personas that number puts the better of two Positions first **51%** of the time, where
+ * 50% is a coin. It cannot do better: the mean Item similarity of a Position that answers
+ * the question is 0.585 and of one a reader would reject is 0.576, so there is no signal in
+ * it to order by. The statement gets **80%**, and **82%** under a second judge shown only
+ * the person's own quotes and never braintrust's sentence.
+ *
+ * Ordering is where the harm lands, because a reader reads down and quotes the top. The
+ * grade and the order are now the same number, so they cannot disagree.
+ *
+ * **Nothing is dropped here.** A Position whose statement scores badly moves down the list;
+ * a Position with no statement vector sorts last because it has no place to claim, not
+ * because it is being hidden. What decides membership is the floor, on Chunks, and that
+ * happened before this.
+ */
+async function scoreStatements(
+  db: Db,
+  rows: PositionRow[],
+  vector: string,
+  model: string,
+): Promise<ScoredPosition[]> {
+  const scores = await statementScores(
+    db,
+    rows.map((row) => row.id),
+    vector,
+    model,
+  );
+
+  return rows
+    .map((row) => {
+      const score = scores.get(row.id);
+      return {
+        ...row,
+        // Rounded here rather than at the payload, so the order a reader sees is the order
+        // of the numbers a reader sees.
+        statement_similarity: score === undefined ? null : Math.round(score * 1000) / 1000,
+      };
+    })
+    .sort(
+      (left, right) =>
+        (right.statement_similarity ?? -1) - (left.statement_similarity ?? -1) ||
+        // **Retrieval order underneath, which is what an ungraded Persona gets.** A Compile
+        // with no statement vectors has no better number to sort on, and the Chunk order is
+        // a weak signal rather than no signal — alphabetical would be worse than the thing
+        // this ticket replaced. It is a tie-break here and never a grade.
+        left.distance - right.distance ||
+        right.item_count - left.item_count ||
+        left.slug.localeCompare(right.slug),
+    );
+}
+
 /** The citations and relations for the Positions being returned, in one round trip each. */
 async function withEvidence(
   db: Db,
-  rows: PositionRow[],
+  rows: ScoredPosition[],
   full: boolean,
-  floor: number,
-  span: number,
+  scale: { cut: number; span: number } | null,
 ): Promise<FoundPosition[]> {
   if (rows.length === 0) return [];
 
@@ -584,9 +730,7 @@ async function withEvidence(
     const mine = citations.rows.filter((one) => one.position_id === row.id);
     const bound = full ? mine.length : DEFAULT_CITATIONS;
     const related = relations.rows.filter((one) => one.position_id === row.id);
-    // Rounded the same way `nearest_similarity` is, because the two only mean anything read
-    // against each other and one of them printing three more digits invites false precision.
-    const similarity = Math.round((1 - Number(row.distance)) * 1000) / 1000;
+    const similarity = row.statement_similarity;
 
     const position: FoundPosition = {
       slug: row.slug,
@@ -596,7 +740,7 @@ async function withEvidence(
       days_spanned: row.days_spanned === null ? null : Number(row.days_spanned),
       basis: row.basis,
       confidence: row.confidence,
-      fit: fitOf(similarity, floor, span),
+      fit: fitOf(similarity, scale),
       similarity,
       item_count: row.item_count,
       current: !related.some((one) => one.side === 'from' && one.relation === 'revised'),
@@ -715,17 +859,18 @@ export async function selectivity(
   };
 }
 
+export type Fit = 'close' | 'partial' | 'distant' | 'ungraded';
+
 /**
  * How well one Position answers the question. A grade about *fit*, never about how well
  * braintrust knows the Position.
  *
- * **Graded as height above this Persona's own floor, in units of its own measured span.**
- * Both numbers come from the same Compile-time calibration the gate uses, so there is one
- * notion of *clear* and one measurement moving both — and the span is what this Corpus
- * actually produced between a question it answers and one it does not, rather than a
- * constant somebody picked.
+ * **Graded on the Position's own statement, as height above this Persona's own measured
+ * cut, in units of its own measured span.** The subject of the grade and the thing being
+ * graded are the same sentence, which is the general rule the three failures below all
+ * broke: *a grade about the question must be computed from the thing it is grading.*
  *
- * **Two ways this has been wrong, and both are excluded by the signature.**
+ * **Three ways this has been wrong, and all three are excluded by the signature.**
  *
  * It first divided by the query's own range, `(similarity - median) / (top - median)`, so
  * the best match scored exactly 1.0 and graded `close` for every query ever asked — the
@@ -736,20 +881,28 @@ export async function selectivity(
  * It then graded clearance over the Corpus's median, which the live run showed to be the
  * quantity that measures the embeddings model rather than the Corpus — the same defect that
  * made the gate refuse a Persona's own subject. That is why `median` is not a parameter
- * either. See test/fit.test.ts.
+ * either.
+ *
+ * It then graded the best Chunk of the best Item behind the Position, which every Position
+ * drawn from that Item shares: 41 of 92 live Positions carried a number identical to
+ * another's, three of them reading `close` on a question none of them answered. That is why
+ * the caller passes a number measured on the statement, and why *nothing shared between two
+ * Positions in one answer* may reach this function. See test/fit.test.ts.
+ *
+ * **`ungraded` is not a fourth grade.** It is the absence of one, for a Persona whose
+ * Compile measured no cut of its own — because unlike a floor, a grade has no cautious
+ * direction to fall back on. See {@link cutFor}.
  */
 export function fitOf(
-  similarity: number,
-  floor: number,
-  span: number = DEFAULT_SPAN,
-): 'close' | 'partial' | 'distant' {
-  // A Corpus whose probes never separated has no span of its own. Declining to
-  // discriminate is the honest answer: neither a warning nor an endorsement.
-  if (!Number.isFinite(span) || span <= 0) return 'partial';
+  similarity: number | null,
+  scale: { cut: number; span: number } | null,
+): Fit {
+  if (similarity === null || scale === null) return 'ungraded';
+  if (!Number.isFinite(scale.span) || scale.span <= 0) return 'ungraded';
 
-  const height = similarity - floor;
-  if (height >= span * 0.66) return 'close';
-  if (height >= span * 0.33) return 'partial';
+  const height = similarity - scale.cut;
+  if (height >= scale.span * 0.66) return 'close';
+  if (height >= scale.span * 0.33) return 'partial';
   return 'distant';
 }
 

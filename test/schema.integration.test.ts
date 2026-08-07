@@ -24,6 +24,7 @@ const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema t
 
 const TABLES = [
   'braintrust_position_relations',
+  'braintrust_position_embeddings',
   'braintrust_position_citations',
   'braintrust_positions',
   'braintrust_persona_layers',

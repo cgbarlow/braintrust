@@ -108,7 +108,7 @@ Who exists, whether they have ever been compiled, and how stale each Core is. **
     "blocked": [{ "platform": "youtube", "handle": "UC0C…",
                   "since": "2026-07-14T03:02:11.004Z" }]   // absent when nothing is blocked
   }],
-  "current_compiler_version": "1.0.0+measured-5.core-1.positions-2.revisions-1"
+  "current_compiler_version": "1.0.0+measured-6.core-1.positions-2.revisions-1"
 }
 ```
 
@@ -137,7 +137,7 @@ is one block of prose written to be spoken, plus a small block of scalars that c
   "compiled_at": "2026-07-28T09:14:22Z",
   "compiler_version": "0.3.1",
   // What *current* is, so the line above has something to be read against.
-  "current_compiler_version": "1.0.0+measured-5.core-1.positions-2.revisions-1",
+  "current_compiler_version": "1.0.0+measured-6.core-1.positions-2.revisions-1",
   "extractor": "gpt-5@notes-1",
 
   // The Script. Second person, system-prompt ready, nothing to interpret.
@@ -612,23 +612,72 @@ answers the question asked, and `measured` + `high` + four dated quotes reads as
 second, per-result grade says how well the Position fits *this query***, so a weakly-fitting Position is
 visibly weak even when it is impeccably evidenced.
 
-**`fit` is height above the Persona's own measured floor, in units of its own measured span, and must never
-be normalised against the answer it is grading.** The first build divided by the query's own range — `(similarity − median) / (top − median)` — so
-the best-matching Position scored exactly `1.0` and graded `close` **for every query ever asked**, including
-*poaching an egg*. A grade computed against its own subject carries no information about that subject, and
-`fit` exists for the single purpose of being able to say *this does not answer you*. The thresholds are
-multiples of the selectivity margin, so the gate and the grade share **one** notion of *clear* and one
-calibration moves both. Corrected by [#122](https://github.com/cgbarlow/braintrust/issues/122).
+**`fit` grades the Position's own statement, and the answer is listed in that order** —
+[#140](https://github.com/cgbarlow/braintrust/issues/140), **[measured]**. Three candidates for what the grade
+should be *of* were scored against a reader across 92 Positions from all five live Personas, 20 questions, and
+two independent judges:
 
-**Every result also carries the `similarity` the grade was computed from.** `fit` has now shipped wrong
-twice, and both times it was caught by a person noticing an answer that read oddly — never by the payload,
-because the number behind the grade was computed and discarded. That left `close` on a question the Corpus
-does not cover indistinguishable from `close` on one it does, which is precisely the distinction `fit`
-exists to draw. A grade nobody can check is a grade nobody can correct, so the input travels with the
-output, rounded to the same three decimals as `nothing_matched.nearest_similarity` so the two can be read
-against each other. **This is deliberately a measurement and not a third grade**: it says what happened,
-carries no threshold of its own, and is the evidence by which the next `fit` defect gets found from a
-payload instead of from someone's unease.
+| what it scores | orders answers the way a reader would | separation between *answers* and *unrelated* |
+|---|---:|---:|
+| **Item** — the best Chunk of the best Item behind the Position | **51.2%** | **0.009** |
+| **Statement** — the Position's own sentence | **80.4%** | 0.182 |
+| **Quote** — the best of its own cited quotes | 67.2% | 0.106 |
+
+Fifty per cent is a coin. The mean Item similarity of a Position that answers the question is 0.585 and of one
+the reader would wonder why they were shown is 0.576: **there was no signal to grade.** The obvious objection —
+that the judge reads the same sentence the Statement score embeds — was tested by judging the whole set again
+from *only the person's own quotes*, a reading that structurally favours Quote and handicaps Statement.
+Statement still won, 82.2%.
+
+Four consequences, and the fourth is the one that outlives this ticket.
+
+**The list is ordered by the same number it is graded on**, so grade and order cannot disagree. Ordering is
+where the harm lands, because a reader reads down and quotes the top: asked about AI coding agents, the two
+things Matt Pocock had actually said about running them came back sixth and seventh, labelled `partial`, while
+a note about TypeScript compile performance came fourth labelled a good match.
+
+**Nothing is withheld.** A weak Position is last and marked weak, never absent — the never-hide posture is
+untouched.
+
+**The retrieval gate does not move.** Chunks still decide whether a question reaches this Corpus at all and
+which Positions are candidates; that is what a vector index can answer and what the measured floor is
+calibrated for. The statement decides only how the candidates that came back are ordered and graded. Two jobs,
+two numbers, and conflating them is how `fit` got into this.
+
+**The cut is measured per Persona, on the new distribution, and a Compile that has not measured it declines to
+grade.** The floor is Chunk similarity and the statement score is not the same quantity: applied naively, Chris
+Barlow's measured floor of `0.44` would endorse the mean *unrelated* statement at `0.467`. So a second
+measurement runs on every Compile, in statement space — the out-group is the same fixed off-corpus questions,
+the in-group is **the Person's own cited quotes**, which are real published sentences lexically distinct from
+the synthesiser's paraphrase of them. `~0.54` is where it landed on that Corpus and that number is in no
+constant. `fit: 'ungraded'` is not a fourth grade but the absence of one, and it is the one place this map
+departs from *an unmeasured quantity takes its cautious value*: a grade has **no** cautious direction —
+`distant` on the answer a reader wanted and `close` on the one they did not are both wrong and point opposite
+ways. A wide span does not decline; it guesses `partial` on everything.
+
+**Two earlier corrections, kept because the signature of `fitOf` is what excludes them.** The first build
+divided by the query's own range — `(similarity − median) / (top − median)` — so the best-matching Position
+scored exactly `1.0` and graded `close` **for every query ever asked**, including *poaching an egg*
+([#122](https://github.com/cgbarlow/braintrust/issues/122)). The second graded clearance over the Corpus's
+median, the quantity that measures the embeddings model rather than the Corpus
+([#133](https://github.com/cgbarlow/braintrust/issues/133)). A grade computed against its own subject carries
+no information about that subject, and `fit` exists for the single purpose of being able to say *this does not
+answer you*.
+
+**Every result also carries the `similarity` the grade was computed from.** `fit` has now shipped wrong three
+times, and every time it was caught by a person noticing an answer that read oddly — never by the payload,
+because the number behind the grade was computed and discarded. That left `close` on a question the Corpus does
+not cover indistinguishable from `close` on one it does, which is precisely the distinction `fit` exists to
+draw. A grade nobody can check is a grade nobody can correct, so the input travels with the output. **It is no
+longer on the same scale as `nothing_matched.nearest_similarity`**, which is Chunk similarity and belongs to
+the gate — two numbers, because they answer two questions. **This is deliberately a measurement and not a
+third grade**: it says what happened, carries no threshold of its own, and is the evidence by which the next
+`fit` defect gets found from a payload instead of from someone's unease.
+
+**And the class is now ship-blocking rather than watched.** All three defects graded every Position in an
+answer against a quantity they shared, so *no two Positions in one answer may carry the same score* — 41 of 92
+before the fix, zero after, and a check in the publish gate rather than a person's unease. See
+[compiler.md §5](./compiler.md).
 
 **Correction to [#106](https://github.com/cgbarlow/braintrust/issues/106)**, which recorded *"thin and thick
 corpora do not differ here."* They differ in how loudly they fail. Nate's off-corpus top result came back
@@ -1066,8 +1115,10 @@ should not read permission into any of these:
   and re-measuring every rebuild makes that survivable rather than solved. Original entry: §3 fixes the *property* and requires calibration
   against the operator's endpoint. Choosing a number without running the probe set is the mistake this
   correction exists to stop being repeated.
-- **The `fit` grade's scale and name.** That Positions carry two grades is decided; what the second one is
-  called and whether it is banded or continuous is not.
+- **The `fit` grade's name, and its band boundaries.** *What it is a grade of* is now measured and decided —
+  the Position's own statement, per [#140](https://github.com/cgbarlow/braintrust/issues/140) — and so is that
+  the bands sit at ⅓ and ⅔ of a measured span. Whether three bands is the right number, and whether `fit`
+  earns its name now that `similarity` ships beside it and the list is sorted by it, are not.
 - **The exact wording of the Script's sections**, of the shortened tool descriptions, and of the server
   instructions. The *jobs* of those surfaces are decided; the prose is a build artifact and should be judged by
   ear on a live conversation, which is how every decision on this map was reached.

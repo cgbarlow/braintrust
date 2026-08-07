@@ -35,12 +35,23 @@ type Row = {
     probes?: { in?: number; out?: number };
     note?: string;
   } | null;
+  /** The second measurement, on the second quantity: what `fit` grades against. */
+  fit: {
+    cut?: number | null;
+    span?: number | null;
+    separation?: string;
+    in_low?: number | null;
+    out_high?: number | null;
+    probes?: { in?: number; out?: number };
+    note?: string;
+  } | null;
 };
 
 async function measured(db: Db, person?: string): Promise<Row[]> {
   const { rows } = await db.query<Row>(
     `select p.slug as person, c.finished_at as compiled_at,
-            c.corpus_stats -> 'selectivity' as selectivity
+            c.corpus_stats -> 'selectivity' as selectivity,
+            c.corpus_stats -> 'fit'         as fit
        from braintrust_people p
        join braintrust_compiles c on c.person_id = p.id and c.status = 'current'
       where ($1::text is null or p.slug = $1)
@@ -87,10 +98,23 @@ async function main(): Promise<void> {
       if (s?.separation && s.separation !== 'not_measurable') {
         console.log(`  weakest position  ${fmt(s.in_low)}   (the corpus must answer this)`);
         console.log(`  best off-corpus   ${fmt(s.out_high)}   (the corpus must refuse this)`);
-        console.log(`  span         ${fmt(s.span)}   (the scale fit grades against)`);
+        console.log(`  span         ${fmt(s.span)}   (the gap between the two groups)`);
         console.log(`  probes       ${s.probes?.in ?? 0} in, ${s.probes?.out ?? 0} out`);
       }
       if (s?.note) console.log(`  ${s.note}`);
+
+      // The grade's own scale, kept visibly apart from the gate's. They are measured on
+      // different quantities — chunk similarity and statement similarity — and reading one
+      // number against the other is how `fit` came to be graded against a floor that
+      // endorsed the mean unrelated statement.
+      const f = row.fit;
+      console.log(`  fit grade    ${f?.cut === null || f?.cut === undefined ? 'not graded' : `cut ${fmt(f.cut)} in a span of ${fmt(f.span)}`}`);
+      if (f?.separation && f.separation !== 'not_measurable') {
+        console.log(`    weakest quote     ${fmt(f.in_low)}   (their own words, against their own statements)`);
+        console.log(`    best off-corpus   ${fmt(f.out_high)}`);
+        console.log(`    probes            ${f.probes?.in ?? 0} quotes, ${f.probes?.out ?? 0} off-corpus`);
+      }
+      if (f?.note) console.log(`    ${f.note}`);
       if (!s) {
         console.log(
           `  Compiled before braintrust measured its own gates. Falls back to ` +
@@ -106,7 +130,13 @@ async function main(): Promise<void> {
         'saying this embeddings model could not tell covered from uncovered on that corpus, so ' +
         'the measurement was discarded and the shipped default stands. That persona may answer ' +
         'questions its corpus does not cover, and it is a reason to look at the embeddings ' +
-        'model rather than at the number.',
+        'model rather than at the number.\n\n' +
+        'Two measurements, because there are two jobs. The floor decides whether a question ' +
+        'reaches a corpus at all, measured on chunk similarity. The fit cut decides how the ' +
+        'positions that came back are ordered and graded, measured on statement similarity. A ' +
+        'persona reading `not graded` returns everything it holds with no grade beside it — a ' +
+        'grade has no cautious value to fall back to, so braintrust declines rather than ' +
+        'guessing.',
     );
   } finally {
     await db.close();

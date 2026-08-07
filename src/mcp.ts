@@ -300,9 +300,13 @@ export function buildServer({
           'Each position carries two grades and they mean different things. `confidence` is how ' +
           'well braintrust knows the position. `fit` is how well it answers the question you ' +
           'asked. A `high` position with `distant` fit is well evidenced and not an answer. ' +
-          '`similarity` is the number `fit` was graded from, on the same scale as the floor in ' +
-          '`nothing_matched` — so you can see how near a returned position came to not being ' +
-          'returned at all.\n\n' +
+          '**The list is ordered by `fit`**, best first, so the most relevant thing is at the ' +
+          'top — and `similarity` is the number both the grade and the order come from: how ' +
+          'close the position\'s own statement is to your question. `fit: "ungraded"` means ' +
+          'this persona has never measured a scale of its own, so braintrust declines to grade ' +
+          'rather than guessing; the positions are all still here.\n\n' +
+          '**Nothing is withheld for grading badly.** A weak position is last in the list and ' +
+          'marked weak, never absent.\n\n' +
           '**Quotes are verbatim.** Most of the corpus is auto-generated video captions, so they ' +
           'arrive unpunctuated and sometimes mishearing names. Tidy them for display if you like, ' +
           'but the tidied version is not the quote.\n\n' +

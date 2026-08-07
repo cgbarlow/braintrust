@@ -303,6 +303,35 @@ comment on column braintrust_position_citations.start_ms is
   'The same question as post_url in the unit a transcript has. Both are read off the rows '
   'once the quote has been located; a model is never asked for either.';
 
+-- The Position's own statement, in the same space the Corpus is indexed in.
+--
+-- `fit` grades how well a Position answers the question asked, and for three
+-- versions it graded a quantity every Position in the answer shared — the best
+-- Chunk of the best Item behind it. Measured across 92 Positions: that number
+-- orders answers the way a reader would 51% of the time, where 50% is a coin,
+-- and 41 of the 92 shared their score with another Position. The statement gets
+-- 80%, and 82% under a judge shown only the person's own quotes.
+--
+-- One vector per Position per model, mirroring braintrust_embeddings: `model` is
+-- in the primary key because a better model is a new set of rows, and the rows
+-- cascade with the compile that wrote them because a Position has no existence
+-- outside it.
+create table if not exists braintrust_position_embeddings (
+  position_id uuid not null references braintrust_positions(id) on delete cascade,
+  model       text not null,
+  embedding   vector(1024) not null,
+  created_at  timestamptz not null default now(),
+  primary key (position_id, model)
+);
+
+comment on table braintrust_position_embeddings is
+  'What fit is graded from. Two positions drawn from one item are two different '
+  'sentences, so they get two different scores — which is the whole point, and is '
+  'a publication-blocking check.';
+
+create index if not exists braintrust_position_embeddings_hnsw_idx
+  on braintrust_position_embeddings using hnsw (embedding vector_cosine_ops);
+
 create table if not exists braintrust_position_relations (
   id                uuid primary key default gen_random_uuid(),
   compile_id        uuid not null references braintrust_compiles(id) on delete cascade,
@@ -343,6 +372,7 @@ begin
     'braintrust_persona_layers',
     'braintrust_positions',
     'braintrust_position_citations',
+    'braintrust_position_embeddings',
     'braintrust_position_relations'
   ]
   loop

@@ -13,8 +13,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
-import { DEFAULT_SPAN, floorFor } from '../src/find.js';
-import { UNMEASURED_FIT_SPAN, UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
+import { cutFor, fitOf, floorFor } from '../src/find.js';
+import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 
 /** Every floor braintrust has measured on a real corpus, as recorded on #168. */
 const MEASURED_RANGE = { low: 0.44, high: 0.52 };
@@ -51,11 +51,40 @@ describe('the floor a persona uses when it has measured none', () => {
   });
 });
 
-describe('the rule generalises past the floor', () => {
-  it('grades fit on a wide scale when no span was measured', () => {
-    // Conservative here means wide: an uninformative grade is a smaller failure than one
-    // that calls a weak match `close`.
-    assert.equal(DEFAULT_SPAN, UNMEASURED_FIT_SPAN);
+/**
+ * **A grade is the exception, and it is the exception the rule needed.** A number has a
+ * cautious direction; a judgement does not. `distant` on the answer a reader wanted and
+ * `close` on the one they did not are both wrong and point opposite ways, so no setting of
+ * the scale is the careful one — which is why an unmeasured `fit` is withheld rather than
+ * widened. It previously fell back to a deliberately wide span, and a wide span does not
+ * decline: it guesses `partial` on everything.
+ */
+describe('the rule generalises past the floor, and gains a third option', () => {
+  it('declines to grade rather than grading against a borrowed number', () => {
+    assert.equal(cutFor({ cut: null, span: null }), null);
+    assert.equal(fitOf(0.9, null), 'ungraded');
+  });
+
+  it('never borrows the floor, which is measured on a different quantity', () => {
+    // The naive version of this: Chris Barlow's measured floor of 0.44 would endorse the
+    // mean *unrelated* statement, which sits at 0.467. Two scales, two measurements.
+    assert.equal(cutFor({ cut: null, span: 0.2 }), null);
+    assert.equal(cutFor({ cut: 0.44, span: null }), null);
+  });
+
+  it('gets out of the way the moment there is a measurement', () => {
+    assert.deepEqual(cutFor({ cut: 0.54, span: 0.18 }), { cut: 0.54, span: 0.18 });
+  });
+
+  it('withholds the grade without withholding the position', async () => {
+    // The cost of caution lands on a grade, never on a reader's access to the record: an
+    // ungraded answer is a full answer with nothing claimed about relevance.
+    const source = await readFile(new URL('../src/find.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(
+      source,
+      /filter\([^)]*fit/,
+      'nothing in the read path may drop a position on the strength of its grade',
+    );
   });
 });
 

@@ -650,6 +650,7 @@ the way the compiler fails:
 | `inferred_layers_marked` | every layer with `basis = 'inferred'` opens with the marker |
 | `coverage_reconciles` | Coverage counts match `braintrust_items` |
 | `positions_are_cited` | every Position resolves to at least one real citation |
+| `positions_are_graded_apart` | no two Positions in one answer can carry the same `fit` score, because no two are graded on the same thing |
 | `positions_have_not_collapsed` | the Position count is not a collapse against the previous Compile |
 | `habits_are_on_the_menu` | every line describing how someone argues is text braintrust authored |
 | `habits_rest_on_distinct_evidence` | no two lines in the argument-habits block rest on the identical set of Items |
@@ -671,6 +672,24 @@ the Corpus, full regeneration stops being cheap and the no-drift guarantee goes 
 **A gate rejection does not stop the schedule.** The daily job keeps trying, because a retry is cheap and new
 Items can genuinely fix a gate failure — a Position-count collapse caused by a thin day resolves itself the
 next day.
+
+**`positions_are_graded_apart` enforces a general rule rather than an instance, and it is the only check here
+that exists because of what a *reader* could not catch.** `fit` has shipped wrong three times —
+[#122](https://github.com/cgbarlow/braintrust/issues/122),
+[#133](https://github.com/cgbarlow/braintrust/issues/133),
+[#140](https://github.com/cgbarlow/braintrust/issues/140) — and all three were the same shape: a grade about
+the question computed from a quantity every Position in the answer shared. All three were caught by a person
+noticing an odd answer, and **braintrust runs unattended.** So the rule is structural now: *a grade about the
+question must be computed from the thing it is grading*, and a shared graded subject is the signature of every
+version of the defect. Measured live before the fix, 41 of 92 Positions carried a score identical to another's;
+after it, zero, and any drift back puts it above zero on the next Compile.
+
+Two boundaries the check draws deliberately. **All or none**: a deployment with no embeddings endpoint compiles
+a Persona whose answers carry no grade at all, and refusing to publish that would make a grade a condition of
+having a Persona — what may not ship is the *middle*, some Positions graded and others not, because a client
+reads a missing grade beside a present one as braintrust having formed a view. And **it forbids the
+construction, not the arithmetic**: two Positions that share no words with the question can both bottom out at
+the same number, and being told two things equally do not answer you is not the failure this catches.
 
 ### Three things the build settled about promotion
 

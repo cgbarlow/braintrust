@@ -73,7 +73,12 @@ export type GateFacts = {
   /** The Coverage layer's stored `evidence`, as it will be served. */
   coverage_evidence: unknown;
   items: ItemCounts;
-  positions: { slug: string; citations: number }[];
+  /**
+   * `graded_on` fingerprints what `fit` would grade this Position on — its own statement's
+   * vector — or null where the statement was never embedded. Two Positions sharing one is
+   * two Positions that must share a score.
+   */
+  positions: { slug: string; citations: number; graded_on: string | null }[];
   /** Positions on the Compile this one would replace. Zero when there is no predecessor. */
   previous_positions: number;
   /** Positions this Compile put on the earlier side of a `revised` relation. */
@@ -180,6 +185,12 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
     id: 'positions_are_cited',
     guarantees: 'every position resolves to at least one citation braintrust can show',
     run: positionsAreCited,
+  },
+  {
+    id: 'positions_are_graded_apart',
+    guarantees:
+      'no two positions in one answer can carry the same fit score, because no two are graded on the same thing',
+    run: positionsAreGradedApart,
   },
   {
     id: 'positions_have_not_collapsed',
@@ -338,6 +349,75 @@ function positionsAreCited(facts: GateFacts): GateCheckResult {
             .map((one) => one.slug)
             .slice(0, 5)
             .join(', ')}`,
+  };
+}
+
+/**
+ * **The check that catches the fourth one.**
+ *
+ * `fit` has shipped wrong three times, and all three were the same shape: a grade about the
+ * question computed from a quantity every Position in the answer shared — the query's own
+ * range, the Corpus's median, and the best Chunk of the best Item. All three were caught by a
+ * person reading an answer that looked odd, and there is no person watching. So the general
+ * rule is enforced structurally instead: **a grade about the question must be computed from
+ * the thing it is grading**, and a shared subject is the signature of every version of the
+ * defect.
+ *
+ * Measured live before the fix: 41 of 92 Positions carried a score identical to another's, in
+ * 18 groups, 10 of which held Positions a reader grades differently — three `close` grades on
+ * one Substack post for a question none of them answered. After the fix it is 0, and any
+ * drift back to grading something shared puts it above 0 on the next Compile.
+ *
+ * Two Positions may still print the same rounded number by coincidence. What this forbids is
+ * the *construction* — a graded subject two Positions hold in common — because that is the
+ * defect, and a coincidence is not.
+ *
+ * **All or none, and none is a real answer.** A deployment with no embeddings endpoint
+ * compiles a Persona that cannot be graded at all, and refusing to publish it would make a
+ * grade a condition of having a Persona. Nothing shared is nothing to confuse: those answers
+ * come back ungraded. What may not ship is the middle — some Positions graded and others not
+ * — because a client reads the absence as braintrust having formed a view.
+ */
+function positionsAreGradedApart(facts: GateFacts): GateCheckResult {
+  const graded = facts.positions.filter((position) => position.graded_on !== null);
+
+  if (graded.length === 0) {
+    return {
+      passed: true,
+      detail:
+        `no statement of the ${facts.positions.length} position(s) was embedded, so nothing ` +
+        'is graded and no two grades can agree',
+    };
+  }
+
+  if (graded.length < facts.positions.length) {
+    const ungraded = facts.positions.filter((position) => position.graded_on === null);
+    return {
+      passed: false,
+      detail:
+        `${ungraded.length} of ${facts.positions.length} position(s) have no statement ` +
+        `vector to grade on: ${ungraded.map((one) => one.slug).slice(0, 5).join(', ')} — an ` +
+        'answer mixing graded and ungraded positions reads as a judgement about the ungraded ones',
+    };
+  }
+
+  const byFingerprint = new Map<string, string[]>();
+  for (const position of graded) {
+    byFingerprint.set(position.graded_on!, [
+      ...(byFingerprint.get(position.graded_on!) ?? []),
+      position.slug,
+    ]);
+  }
+
+  const shared = [...byFingerprint.values()].filter((slugs) => slugs.length > 1);
+
+  return {
+    passed: shared.length === 0,
+    detail:
+      shared.length === 0
+        ? `all ${graded.length} position(s) are graded on their own statement`
+        : `${shared.length} group(s) of positions are graded on the same thing and must ` +
+          `therefore score the same: ${shared.map((slugs) => slugs.join(' / ')).slice(0, 3).join('; ')}`,
   };
 }
 
