@@ -31,6 +31,7 @@
 import { daysBetween } from '../dates.js';
 import type { StoredNote } from '../notes/store.js';
 import type { VerifiedClaim } from '../notes/verify.js';
+import { foldByMerging } from './merge.js';
 import { MAX_POSITIONS, type ClusteredPosition, type Synthesiser } from './synthesis.js';
 
 /**
@@ -155,6 +156,17 @@ export type PositionSet = {
   clusterer: string;
   passes: number;
   merged: boolean;
+  /**
+   * Merge rounds. One for a list of passes that fits the budget — every Person today — and
+   * more when it does not, so an operator can see a Corpus approaching the fold before it
+   * gets there rather than after it fails.
+   */
+  rounds: number;
+  /**
+   * False when a fold round returned no fewer positions than it was given. The layer is
+   * published either way; what it means is that some positions may still be duplicates.
+   */
+  converged: boolean;
   /** Groupings resolving to no claim braintrust issued. Dropped rather than written. */
   dropped_uncitable: number;
   /** Claim refs handed over. The denominator behind everything above. */
@@ -221,11 +233,6 @@ export function claimPasses(refs: ClaimRef[], budget = CLAIM_BUDGET_CHARS): stri
 
   if (current.length > 0) passes.push(current.join('\n'));
   return passes;
-}
-
-/** The passes' own output, handed back for merging. Same shape the model returns. */
-export function positionMergeDigest(positions: ClusteredPosition[]): string {
-  return JSON.stringify({ positions }, null, 2);
 }
 
 /**
@@ -319,27 +326,46 @@ export async function compilePositions(
 
   // Bounded per pass and not in total. A Core that grew with the Corpus would stop being
   // affordable to regenerate; this layer is queried rather than loaded whole, so growth is
-  // the point of it. The merge may return at most what it was handed, which is the one
-  // bound that keeps a model from answering a merge with a fresh list of its own.
+  // the point of it. The merge needs no bound of its own: it answers with indices into the
+  // list it was handed, so it can no more return a fresh list than it can invent a claim.
   const found: ClusteredPosition[] = [];
   for (const digest of passes) {
-    found.push(...(await synthesiser.cluster(digest, 'pass')).slice(0, MAX_POSITIONS));
+    found.push(...(await synthesiser.cluster(digest)).slice(0, MAX_POSITIONS));
   }
 
-  const merged =
+  /**
+   * The merge is shown slugs and statements — wording only — and answers with groups of
+   * indices. braintrust takes the union of the claim refs itself, which is why nothing
+   * below has to check the merge for a ref it invented: it was never shown one. Budgeted
+   * with the same number the passes above used, so no single call's input is a function of
+   * Corpus size.
+   */
+  const folded =
     passes.length > 1
-      ? (await synthesiser.cluster(positionMergeDigest(found), 'merge')).slice(0, found.length)
-      : found;
+      ? await foldByMerging(found, {
+          line: (position) => `${position.slug} — ${position.statement}`,
+          combine: (members, clearest) => ({
+            slug: clearest.slug,
+            statement: clearest.statement,
+            claims: [...new Set(members.flatMap((member) => member.claims))],
+          }),
+          group: (digest) => synthesiser.group('positions', digest),
+          budget: CLAIM_BUDGET_CHARS,
+        })
+      : { entries: found, rounds: 0, converged: true };
 
-  // Citability is checked after the merge, so a ref the merge invented is caught by the
-  // same rule that catches one a pass invented.
-  const { positions, dropped, claims } = buildPositions(merged, refs);
+  // The counts, the date span and the confidence grade are all derived here, once, from
+  // the merged evidence — so a view argued for years across several passes is graded on
+  // the whole of it rather than on the slice one pass happened to see.
+  const { positions, dropped, claims } = buildPositions(folded.entries, refs);
 
   return {
     positions,
     clusterer: synthesiser.clusterer,
     passes: passes.length,
     merged: passes.length > 1,
+    rounds: folded.rounds,
+    converged: folded.converged,
     dropped_uncitable: dropped,
     claims_read: refs.length,
     claims,

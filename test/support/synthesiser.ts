@@ -5,12 +5,19 @@
  * entries to them, so a test can assert on attribution without pretending the ids came
  * from anywhere braintrust did not put them. `entriesFor` overrides that for the tests
  * that need a model behaving badly — inventing an item, or returning nothing at all.
+ *
+ * `groupsFor` is the same trick for the merge: it is handed the indices the indexed list
+ * actually carried, so a test cannot pretend an index came from somewhere braintrust did
+ * not put it either. Its default is to merge nothing, which is what a good model answers
+ * when the passes did not repeat themselves.
  */
 
 import type {
   ClusteredPosition,
   InferredKind,
   JudgedPair,
+  MergeGroup,
+  MergeStage,
   SynthesisedEntry,
   SynthesisMode,
   Synthesiser,
@@ -29,9 +36,11 @@ export type FakeOptions = {
   clusterer?: string;
   judge?: string;
   /** Replaces the default answer. Given the ids the digest actually carried. */
-  entriesFor?: (kind: InferredKind, items: string[], mode: SynthesisMode) => SynthesisedEntry[];
+  entriesFor?: (kind: InferredKind, items: string[]) => SynthesisedEntry[];
   /** Replaces the default grouping. Given the claim refs the digest actually carried. */
-  positionsFor?: (claims: string[], mode: SynthesisMode) => ClusteredPosition[];
+  positionsFor?: (claims: string[]) => ClusteredPosition[];
+  /** Replaces the default merge. Given the indices the indexed list actually carried. */
+  groupsFor?: (indices: number[], stage: MergeStage) => MergeGroup[];
   /** Replaces the default judgement. Given the pair refs the digest actually carried. */
   judgementsFor?: (pairs: string[], digest: string) => JudgedPair[];
   /** Throws instead of answering — an endpoint that went away mid-compile. */
@@ -66,12 +75,24 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
       }));
     },
 
-    async cluster(digest, mode): Promise<ClusteredPosition[]> {
-      calls.push({ kind: 'positions', mode, digest });
+    async group(stage, digest): Promise<MergeGroup[]> {
+      calls.push({ kind: stage, mode: 'merge', digest });
       if (options.throws) throw options.throws;
 
-      const claims = mode === 'merge' ? refsFromClusters(digest) : refsFromDigest(digest);
-      if (options.positionsFor) return options.positionsFor(claims, mode);
+      const indices = indicesFromDigest(digest);
+      if (options.groupsFor) return options.groupsFor(indices, stage);
+
+      // Group nothing. A merge that finds no duplicates is the well-behaved answer, and it
+      // leaves every layer a test asserts on exactly as its passes returned it.
+      return [];
+    },
+
+    async cluster(digest): Promise<ClusteredPosition[]> {
+      calls.push({ kind: 'positions', mode: 'pass', digest });
+      if (options.throws) throw options.throws;
+
+      const claims = refsFromDigest(digest);
+      if (options.positionsFor) return options.positionsFor(claims);
       if (claims.length === 0) return [];
 
       // Two groupings rather than one, so a test can tell "every claim landed somewhere"
@@ -92,12 +113,12 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
       ];
     },
 
-    async synthesise(kind, digest, mode): Promise<SynthesisedEntry[]> {
-      calls.push({ kind, mode, digest });
+    async synthesise(kind, digest): Promise<SynthesisedEntry[]> {
+      calls.push({ kind, mode: 'pass', digest });
       if (options.throws) throw options.throws;
 
-      const items = mode === 'merge' ? idsFromEntries(digest) : idsFromDigest(digest);
-      if (options.entriesFor) return options.entriesFor(kind, items, mode);
+      const items = idsFromDigest(digest);
+      if (options.entriesFor) return options.entriesFor(kind, items);
 
       return [
         {
@@ -119,11 +140,6 @@ export function idsFromDigest(digest: string): string[] {
   return [...digest.matchAll(/^\[([^\]]+)\]/gm)].map((match) => match[1]!);
 }
 
-function idsFromEntries(digest: string): string[] {
-  const parsed = JSON.parse(digest) as { entries: SynthesisedEntry[] };
-  return [...new Set(parsed.entries.flatMap((entry) => entry.items))];
-}
-
 /** The claim refs braintrust issued, read back out of the digest it handed over. */
 export function refsFromDigest(digest: string): string[] {
   return [...digest.matchAll(/^\[(c\d+)\]/gm)].map((match) => match[1]!);
@@ -134,7 +150,10 @@ export function pairsFromDigest(digest: string): string[] {
   return [...digest.matchAll(/^\[(p\d+)\]/gm)].map((match) => match[1]!);
 }
 
-function refsFromClusters(digest: string): string[] {
-  const parsed = JSON.parse(digest) as { positions: ClusteredPosition[] };
-  return [...new Set(parsed.positions.flatMap((position) => position.claims))];
+/**
+ * The indices braintrust numbered the merge's input with. The merge is handed wording and
+ * nothing else, so this is the whole of what a grouping answer may name.
+ */
+export function indicesFromDigest(digest: string): number[] {
+  return [...digest.matchAll(/^\[(\d+)\]/gm)].map((match) => Number(match[1]));
 }

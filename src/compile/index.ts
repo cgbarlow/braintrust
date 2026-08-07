@@ -324,6 +324,24 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       );
     }
 
+    // The growth of a Corpus, visible before it becomes a failure. Positions are rows
+    // rather than a prose layer, so this line is the only place an operator can watch a
+    // Corpus approach the fold — and the only place a fold that gave up can be seen.
+    if (grouped.merged) {
+      log(
+        `braintrust: grouped the positions of ${person.slug} in ${grouped.passes} passes and ` +
+          `${grouped.rounds === 1 ? 'one merge' : `${grouped.rounds} rounds of merging`}.`,
+      );
+    }
+
+    if (!grouped.converged) {
+      log(
+        `braintrust: the merge of ${person.slug}'s positions stopped before it ran out of ` +
+          'duplicates, so some may still be the same position in different words. The layer is ' +
+          'published either way — a cosmetic limit is not a reason to withhold a persona.',
+      );
+    }
+
     // Revisions last, because they are about the Positions that were just written and
     // because they are the only part of a Compile that can take a view off the record.
     let revisions = 0;
