@@ -346,9 +346,36 @@ rows — deliberately twice, because the rule matters more than the code path th
 
 **The Core is bounded per layer; the growing layer is bounded per call.** Both fold a large Corpus into passes
 and merge, but capping every clustering call at the same number would also cap the *merge*, which would
-quietly limit a 400-Item Persona to one pass's worth of Positions. So a pass may return at most 24 and the
-merge may return at most what it was handed — the one bound that stops a merge answering with a fresh list of
-its own — and the layer itself is free to grow.
+quietly limit a 400-Item Persona to one pass's worth of Positions. So a pass may return at most 24, and the
+layer itself is free to grow. The merge needs no bound of its own: it answers with indices into the list it
+was handed, so it can no more return a fresh list than it can invent a claim — see below.
+
+**The merge is handed wording, not evidence, and folds when it overflows.** Every step of a Compile is
+budgeted so that a growing Corpus adds *passes* rather than lengthening any one call. The merge that follows
+those passes was the exception: a single call whose input grew with the Corpus, which made it the one place
+where a Person who publishes more got a worse Persona and eventually none.
+
+It now does one job instead of two. Collecting the evidence behind entries that turn out to be the same is
+arithmetic and has a right answer; deciding that two differently-worded entries say the same thing is
+judgement. **Only the judgement is given to a model.** The merge sees one line per entry — an index and the
+wording — and answers with groups of indices naming which member reads clearest. braintrust unions the claim
+ids and Item ids itself and keeps the clearest member's text verbatim, so **no step of a Compile rewords a
+Persona's own output**: what a reader reads was written by a pass that actually read the evidence.
+
+Three consequences worth naming. A merge **cannot touch a citation** — it is not checked afterwards for
+invented refs, because it never sees one, and the pass-level attribution checks become the only ones there
+are. `item_count`, `held_since`, `days_spanned` and `confidence` are derived **once, from the merged
+evidence**, so a view argued for years across several passes is graded on the whole of it rather than on the
+slice one pass happened to see. And the merge takes **the same character budget as the passes that feed it**:
+under budget it stays one call, and over budget braintrust folds in rounds — each round's survivors becoming
+the next round's input, unions accumulating outside the model.
+
+**A fold that stops shrinking ships anyway.** A round returning no fewer entries than it received ends the
+fold, and the layer publishes what it has — merged where the fold worked, still fragmented where it did not —
+with its opening line disclosing that duplicate entries may remain. A cosmetic limit never costs a reader
+their Persona. Layers record the round count and whether the fold converged, so a Corpus approaching the fold
+is visible before it becomes a failure. See
+[ADR 0004](../adr/0004-the-merge-is-handed-wording-not-evidence.md).
 
 **Confidence is absolute, not proportional.** Voice measures habits *within* a Corpus, where a third of Items
 means something. A Position is a thing someone has said, and saying it across five separate pieces of work is
@@ -769,7 +796,8 @@ embedding cost.
 | **An inferred entry's item count is a floor, not a tally.** A folded Corpus attributes each entry to the pass that found it, so a move genuinely present throughout can be traced to a fraction of the Items. The prose says *traced to* rather than *measured in*; it cannot say how much it missed. | §3 |
 | **A Compile that fails the gate spends the synthesis anyway.** The model calls happen before the check, because most of what the gate checks does not exist until they have. A persistently rejected compiler pays full price every day for a Persona nobody receives. | §5 |
 | **A Position's statement is a model's sentence.** The claims under it are verified and the grouping is checked against refs braintrust issued, but the one line a client is most likely to quote was written by a model summarising them. It is why the statement is never served without its citations. | §2 |
-| **Two passes may name the same Position differently and the merge may miss it.** Deduplication across a folded Corpus is a model's judgement, and a near-duplicate that survives shows up as two thin Positions rather than one supported one — which understates `item_count` on both. | §2 |
+| **Two passes may name the same Position differently and the merge may miss it.** Deduplication across a folded Corpus is a model's judgement, and a near-duplicate that survives shows up as two thin Positions rather than one supported one — which understates `item_count` on both. A fold that stops converging is disclosed; one that simply misses a pair is not. | §2 |
+| **Two duplicates each saying half of something are not combined into a better paragraph.** The merge selects the clearest wording rather than composing a new one, so the clearer half wins whole. That is the price of no step of a Compile rewording a Persona's own output. | §2 |
 | **Voice exemplars will never be short-form**, even for someone who is 95% short-form. Coverage states the population it was measured over, so the omission is named rather than hidden. | §2 |
 | **A genuinely intense week of real work grades `moderate`** until the person returns to the subject. The Position is served with its span visible rather than hidden. | §2 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |

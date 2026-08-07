@@ -24,6 +24,7 @@
  */
 
 import type { StoredNote } from '../notes/store.js';
+import { foldByMerging } from './merge.js';
 import {
   MAX_ENTRIES,
   type InferredKind,
@@ -78,6 +79,16 @@ export type InferredEvidence = {
   /** How the Corpus was folded. One pass for a small one; N and a merge for a large one. */
   passes: number;
   merged: boolean;
+  /**
+   * Merge rounds. One when the passes' output fits the merge's budget, more when it has to
+   * be folded — visible here so a Corpus approaching the fold can be seen before it arrives.
+   */
+  rounds: number;
+  /**
+   * False when a fold round returned no fewer entries than it was given. The layer is
+   * published either way, and its opening line says duplicates may remain.
+   */
+  converged: boolean;
   entries: InferredEntryEvidence[];
   /** Entries naming no Item braintrust holds. Dropped rather than published. */
   dropped_unattributable: number;
@@ -164,14 +175,26 @@ export function attributable(
 export function inferredLayer(
   kind: InferredKind,
   entries: SynthesisedEntry[],
-  context: { items_synthesised: number; synthesiser: string; passes: number; dropped: number },
+  context: {
+    items_synthesised: number;
+    synthesiser: string;
+    passes: number;
+    dropped: number;
+    rounds?: number;
+    converged?: boolean;
+  },
 ): InferredLayer {
+  const rounds = context.rounds ?? (context.passes > 1 ? 1 : 0);
+  const converged = context.converged ?? true;
+
   const evidence: InferredEvidence = {
     layer: kind,
     items_synthesised: context.items_synthesised,
     synthesiser: context.synthesiser,
     passes: context.passes,
     merged: context.passes > 1,
+    rounds,
+    converged,
     entries: entries.map((entry) => ({
       label: entry.label,
       items: entry.items,
@@ -180,12 +203,21 @@ export function inferredLayer(
     dropped_unattributable: context.dropped,
   };
 
+  // A merge that could not converge is a cosmetic fault, and a reader is told about it in
+  // the one place they will see it: reading a layer as eight convictions when two of them
+  // are the same conviction twice is the error the disclosure exists to prevent.
+  const undisclosed = converged
+    ? ''
+    : ' The merge stopped before it ran out of duplicates, so two entries below may say the ' +
+      'same thing in different words.';
+
   const opening =
     context.passes > 1
       ? `Synthesised by ${context.synthesiser} from what braintrust wrote down when it read each ` +
-        `item, in ${context.passes} passes and a merge. Every count below is what an entry was ` +
-        'traced to, which is a floor rather than a tally: an entry found in one pass carries only ' +
-        "that pass's items."
+        `item, in ${context.passes} passes and ${rounds === 1 ? 'a merge' : `${rounds} rounds of merging`}. ` +
+        'Every count below is what an entry was traced to, which is a floor rather than a tally: ' +
+        "an entry found in one pass carries only that pass's items." +
+        undisclosed
       : `Synthesised by ${context.synthesiser} from what braintrust wrote down when it read each ` +
         'item. Every count below is what an entry was traced to.';
 
@@ -233,25 +265,39 @@ export async function inferLayer(
 
   const found: SynthesisedEntry[] = [];
   for (const digest of passes) {
-    found.push(...(await synthesiser.synthesise(kind, digest, 'pass')));
+    found.push(...(await synthesiser.synthesise(kind, digest)));
   }
 
-  const merged =
-    passes.length > 1 ? await synthesiser.synthesise(kind, mergeDigest(found), 'merge') : found;
+  /**
+   * The merge sees labels and bodies — wording only — and answers with groups of indices.
+   * braintrust takes the union of the Item ids itself and keeps the clearest member's prose
+   * word for word, so no step of a Compile rewords a Persona's own output: what a reader
+   * reads was written by a pass that actually read the Notes behind it.
+   */
+  const folded =
+    passes.length > 1
+      ? await foldByMerging(found, {
+          line: (entry) => `${entry.label} — ${entry.body}`,
+          combine: (members, clearest) => ({
+            label: clearest.label,
+            body: clearest.body,
+            items: [...new Set(members.flatMap((member) => member.items))],
+          }),
+          group: (digest) => synthesiser.group(kind, digest),
+          budget: DIGEST_BUDGET_CHARS,
+        })
+      : { entries: found, rounds: 0, converged: true };
 
-  // Attribution is checked after the merge, so an id the merge invented is caught by the
-  // same rule that catches one a pass invented.
-  const { entries, dropped } = attributable(merged.slice(0, MAX_ENTRIES), known);
+  // The pass-level check, and now the only one: a merge that is handed no Item id cannot
+  // return one braintrust does not hold.
+  const { entries, dropped } = attributable(folded.entries.slice(0, MAX_ENTRIES), known);
 
   return inferredLayer(kind, entries, {
     items_synthesised: notes.length,
     synthesiser: synthesiser.generation,
     passes: passes.length,
     dropped,
+    rounds: folded.rounds,
+    converged: folded.converged,
   });
-}
-
-/** The passes' own output, handed back for merging. Same shape the model returns. */
-export function mergeDigest(entries: SynthesisedEntry[]): string {
-  return JSON.stringify({ entries }, null, 2);
 }

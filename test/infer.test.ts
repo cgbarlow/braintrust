@@ -24,7 +24,7 @@ import {
 import { MAX_ENTRIES, readEntryContent } from '../src/compile/synthesis.js';
 import type { StoredNote } from '../src/notes/store.js';
 import { numbersMissingFromEvidence } from './support/layers.js';
-import { fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
+import { fakeSynthesiser, idsFromDigest, indicesFromDigest } from './support/synthesiser.js';
 
 function note(externalId: string, overrides: Partial<StoredNote> = {}): StoredNote {
   return {
@@ -96,18 +96,133 @@ describe('attribution', () => {
     assert.equal(kept.dropped, 1);
   });
 
-  it('is applied after the merge, so an id the merge invented is caught too', async () => {
+  /**
+   * What the old check protected still matters; the mechanism that could break it is gone.
+   * A merge that is handed no item id cannot return one, so the pass-level check is the
+   * only one there is — and the assertion becomes that the merge is never shown an id.
+   */
+  it('is the only check there is, because a merge is never shown an item id', async () => {
     const synthesiser = fakeSynthesiser({
-      entriesFor: (_kind, items, mode) =>
-        mode === 'merge'
-          ? [{ label: 'merged', body: '…', items: [...items, 'never-existed'] }]
-          : [{ label: 'a pass', body: '…', items }],
+      entriesFor: (_kind, items) => [{ label: 'a pass', body: 'How it runs.', items }],
+    });
+
+    const layer = await inferLayer('reasoning', FOLDED, synthesiser);
+    const merge = synthesiser.calls.filter((call) => call.mode === 'merge').at(-1)!;
+
+    assert.equal(layer.evidence.merged, true);
+    // Every marker in a merge digest is an index into the list it was handed. Not one of
+    // them is an item braintrust holds, which is why a merge cannot name one it does not.
+    const known = new Set(FOLDED.map((one) => one.external_id));
+    assert.deepEqual(idsFromDigest(merge.digest).filter((id) => known.has(id)), []);
+    assert.doesNotMatch(merge.digest, /post-\d+/);
+
+    // One line per entry: an index, and the wording. Nothing else.
+    assert.match(merge.digest, /^\[1\] a pass — How it runs\.$/m);
+  });
+
+  it('unions the item ids itself, and keeps the clearest entrys prose word for word', async () => {
+    let pass = 0;
+    const synthesiser = fakeSynthesiser({
+      entriesFor: (_kind, items) => {
+        pass += 1;
+        return [
+          {
+            label: pass === 2 ? 'The clearest' : `Pass ${pass}`,
+            body: pass === 2 ? 'The clearest way of putting it.' : `Pass ${pass} put it worse.`,
+            items,
+          },
+        ];
+      },
+      groupsFor: (indices) => [{ members: indices, clearest: 2 }],
     });
 
     const layer = await inferLayer('reasoning', FOLDED, synthesiser);
 
-    assert.equal(layer.evidence.merged, true);
-    assert.ok(!layer.evidence.entries[0]!.items.includes('never-existed'));
+    assert.equal(layer.evidence.entries.length, 1);
+    // The prose a reader gets was written by a pass that read the notes behind it, and the
+    // evidence behind it is every pass's, unioned by braintrust rather than copied by a model.
+    assert.equal(layer.evidence.entries[0]!.label, 'The clearest');
+    assert.match(layer.descriptive_md, /The clearest way of putting it\./);
+    assert.doesNotMatch(layer.descriptive_md, /put it worse/);
+    assert.equal(layer.evidence.entries[0]!.items_traced, FOLDED.length);
+  });
+});
+
+/**
+ * A corpus whose *passes' own output* is too large for one merge — which is the case the
+ * fold exists for, and the one the merge used to have no answer to.
+ */
+const OVERFLOWING = Array.from({ length: 900 }, (_unused, index) =>
+  note(`post-${index}`, { argument_md: 'A long argument, in full. '.repeat(60) }),
+);
+
+/** Eight entries a pass, each worded at length, so the indexed list overflows. */
+const WORDY = (items: string[]) =>
+  Array.from({ length: MAX_ENTRIES }, (_unused, index) => ({
+    label: `Entry ${index}`,
+    body: `One of many, at length. ${'The same move in different words. '.repeat(20)}`,
+    items,
+  }));
+
+describe('the merge, and the fold under it', () => {
+  it('asks nothing of a corpus that fits in one pass, because nothing was split', async () => {
+    const synthesiser = fakeSynthesiser();
+    const layer = await inferLayer('beliefs', NOTES, synthesiser);
+
+    assert.equal(layer.evidence.rounds, 0);
+    assert.equal(layer.evidence.converged, true);
+    assert.deepEqual(
+      synthesiser.calls.map((call) => call.mode),
+      ['pass'],
+    );
+  });
+
+  it('makes exactly one merge call when the passes output fits its budget', async () => {
+    const synthesiser = fakeSynthesiser();
+    const layer = await inferLayer('reasoning', FOLDED, synthesiser);
+
+    assert.equal(synthesiser.calls.filter((call) => call.mode === 'merge').length, 1);
+    assert.equal(layer.evidence.rounds, 1);
+    assert.equal(layer.evidence.converged, true);
+    assert.match(layer.descriptive_md, /passes and a merge\./);
+  });
+
+  it('folds in rounds when it does not, and shows round two what survived round one', async () => {
+    const synthesiser = fakeSynthesiser({
+      entriesFor: (_kind, items) => WORDY(items),
+      // Every chunk collapses to one entry, so a round's survivor count is its chunk count.
+      groupsFor: (indices) => [{ members: indices, clearest: indices[0]! }],
+    });
+
+    const layer = await inferLayer('reasoning', OVERFLOWING, synthesiser);
+    const merges = synthesiser.calls.filter((call) => call.mode === 'merge');
+
+    assert.equal(layer.evidence.rounds, 2);
+    assert.equal(layer.evidence.converged, true);
+    assert.ok(merges.length > 2, 'round one was cut into more than one call');
+    assert.deepEqual(
+      indicesFromDigest(merges.at(-1)!.digest),
+      merges.slice(0, -1).map((_unused, index) => index + 1),
+      'round two is shown one survivor per chunk of round one, and nothing else',
+    );
+    assert.match(layer.descriptive_md, /2 rounds of merging\./);
+  });
+
+  it('publishes a layer whose fold stopped shrinking, and says duplicates may remain', async () => {
+    const synthesiser = fakeSynthesiser({
+      entriesFor: (_kind, items) => WORDY(items),
+      // A model that merges nothing, on a list that does not fit. The fold cannot shrink it.
+      groupsFor: () => [],
+    });
+
+    const layer = await inferLayer('beliefs', OVERFLOWING, synthesiser);
+
+    assert.equal(layer.evidence.rounds, 1, 'a round that merged nothing ends the fold');
+    assert.equal(layer.evidence.converged, false);
+    // A cosmetic limit never costs a reader their layer — and a reader is told, so that
+    // eight entries are not read as eight distinct convictions when two are the same one.
+    assert.ok(layer.evidence.entries.length > 0);
+    assert.match(layer.descriptive_md, /two entries below may say the same thing/);
   });
 });
 

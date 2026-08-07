@@ -52,14 +52,14 @@ describe('the synthesiser on the wire', () => {
    */
   it('asks for a stream, so a long pass never goes silent on the wire', async () => {
     const wire = endpoint(streamed(JSON.stringify(ANSWER)));
-    await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim', 'pass');
+    await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim');
 
     assert.equal((wire.sent[0] as { stream?: unknown }).stream, true);
   });
 
   it('joins a streamed answer back into the object it was cut from', async () => {
     const wire = endpoint(streamed(JSON.stringify(ANSWER)));
-    const positions = await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim', 'pass');
+    const positions = await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim');
 
     assert.deepEqual(
       positions.map((position) => position.slug),
@@ -74,7 +74,7 @@ describe('the synthesiser on the wire', () => {
    */
   it('still reads a whole object from an endpoint that ignores the request', async () => {
     const wire = endpoint(JSON.stringify({ choices: [{ message: { content: JSON.stringify(ANSWER) } }] }));
-    const positions = await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim', 'pass');
+    const positions = await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim');
 
     assert.deepEqual(
       positions.map((position) => position.slug),
@@ -86,7 +86,7 @@ describe('the synthesiser on the wire', () => {
     const wire = endpoint(
       `data: ${JSON.stringify({ choices: [{ message: { content: JSON.stringify(ANSWER) } }] })}\n\ndata: [DONE]\n\n`,
     );
-    const positions = await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim', 'pass');
+    const positions = await createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim');
 
     assert.equal(positions.length, 1);
   });
@@ -108,7 +108,7 @@ describe('the synthesiser on the wire', () => {
     });
 
     await assert.rejects(
-      createSynthesiser(CONFIG, cutMidStream).cluster('[c1] a claim', 'pass'),
+      createSynthesiser(CONFIG, cutMidStream).cluster('[c1] a claim'),
       (error: Error) => {
         assert.match(error.message, /models\.test/);
         assert.match(error.message, /while compiling positions/);
@@ -129,7 +129,7 @@ describe('the synthesiser on the wire', () => {
     const wire = endpoint(': keep-alive\n\ndata: {"choices":[{}]}\n\ndata: [DONE]\n\n');
 
     await assert.rejects(
-      createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim', 'pass'),
+      createSynthesiser(CONFIG, wire.fetcher).cluster('[c1] a claim'),
       /returned no content for positions/,
     );
   });
@@ -138,11 +138,13 @@ describe('the synthesiser on the wire', () => {
 describe('what a run can tell about its own model calls', () => {
   it('times every call and names which half of a stage it was', async () => {
     const lines: string[] = [];
-    const wire = endpoint(streamed(JSON.stringify(ANSWER)));
+    // One body serving both questions, because one endpoint answers both here. A pass
+    // reads `positions` and a merge reads `groups`; neither looks at the other's key.
+    const wire = endpoint(streamed(JSON.stringify({ ...ANSWER, groups: [] })));
     const synthesiser = createSynthesiser(CONFIG, wire.fetcher, undefined, (line) => lines.push(line));
 
-    await synthesiser.cluster('[c1] a claim', 'pass');
-    await synthesiser.cluster('[c1] a claim', 'merge');
+    await synthesiser.cluster('[c1] a claim');
+    await synthesiser.group('positions', '[1] a-position — They hold a thing.');
 
     assert.match(lines[0]!, /positions — \d+ chars in, \d+ chars out|positions — [\d,]+ chars in/);
     assert.match(lines[1]!, /positions \(merge\)/);
@@ -163,10 +165,13 @@ describe('what a run can tell about its own model calls', () => {
       },
     });
 
-    await assert.rejects(createSynthesiser(CONFIG, lost).cluster('[c1] a claim', 'merge'), (error: Error) => {
-      assert.match(error.message, /while compiling positions \(merge\)/);
-      assert.match(error.message, /after \d+s of a [\d,]+-character digest/);
-      return true;
-    });
+    await assert.rejects(
+      createSynthesiser(CONFIG, lost).group('positions', '[1] a-position — They hold a thing.'),
+      (error: Error) => {
+        assert.match(error.message, /while compiling positions \(merge\)/);
+        assert.match(error.message, /after \d+s of a [\d,]+-character digest/);
+        return true;
+      },
+    );
   });
 });

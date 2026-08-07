@@ -25,12 +25,11 @@ import {
   confidenceFor,
   CONFIDENCE_HIGH_ITEMS,
   CONFIDENCE_MODERATE_ITEMS,
-  positionMergeDigest,
   slugify,
 } from '../src/compile/positions.js';
-import { MAX_POSITIONS, readClusterContent } from '../src/compile/synthesis.js';
+import { MAX_POSITIONS, readClusterContent, readGroupContent } from '../src/compile/synthesis.js';
 import type { StoredNote } from '../src/notes/store.js';
-import { fakeSynthesiser, refsFromDigest } from './support/synthesiser.js';
+import { fakeSynthesiser, indicesFromDigest, refsFromDigest } from './support/synthesiser.js';
 
 function note(externalId: string, overrides: Partial<StoredNote> = {}): StoredNote {
   return {
@@ -282,29 +281,30 @@ describe('compiling the growing layer', () => {
     );
   });
 
-  it('merges across passes, and checks citability after the merge rather than before', async () => {
-    // Large enough to fold, so the merge is the last thing that touches the refs.
+  it('merges across passes, and checks citability on the refs braintrust unioned', async () => {
+    // Large enough to fold, so a merge happens at all.
     const many = Array.from({ length: 4_000 }, (_unused, index) => note(`post-${index}`));
 
     const synthesiser = fakeSynthesiser({
-      positionsFor: (claims, mode) =>
-        mode === 'merge'
-          ? [
-              { slug: 'merged', statement: 'Survives the merge.', claims: [claims[0]!] },
-              { slug: 'invented-by-the-merge', statement: 'A ref that was never issued.', claims: ['c999999'] },
-            ]
-          : [{ slug: 'from-a-pass', statement: 'Found in one pass.', claims: claims.slice(0, 3) }],
+      positionsFor: (claims) => [
+        { slug: 'from-a-pass', statement: 'Found in one pass.', claims: claims.slice(0, 3) },
+        // A ref no pass was given. It is dropped by the same rule as ever — but now that
+        // rule runs on refs braintrust unioned itself, because the merge is never shown one.
+        { slug: 'never-issued', statement: 'Cites a claim braintrust did not extract.', claims: ['c999999'] },
+      ],
+      groupsFor: (indices) => [{ members: indices.slice(0, 2), clearest: indices[0]! }],
     });
 
     const set = await compilePositions(many, synthesiser);
 
     assert.ok(set.passes > 1);
     assert.equal(set.merged, true);
-    assert.deepEqual(
-      set.positions.map((position) => position.slug),
-      ['merged'],
-    );
-    assert.equal(set.dropped_uncitable, 1, 'a ref the merge invented is caught by the same rule');
+    assert.equal(set.rounds, 1, 'the passes output fits one call, so the fold is one round');
+    assert.equal(set.converged, true);
+    assert.ok(set.dropped_uncitable > 0, 'a grouping resolving to no issued claim is still dropped');
+    for (const position of set.positions) {
+      assert.ok(position.citations.length > 0);
+    }
   });
 
   it('bounds a pass but not the layer, because positions grow with the corpus', async () => {
@@ -312,42 +312,181 @@ describe('compiling the growing layer', () => {
 
     const synthesiser = fakeSynthesiser({
       // A model ignoring the cap, every pass.
-      positionsFor: (claims, mode) =>
-        mode === 'merge'
-          ? claims.map((claim, index) => ({
-              slug: `merged-${index}`,
-              statement: 'One of many.',
-              claims: [claim],
-            }))
-          : claims.slice(0, MAX_POSITIONS + 20).map((claim, index) => ({
-              slug: `pass-${index}`,
-              statement: 'One of many.',
-              claims: [claim],
-            })),
+      positionsFor: (claims) =>
+        claims.slice(0, MAX_POSITIONS + 20).map((claim, index) => ({
+          slug: `pass-${index}`,
+          statement: 'One of many.',
+          claims: [claim],
+        })),
     });
 
     const set = await compilePositions(many, synthesiser);
     const passes = synthesiser.calls.filter((call) => call.mode === 'pass').length;
+    const handed = indicesFromDigest(synthesiser.calls.at(-1)!.digest);
 
-    const handed = (JSON.parse(synthesiser.calls.at(-1)!.digest) as { positions: unknown[] }).positions;
     assert.equal(handed.length, passes * MAX_POSITIONS, 'each pass is trimmed to the per-call bound');
     // …and the layer itself is allowed to be larger than one call's worth.
     assert.ok(set.positions.length > MAX_POSITIONS);
   });
 
-  it('hands the merge the passes own output and nothing else', async () => {
-    const digest = positionMergeDigest([
-      { slug: 'one', statement: 'First.', claims: ['c1'] },
-      { slug: 'two', statement: 'Second.', claims: ['c2'] },
-    ]);
+  it('hands the merge wording and indices, and never a claim braintrust issued', async () => {
+    const many = Array.from({ length: 4_000 }, (_unused, index) => note(`post-${index}`));
+    const synthesiser = fakeSynthesiser();
 
-    assert.deepEqual(refsFromDigest(digest), []);
-    assert.deepEqual(JSON.parse(digest), {
-      positions: [
-        { slug: 'one', statement: 'First.', claims: ['c1'] },
-        { slug: 'two', statement: 'Second.', claims: ['c2'] },
+    await compilePositions(many, synthesiser);
+    const merge = synthesiser.calls.filter((call) => call.mode === 'merge').at(-1)!;
+
+    // The whole reason a merge can no longer invent a citation: it is not shown one.
+    assert.deepEqual(refsFromDigest(merge.digest), []);
+    assert.doesNotMatch(merge.digest, /\bc\d+\b/);
+    assert.doesNotMatch(merge.digest, /speed is not the constraint/, 'no quotes either');
+
+    // One line per entry: an index, the slug and the statement.
+    assert.match(merge.digest, /^\[1\] the-constraint-is-not-speed — The constraint is never speed\.$/m);
+    assert.deepEqual(
+      indicesFromDigest(merge.digest),
+      merge.digest.split('\n').map((_unused, index) => index + 1),
+    );
+  });
+
+  /**
+   * The reason the merge is not decoration. Passes are cut from disjoint slices, so a view
+   * held for years is found separately by several of them, each citing only its own slice.
+   * Unmerged, one Position becomes twelve that each understate what the Person argued.
+   */
+  it('carries the union of a groups evidence, and derives the numbers from the whole of it', async () => {
+    // Dated across two years, so the span is a property of the corpus rather than of how
+    // the compile happened to be sliced.
+    const many = Array.from({ length: 4_000 }, (_unused, index) =>
+      note(`post-${index}`, { published_at: `${2023 + (index % 3)}-06-01` }),
+    );
+
+    const synthesiser = fakeSynthesiser({
+      // One position per pass, each citing only the slice its pass could see.
+      positionsFor: (claims) => [
+        { slug: 'this-passes-wording', statement: 'A worse way of putting it.', claims },
+      ],
+      // …and the merge says they are all the same view, worded best by the second.
+      groupsFor: (indices) => [{ members: indices, clearest: indices[1]! }],
+    });
+
+    const set = await compilePositions(many, synthesiser);
+
+    assert.equal(set.positions.length, 1, 'twelve wordings of one view are one position');
+    const [position] = set.positions;
+
+    // The union, not one pass's slice: every item in the corpus is behind it.
+    assert.equal(position!.item_count, many.length);
+    assert.equal(position!.held_since, '2023-06-01');
+    assert.equal(position!.held_until, '2025-06-01');
+    assert.ok(position!.days_spanned! > BURST_WINDOW_DAYS);
+    assert.equal(position!.confidence, 'high', 'graded on the merged evidence, not on a slice');
+  });
+
+  it('keeps the clearest members wording word for word, and discards the others', async () => {
+    const many = Array.from({ length: 4_000 }, (_unused, index) => note(`post-${index}`));
+    let pass = 0;
+
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) => {
+        pass += 1;
+        return [
+          {
+            slug: pass === 2 ? 'the-clearest' : `pass-${pass}`,
+            statement: pass === 2 ? 'The clearest way of putting it.' : `Pass ${pass} put it worse.`,
+            claims: claims.slice(0, 2),
+          },
+        ];
+      },
+      groupsFor: (indices) => [{ members: indices, clearest: 2 }],
+    });
+
+    const set = await compilePositions(many, synthesiser);
+
+    // No step of a compile rewords a persona's own output: the merge selects prose rather
+    // than composing it, so what a reader reads was written by a pass that read the claims.
+    assert.deepEqual(
+      set.positions.map((one) => one.statement),
+      ['The clearest way of putting it.'],
+    );
+    assert.deepEqual(
+      set.positions.map((one) => one.slug),
+      ['the-clearest'],
+    );
+  });
+
+  it('drops an index it was never given and one it repeats, without losing the valid members', async () => {
+    const many = Array.from({ length: 4_000 }, (_unused, index) => note(`post-${index}`));
+
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) => [
+        { slug: 'from-a-pass', statement: 'Found in one pass.', claims: claims.slice(0, 2) },
+      ],
+      groupsFor: (indices) => [
+        // 1 and 2 are real; the rest are not, and 2 is claimed again by the group below.
+        { members: [indices[0]!, indices[1]!, 0, -3, indices.length + 500], clearest: indices[0]! },
+        { members: [indices[1]!, indices[2]!], clearest: indices[1]! },
       ],
     });
+
+    const set = await compilePositions(many, synthesiser);
+    const passes = synthesiser.calls.filter((call) => call.mode === 'pass').length;
+
+    // Two grouped into one, the third taken by the second group alone, and every other
+    // position untouched — the invented indices cost nobody their position.
+    assert.equal(set.positions.length, passes - 1);
+    for (const position of set.positions) assert.ok(position.citations.length > 0);
+  });
+
+  it('folds in rounds when the indexed list will not fit, and shows round two what survived round one', async () => {
+    const many = Array.from({ length: 4_000 }, (_unused, index) => note(`post-${index}`));
+
+    const synthesiser = fakeSynthesiser({
+      // Long statements, so the passes own output overflows the merge's budget.
+      positionsFor: (claims) =>
+        Array.from({ length: MAX_POSITIONS }, (_unused, index) => ({
+          slug: `pass-position-${index}`,
+          statement: `One of many, at length. ${'The same thing in different words. '.repeat(20)}`,
+          claims: claims.slice(index, index + 1),
+        })),
+      // Every chunk collapses to one entry, so a round's survivor count is its chunk count.
+      groupsFor: (indices) => [{ members: indices, clearest: indices[0]! }],
+    });
+
+    const set = await compilePositions(many, synthesiser);
+    const merges = synthesiser.calls.filter((call) => call.mode === 'merge');
+
+    assert.equal(set.rounds, 2);
+    assert.equal(set.converged, true);
+    assert.ok(merges.length > 2, 'round one was cut into more than one call');
+    assert.deepEqual(
+      indicesFromDigest(merges.at(-1)!.digest),
+      merges.slice(0, -1).map((_unused, index) => index + 1),
+      'round two is shown one survivor per chunk of round one, and nothing else',
+    );
+    assert.equal(set.positions.length, 1);
+  });
+
+  it('publishes a layer whose fold stopped shrinking, and records that it did not converge', async () => {
+    const many = Array.from({ length: 4_000 }, (_unused, index) => note(`post-${index}`));
+
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) =>
+        Array.from({ length: MAX_POSITIONS }, (_unused, index) => ({
+          slug: `pass-position-${index}`,
+          statement: `One of many, at length. ${'The same thing in different words. '.repeat(20)}`,
+          claims: claims.slice(index, index + 1),
+        })),
+      // A model that merges nothing, on a list that does not fit. The fold cannot shrink it.
+      groupsFor: () => [],
+    });
+
+    const set = await compilePositions(many, synthesiser);
+
+    assert.equal(set.rounds, 1, 'a round that merged nothing ends the fold');
+    assert.equal(set.converged, false);
+    // A cosmetic limit never costs a reader their positions.
+    assert.ok(set.positions.length > MAX_POSITIONS);
   });
 
   it('lets an endpoint failure fail the compile rather than publishing a persona without positions', async () => {
@@ -410,7 +549,7 @@ describe('reading what the clusterer answered', () => {
     );
   });
 
-  it('does not cap what a merge may return, because the fold is where that belongs', () => {
+  it('does not cap what a pass may return, because the fold is where that belongs', () => {
     const many = Array.from({ length: MAX_POSITIONS + 10 }, (_unused, index) => ({
       slug: `p-${index}`,
       statement: 'One of many.',
@@ -418,6 +557,55 @@ describe('reading what the clusterer answered', () => {
     }));
 
     assert.equal(readClusterContent(JSON.stringify({ positions: many }), url).length, many.length);
+  });
+});
+
+describe('reading what the merge answered', () => {
+  const url = 'https://models.test/v1/chat/completions';
+
+  it('accepts a fenced block, like the readers either side of it', () => {
+    assert.deepEqual(readGroupContent('```json\n{"groups":[{"members":[1,3],"clearest":3}]}\n```', url), [
+      { members: [1, 3], clearest: 3 },
+    ]);
+  });
+
+  it('treats an empty groups array as an answer and a missing one as a wrong question', () => {
+    // Nothing repeating is what a good merge answers most of the time.
+    assert.deepEqual(readGroupContent('{"groups":[]}', url), []);
+
+    assert.throws(
+      () => readGroupContent('{"positions":[{"slug":"a","statement":"A.","claims":[]}]}', url),
+      /no groups array/,
+    );
+  });
+
+  it('needs no cap of its own, because an answer is bounded by the input it names', () => {
+    const many = Array.from({ length: MAX_POSITIONS + 40 }, (_unused, index) => ({
+      members: [index + 1],
+      clearest: index + 1,
+    }));
+
+    assert.equal(readGroupContent(JSON.stringify({ groups: many }), url).length, many.length);
+  });
+
+  it('drops a group with no usable member and repairs one with no usable clearest', () => {
+    const groups = readGroupContent(
+      JSON.stringify({
+        groups: [
+          { members: [2, 'three', 4.5], clearest: 2 },
+          { members: [], clearest: 1 },
+          { members: ['nothing here'] },
+          { members: [7, 9] },
+        ],
+      }),
+      url,
+    );
+
+    assert.deepEqual(groups, [
+      { members: [2], clearest: 2 },
+      // A missing clearest costs the group nothing: the merge is here to find duplicates.
+      { members: [7, 9], clearest: 7 },
+    ]);
   });
 });
 

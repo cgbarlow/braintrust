@@ -102,6 +102,22 @@ export type JudgedPair = {
   rationale: string;
 };
 
+/**
+ * The merge's whole answer: which entries say the same thing, and which of them says it
+ * clearest. **No citation appears here in either direction** — the merge was handed
+ * wording and indices, so the union of the evidence is braintrust's arithmetic rather than
+ * a model's copying. A `members` list of one is legal and meaningless; it merges nothing.
+ */
+export type MergeGroup = {
+  /** Indices into the list the merge was handed, numbered from 1. */
+  members: number[];
+  /** The member whose wording is kept word for word. The others' text is discarded. */
+  clearest: number;
+};
+
+/** Which stage a merge belongs to. Only the job label a run reports depends on it. */
+export type MergeStage = InferredKind | 'positions';
+
 export type Synthesiser = {
   /** `model@prompt-version`. Half of `compiler_version`; the other half is the measurement. */
   generation: string;
@@ -111,14 +127,28 @@ export type Synthesiser = {
   judge: string;
   model: string;
   url: string;
-  synthesise(kind: InferredKind, digest: string, mode: SynthesisMode): Promise<SynthesisedEntry[]>;
+  synthesise(kind: InferredKind, digest: string): Promise<SynthesisedEntry[]>;
   /** The growing layer. Same endpoint, a third question: which claims are one position? */
-  cluster(digest: string, mode: SynthesisMode): Promise<ClusteredPosition[]>;
+  cluster(digest: string): Promise<ClusteredPosition[]>;
+  /**
+   * The merge, for all three synthesised layers.
+   *
+   * **Its own call rather than a mode of the two above**, because it now returns groups
+   * where they return entries: keeping it a mode would give both of them a mode-dependent
+   * return type that every caller has to narrow. What the mode still earns its keep for is
+   * the job label a run reports, which is where a pass and the merge after it have always
+   * been told apart. See ./merge.ts.
+   */
+  group(stage: MergeStage, digest: string): Promise<MergeGroup[]>;
   /** The fourth question, and the only one that can take something off the record. */
   judgePairs(digest: string): Promise<JudgedPair[]>;
 };
 
-/** A pass reads Notes; a merge reads the passes. Same call, one extra instruction. */
+/**
+ * A pass reads the Corpus; a merge reads what the passes wrote. They are two questions on
+ * two prompts now, and this survives as the half of a stage a failure message names — a
+ * pass is long because the Corpus is large, the merge because the passes were many.
+ */
 export type SynthesisMode = 'pass' | 'merge';
 
 /**
@@ -186,12 +216,45 @@ export const PROMPTS: Record<InferredKind, string> = {
   ].join('\n'),
 };
 
-const MERGE = [
+/**
+ * The merge prompt, and the only one shared by all three synthesised layers.
+ *
+ * **It asks for judgement and nothing else.** Deciding that two differently-worded entries
+ * say the same thing is the one part of a merge that has no right answer in code; the union
+ * of their evidence has one, so braintrust does that itself. The model is shown wording,
+ * answers with indices, and never sees a citation — which is why nothing downstream has to
+ * check a merge for refs it invented.
+ *
+ * Grouping rather than rewriting is also what keeps a Persona's prose its own: the merge
+ * selects which existing entry survives, so what a reader reads was always written by a
+ * pass that actually read the evidence behind it.
+ */
+export const MERGE_PROMPT = [
+  "You are reading entries braintrust produced by reading one author's published work in",
+  'several passes. The passes could not see each other, so the same entry may appear more',
+  'than once in different words. Finding those is the job.',
   '',
-  'These entries were produced by reading the corpus in several passes, so the same one may',
-  'appear more than once in different words. Merge those, keeping the clearest label and the',
-  'union of their item ids. Do not invent entries that are not in the input, and do not add',
-  'item ids that are not already against an entry you are merging.',
+  'Each line is one entry: the index braintrust gave it, and its wording. The evidence behind',
+  'each entry stays with braintrust and is not your concern.',
+  '',
+  'Return a single JSON object, and nothing else:',
+  '',
+  '{ "groups": [ { "members": [3, 11, 24], "clearest": 11 } ] }',
+  '',
+  'groups — one per set of entries that say the same thing in different words. An entry that',
+  '  says something none of the others say belongs to no group: leave it out rather than',
+  '  giving it a group of its own. An empty list is the right answer when nothing repeats.',
+  'members — the indices in the group, copied exactly from the [n] markers. Only indices you',
+  '  were given: one that is not among them will be dropped, and a group left with none will',
+  '  be dropped with it. An index belongs to one group only.',
+  'clearest — the member a reader would understand best. Its wording is kept word for word',
+  '  and the others are discarded, so choose the clearest rather than the longest.',
+  '',
+  'Group only what asserts the same thing. Two entries about the same subject that assert',
+  '  different things are two entries, and collapsing them would put a view on the record',
+  '  that nobody stated.',
+  'You are not writing here. Do not reword an entry, do not compose one that is not in the',
+  '  input, and do not return the entries themselves — only their numbers.',
 ].join('\n');
 
 /**
@@ -231,14 +294,6 @@ export const POSITION_PROMPT = [
   'A position may rest on a single claim. Say it once rather than padding it with claims that',
   '  are merely nearby — the count of items behind a position is what a reader judges it on.',
   'Do not judge whether they are right, and do not soften a claim into something safer.',
-].join('\n');
-
-const POSITION_MERGE = [
-  '',
-  'These positions were produced by reading the claims in several passes, so the same one may',
-  'appear more than once in different words. Merge those, keeping the clearest slug and',
-  'statement and the union of their claim ids. Do not invent positions that are not in the',
-  'input, and do not add claim ids that are not already against a position you are merging.',
 ].join('\n');
 
 /**
@@ -390,20 +445,22 @@ export function createSynthesiser(
     model: config.model,
     url,
 
+    async synthesise(kind, digest): Promise<SynthesisedEntry[]> {
+      return readEntryContent(await ask(PROMPTS[kind], digest, labelled(kind, 'pass')), url);
+    },
+
+    async cluster(digest): Promise<ClusteredPosition[]> {
+      return readClusterContent(await ask(POSITION_PROMPT, digest, labelled('positions', 'pass')), url);
+    },
+
     /**
-     * The mode travels into the job label because a pass and the merge that follows it are
+     * The stage travels into the job label because a pass and the merge that follows it are
      * the two halves of one stage and fail for opposite reasons — a pass is long because the
      * Corpus is large, the merge because the passes were many. A message naming only the
      * stage cannot tell them apart, which is exactly the confusion that cost a live rebuild.
      */
-    async synthesise(kind, digest, mode): Promise<SynthesisedEntry[]> {
-      const system = PROMPTS[kind] + (mode === 'merge' ? MERGE : '');
-      return readEntryContent(await ask(system, digest, labelled(kind, mode)), url);
-    },
-
-    async cluster(digest, mode): Promise<ClusteredPosition[]> {
-      const system = POSITION_PROMPT + (mode === 'merge' ? POSITION_MERGE : '');
-      return readClusterContent(await ask(system, digest, labelled('positions', mode)), url);
+    async group(stage, digest): Promise<MergeGroup[]> {
+      return readGroupContent(await ask(MERGE_PROMPT, digest, labelled(stage, 'merge')), url);
     },
 
     async judgePairs(digest): Promise<JudgedPair[]> {
@@ -547,9 +604,50 @@ export function readClusterContent(content: string, url: string): ClusteredPosit
       ];
     });
   // Deliberately not capped here, unlike the Core's entries. Positions grow with the
-  // Corpus, and a cap applied to every call would also cap the *merge* — which would
-  // quietly limit a 400-item Persona to one pass's worth of positions. The per-pass bound
-  // lives with the fold, in ./positions.ts, where the merge can be bounded differently.
+  // Corpus, and a cap applied to every call would quietly limit a 400-item Persona to one
+  // pass's worth of positions. The per-pass bound lives with the fold, in ./positions.ts;
+  // the merge needs no cap of its own, because a grouping answer is bounded by the count
+  // of entries it was given.
+}
+
+/**
+ * The merge's answer, and the third sibling of the two readers above: the same tolerance
+ * for a fenced block, the same distinction between an empty answer and a wrong-shaped one.
+ *
+ * An empty `groups` is the answer the prompt asks for whenever nothing repeats, so it is
+ * legitimate and a *missing* one is not — an endpoint answering a different question would
+ * otherwise read as "these passes found nothing in common", which is believable and wrong.
+ *
+ * Strict about shape and permissive about content: a non-integer index survives to
+ * ./merge.ts, where every index is checked against the list the merge was actually handed.
+ */
+export function readGroupContent(content: string, url: string): MergeGroup[] {
+  const parsed = readObject(content, url);
+
+  if (!Array.isArray(parsed.groups)) {
+    throw new BraintrustError(
+      `The synthesiser at ${url} returned JSON with no groups array: ${content.slice(0, 200)}…`,
+    );
+  }
+
+  return parsed.groups.flatMap((group: unknown) => {
+    const { members, clearest } = (group ?? {}) as Partial<MergeGroup>;
+    if (!Array.isArray(members)) return [];
+
+    const whole = members.filter(
+      (member: unknown): member is number => typeof member === 'number' && Number.isInteger(member),
+    );
+    if (whole.length === 0) return [];
+
+    return [
+      {
+        members: whole,
+        // A missing or unusable `clearest` costs the group nothing: the merge is here to
+        // find the duplicates, and any member's wording is better than dropping them.
+        clearest: typeof clearest === 'number' && Number.isInteger(clearest) ? clearest : whole[0]!,
+      },
+    ];
+  });
 }
 
 const RELATIONS = new Set(['revised', 'unsettled', 'drifting', 'none']);
