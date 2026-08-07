@@ -20,6 +20,7 @@
  * See docs/design/mcp-surface.md §2 and https://github.com/cgbarlow/braintrust/issues/107.
  */
 
+import { habitFor } from './compile/habits.js';
 import { SPOKEN_DISCLOSURE } from './disclosure.js';
 
 /** What a Source publishes, in the words a person would use for it. Never "items". */
@@ -35,85 +36,19 @@ function formOf(platform: string): string {
 }
 
 /**
- * Third-person-singular disposition verbs, mapped to the imperative.
+ * **The inflection table and the carrier are gone.**
  *
- * **A lookup table rather than a morphology rule, deliberately.** Stripping a trailing `s`
- * would turn *"Systems thinking as a lever"* into *"System thinking as a lever"* — a
- * silently mangled noun phrase, which is exactly the guessing the carrier exists to avoid.
- * A label whose first word is not in this table is carried verbatim instead, so the failure
- * mode is a label that reads as a frame rather than a label that reads as nonsense.
- */
-const IMPERATIVE: Record<string, string> = {
-  advocates: 'Advocate',
-  anchors: 'Anchor',
-  argues: 'Argue',
-  assumes: 'Assume',
-  avoids: 'Avoid',
-  believes: 'Believe',
-  builds: 'Build',
-  casts: 'Cast',
-  conflates: 'Conflate',
-  defaults: 'Default',
-  distrusts: 'Distrust',
-  emphasises: 'Emphasise',
-  emphasizes: 'Emphasize',
-  expects: 'Expect',
-  extrapolates: 'Extrapolate',
-  favours: 'Favour',
-  favors: 'Favor',
-  frames: 'Frame',
-  grounds: 'Ground',
-  insists: 'Insist',
-  judges: 'Judge',
-  maps: 'Map',
-  measures: 'Measure',
-  models: 'Model',
-  prefers: 'Prefer',
-  prioritises: 'Prioritise',
-  prioritizes: 'Prioritize',
-  reaches: 'Reach',
-  reads: 'Read',
-  rejects: 'Reject',
-  relies: 'Rely',
-  seeks: 'Seek',
-  separates: 'Separate',
-  splits: 'Split',
-  takes: 'Take',
-  tests: 'Test',
-  treats: 'Treat',
-  trusts: 'Trust',
-  uses: 'Use',
-  views: 'View',
-  weighs: 'Weigh',
-};
-
-/**
- * A label as it will appear in the Script, and how it got there.
+ * They existed because the Reasoning layer handed over a model's own noun phrase — *"Treats
+ * prompting skill as the scarce resource"* — which had to be turned into an instruction, and
+ * carried verbatim when it could not be. `labels_carried` counted the failures, because
+ * anything can be listed verbatim and a carrier could absorb a completely broken Compile
+ * without anything looking wrong.
  *
- * `carried` is the one that has to stay visible. Because *anything* can be listed
- * verbatim, a carrier can absorb a completely broken Compile without anything looking
- * wrong — and the count is the only instrument that catches it. A Persona where every
- * label was carried is a Persona whose Compile needs fixing.
+ * Nothing is inflected any more: every line in HOW THEY ARGUE is an imperative sentence
+ * authored in ./compile/habits.ts, and the instrument that replaced the count is the
+ * `habits_are_on_the_menu` gate check — which is stronger, because it fails the Compile
+ * rather than reporting a number nobody reads.
  */
-export type RenderedLabel = { text: string; carried: boolean };
-
-/**
- * Inflect, else carry. Omission is the third step and is unreachable for any non-empty
- * label, which is the point: `nate-b-jones` has no verb-initial labels at all, and
- * dropping them left that Persona with a manner and no mind.
- */
-export function renderLabel(label: string): RenderedLabel | undefined {
-  const trimmed = label.trim().replace(/\.$/, '');
-  if (trimmed === '') return undefined;
-
-  const [first, ...rest] = trimmed.split(/\s+/);
-  const imperative = first === undefined ? undefined : IMPERATIVE[first.toLowerCase()];
-
-  if (imperative !== undefined && rest.length > 0) {
-    return { text: `${imperative} ${rest.join(' ')}.`, carried: false };
-  }
-  return { text: trimmed, carried: true };
-}
 
 /**
  * Voice, with braintrust's bookkeeping taken out and the length instruction with it.
@@ -175,11 +110,6 @@ export type Receipts = {
   words_read: number;
   window: [string, string] | null;
   unread: string[];
-  /**
-   * How many `reasoning` labels had to be carried verbatim because they were not
-   * verb-initial. **Never allowed to go quiet.** See RenderedLabel.
-   */
-  labels_carried: number;
 };
 
 export type ScriptInput = {
@@ -291,12 +221,13 @@ export function renderScript(input: ScriptInput): RenderedScript {
       ? [`${read.map((s) => formOf(s.platform)).join(' and ')}, not ${skewed.map((s) => formOf(s.platform)).join(' or ')}`]
       : [];
 
-  const labels = input.reasoningLabels
-    .map(renderLabel)
-    .filter((label): label is RenderedLabel => label !== undefined);
-
-  const instructions = labels.filter((l) => !l.carried);
-  const carried = labels.filter((l) => l.carried);
+  // **Selection, never composition.** Every line here is text authored in
+  // ./compile/habits.ts; a slug the compiler chose that is not on the menu renders nothing.
+  // That is the whole guarantee — a conclusion cannot reach the Script, because the Script
+  // is assembled only from words this repository holds.
+  const instructions = input.reasoningLabels
+    .map((slug) => habitFor(slug)?.instruction)
+    .filter((text): text is string => text !== undefined);
 
   const parts: string[] = [
     // **The first line, and the only one not addressed to the model.** A model recites the
@@ -315,20 +246,10 @@ export function renderScript(input: ScriptInput): RenderedScript {
     parts.push('', 'HOW THEY WRITE', '', renderVoice(input.voiceGenerative));
   }
 
-  if (instructions.length > 0 || carried.length > 0) {
-    parts.push('', 'HOW THEY ARGUE');
-    if (instructions.length > 0) {
-      parts.push('', instructions.map((l) => `- ${l.text}`).join('\n'));
-    }
-    // The carrier. Fixed boilerplate plus the label verbatim — selection, never paraphrase.
-    if (carried.length > 0) {
-      parts.push(
-        '',
-        'You habitually frame things this way:',
-        '',
-        carried.map((l) => `- ${l.text}`).join('\n'),
-      );
-    }
+  // Absent rather than empty. A heading with nothing under it reads as a person who argues
+  // no particular way, which is a claim braintrust did not make.
+  if (instructions.length > 0) {
+    parts.push('', 'HOW THEY ARGUE', '', instructions.map((text) => `- ${text}`).join('\n'));
   }
 
   parts.push('', 'WHAT YOU HAVE NOT READ', '', blindSpots(read, skewed, sources));
@@ -342,7 +263,6 @@ export function renderScript(input: ScriptInput): RenderedScript {
       words_read: input.wordsRead,
       window: input.window,
       unread: unreadSummary(input.bySource),
-      labels_carried: carried.length,
     },
   };
 }

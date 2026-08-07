@@ -21,7 +21,7 @@ import { notesFor } from '../notes/store.js';
 import type { Embedder } from '../retrieval/embed.js';
 import { coverageLayer, withVoicePopulation } from './coverage.js';
 import { checkCompile } from './gate.js';
-import { inferLayer, INFERRED_LAYERS } from './infer.js';
+import { compileHabits, inferLayer, INFERRED_LAYERS } from './infer.js';
 import { compilePositions } from './positions.js';
 import { compileRevisions } from './revisions.js';
 import { calibrateSelectivity, notMeasurable } from './selectivity.js';
@@ -235,6 +235,16 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       basis: 'measured',
       descriptive_md: coverage.descriptive_md,
       evidence: coverage.evidence,
+    });
+
+    // Reasoning: chosen from the menu rather than written. Same evidence rule, same place
+    // in the order — what changed is that the words a reader gets are authored in the repo.
+    const habits = await compileHabits(notes, deps.synthesiser);
+    await writeLayer(deps.db, compileId, {
+      layer: 'reasoning',
+      basis: 'inferred',
+      descriptive_md: habits.descriptive_md,
+      evidence: habits.evidence,
     });
 
     // The measured layers first, so a synthesis endpoint that goes away mid-Compile

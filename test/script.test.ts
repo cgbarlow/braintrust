@@ -14,7 +14,6 @@ import { describe, it } from 'node:test';
 import { SPOKEN_DISCLOSURE } from '../src/disclosure.js';
 import {
   isStructuralSkew,
-  renderLabel,
   renderScript,
   renderVoice,
   type ScriptInput,
@@ -53,36 +52,6 @@ function input(overrides: Partial<ScriptInput> = {}): ScriptInput {
   };
 }
 
-describe('turning a compiled label into something speakable', () => {
-  it('inflects a verb-initial label to the imperative', () => {
-    assert.deepEqual(renderLabel('Assumes continued exponential capability growth'), {
-      text: 'Assume continued exponential capability growth.',
-      carried: false,
-    });
-  });
-
-  it('carries a label with no verb to inflect, rather than guessing at one', () => {
-    // Every one of nate-b-jones's eight reasoning labels is shaped like this. Dropping
-    // them left that persona with a manner and no mind.
-    assert.deepEqual(renderLabel('Infrastructure-first focus'), {
-      text: 'Infrastructure-first focus',
-      carried: true,
-    });
-  });
-
-  it('carries rather than mangling a noun phrase whose first word ends in s', () => {
-    // The reason this is a lookup table and not a morphology rule: stripping the trailing
-    // `s` here produces "System thinking", which is not English and not a disposition.
-    const rendered = renderLabel('Systems thinking as a lever');
-
-    assert.equal(rendered!.carried, true);
-    assert.equal(rendered!.text, 'Systems thinking as a lever');
-  });
-
-  it('drops a label with nothing in it, which is the only omission left', () => {
-    assert.equal(renderLabel('   '), undefined);
-  });
-});
 
 describe('voice, with the bookkeeping taken out', () => {
   const rendered = renderVoice(NATE_VOICE);
@@ -246,33 +215,46 @@ describe('the script', () => {
     assert.doesNotMatch(speak, /515 things/);
   });
 
-  it('separates the labels it could instruct from the ones it had to carry', () => {
-    const { speak, receipts } = renderScript(
+  /**
+   * **Selection, never composition.** Every line is text authored in compile/habits.ts, so
+   * a conclusion cannot reach the Script — the whole guarantee the menu exists to provide.
+   */
+  it('renders the menu own words, and nothing the compiler chose off it', () => {
+    const { speak } = renderScript(
       input({
         reasoningLabels: [
-          'Treats prompting skill as the scarce resource',
-          'Infrastructure-first focus',
-          'Bottleneck-oriented value framework',
+          'opens-on-the-mistaken-instinct',
+          'reasons-by-analogy',
+          'a-habit-nobody-authored',
         ],
       }),
     );
 
-    assert.match(speak, /- Treat prompting skill as the scarce resource\./);
-    assert.match(speak, /You habitually frame things this way:/);
-    assert.match(speak, /- Infrastructure-first focus/);
-    assert.match(speak, /- Bottleneck-oriented value framework/);
-    // The number that says the Compile needs fixing. Because anything can be listed
-    // verbatim, a carrier could otherwise absorb a broken compile silently.
-    assert.equal(receipts.labels_carried, 2);
+    assert.match(speak, /- Open by naming the thing most people reach for first, and why it fails them\./);
+    assert.match(speak, /- Reach for an analogy before you reach for a definition\./);
+    // The slug never surfaces, and neither does a line braintrust did not write.
+    assert.doesNotMatch(speak, /a-habit-nobody-authored/);
+    assert.doesNotMatch(speak, /opens-on-the-mistaken-instinct/);
   });
 
-  it('reports nothing carried when every label inflected', () => {
+  it('hands a reader no count, anywhere', () => {
     const { speak, receipts } = renderScript(
-      input({ reasoningLabels: ['Frames AI use as a shift to autonomous agents'] }),
+      input({ reasoningLabels: ['opens-on-the-mistaken-instinct', 'reasons-by-analogy'] }),
     );
 
-    assert.equal(receipts.labels_carried, 0);
-    assert.doesNotMatch(speak, /You habitually frame things this way/);
+    // The count moved by 1.4 between rebuilds on identical notes, so a reader watching the
+    // block change was watching the measurement wobble rather than the person.
+    assert.doesNotMatch(speak, /\d+ of \d+/);
+    assert.doesNotMatch(speak, /Traced to/);
+    assert.ok(!('labels_carried' in receipts));
+  });
+
+  it('leaves the block out entirely when nothing was chosen', () => {
+    const { speak } = renderScript(input({ reasoningLabels: [] }));
+
+    // Absent rather than empty: a heading with nothing under it reads as a person who
+    // argues no particular way, which is a claim braintrust did not make.
+    assert.doesNotMatch(speak, /HOW THEY ARGUE/);
   });
 
   it('forbids the two things that survive every other guard', () => {

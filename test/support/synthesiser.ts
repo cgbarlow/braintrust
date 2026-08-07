@@ -13,6 +13,7 @@
  */
 
 import type {
+  ChosenHabit,
   ClusteredPosition,
   InferredKind,
   JudgedPair,
@@ -24,7 +25,7 @@ import type {
 } from '../../src/compile/synthesis.js';
 
 export type FakeCall = {
-  kind: InferredKind | 'positions' | 'revisions';
+  kind: InferredKind | 'positions' | 'revisions' | 'habits';
   mode: SynthesisMode;
   digest: string;
 };
@@ -34,11 +35,14 @@ export type FakeSynthesiser = Synthesiser & { calls: FakeCall[] };
 export type FakeOptions = {
   generation?: string;
   clusterer?: string;
+  habits?: string;
   judge?: string;
   /** Replaces the default answer. Given the ids the digest actually carried. */
   entriesFor?: (kind: InferredKind, items: string[]) => SynthesisedEntry[];
   /** Replaces the default grouping. Given the claim refs the digest actually carried. */
   positionsFor?: (claims: string[]) => ClusteredPosition[];
+  /** Replaces the default menu choice. Given the ids the digest actually carried. */
+  habitsFor?: (items: string[]) => ChosenHabit[];
   /** Replaces the default merge. Given the indices the indexed list actually carried. */
   groupsFor?: (indices: number[], stage: MergeStage) => MergeGroup[];
   /** Replaces the default judgement. Given the pair refs the digest actually carried. */
@@ -53,10 +57,27 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
   return {
     generation: options.generation ?? 'test-model@core-1',
     clusterer: options.clusterer ?? 'test-model@positions-2',
+    habits: options.habits ?? 'test-model@habits-1',
     judge: options.judge ?? 'test-model@revisions-1',
     model: 'test-model',
     url: 'https://example.test/v1/chat/completions',
     calls,
+
+    async chooseHabits(digest): Promise<ChosenHabit[]> {
+      calls.push({ kind: 'habits', mode: 'pass', digest });
+      if (options.throws) throw options.throws;
+
+      const items = idsFromDigest(digest);
+      if (options.habitsFor) return options.habitsFor(items);
+      if (items.length === 0) return [];
+
+      // Two habits off the real menu, on different evidence — so a test can tell "the
+      // block is the menu's words" apart from "the block is whatever came back".
+      return [
+        { slug: 'opens-on-the-mistaken-instinct', items },
+        { slug: 'closes-on-a-procedure', items: items.slice(0, 1) },
+      ];
+    },
 
     async judgePairs(digest): Promise<JudgedPair[]> {
       calls.push({ kind: 'revisions', mode: 'pass', digest });

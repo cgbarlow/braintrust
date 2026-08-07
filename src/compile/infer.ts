@@ -24,6 +24,7 @@
  */
 
 import type { StoredNote } from '../notes/store.js';
+import { habitFor, shippableHabits, type ChosenHabit } from './habits.js';
 import { foldByMerging } from './merge.js';
 import {
   MAX_ENTRIES,
@@ -49,7 +50,11 @@ export const ARGUMENT_MAX_CHARS = 1_200;
 /** Claims per Note in the digest. The claims are the evidence a belief is inferred from. */
 export const CLAIMS_PER_NOTE = 6;
 
-export const INFERRED_LAYERS: InferredKind[] = ['reasoning', 'beliefs'];
+/**
+ * The layers still *written* by a model. Reasoning left this list when it stopped being
+ * written and started being chosen — see ./habits.ts and {@link compileHabits}.
+ */
+export const INFERRED_LAYERS: InferredKind[] = ['beliefs'];
 
 /**
  * What the gate looks for. Anchored at the start, because a marker in the middle of a
@@ -103,6 +108,108 @@ const HEADING: Record<InferredKind, string> = {
   reasoning: 'how they get there',
   beliefs: 'what they argue from',
 };
+
+/**
+ * Reasoning, chosen rather than written.
+ *
+ * **Same evidence rule, different half of the compiler.** The Notes are folded and read
+ * exactly as before; what changed is that the answer is slugs off [the menu](./habits.ts)
+ * rather than prose, so the words a reader gets were authored in this repository and the
+ * model's whole contribution is which of them are true of this person.
+ *
+ * **No fold and no merge.** The answer is a set of menu slugs, and a set has no duplicates
+ * to reconcile — two passes choosing `builds-a-named-frame` are one habit with the union of
+ * their Items, which is arithmetic. There is nothing here for a model to have a second go at.
+ *
+ * **No count reaches a reader.** The old layer said "Traced to 8 of 34 items" under each
+ * entry, and that number moved by 1.4 between rebuilds on identical Notes — so a reader
+ * watching a block get thinner was watching the measurement wobble, not the person change.
+ * The Item ids stay in the evidence, where they are checkable; the count is gone from
+ * everywhere a reader reads.
+ */
+export async function compileHabits(
+  notes: StoredNote[],
+  synthesiser: Synthesiser,
+): Promise<InferredLayer> {
+  const passes = digestPasses(notes);
+  const known = new Set(notes.map((note) => note.external_id));
+
+  const chosen: ChosenHabit[] = [];
+  for (const digest of passes) {
+    chosen.push(...(await synthesiser.chooseHabits(digest)));
+  }
+
+  // Two passes choosing the same habit are one habit with the union of their items. Done
+  // here rather than by a model, because it is arithmetic and has a right answer.
+  const unioned = new Map<string, string[]>();
+  for (const habit of chosen) {
+    unioned.set(habit.slug, [...(unioned.get(habit.slug) ?? []), ...habit.items]);
+  }
+
+  const shipped = shippableHabits(
+    [...unioned].map(([slug, items]) => ({ slug, items })),
+    known,
+  );
+
+  return habitsLayer(shipped, {
+    items_synthesised: notes.length,
+    synthesiser: synthesiser.habits,
+    passes: passes.length,
+    // Off the menu, or naming no item braintrust holds. Counted for an operator the same
+    // way an unattributable entry always was.
+    dropped: chosen.length - shipped.length,
+  });
+}
+
+/**
+ * The layer, from habits that have already been ranked and cut to length.
+ *
+ * The prose is the menu's own instruction text, verbatim. Nothing here composes a sentence
+ * about how somebody argues, which is the whole property the menu exists to provide.
+ */
+export function habitsLayer(
+  habits: ChosenHabit[],
+  context: { items_synthesised: number; synthesiser: string; passes: number; dropped: number },
+): InferredLayer {
+  const evidence: InferredEvidence = {
+    layer: 'reasoning',
+    items_synthesised: context.items_synthesised,
+    synthesiser: context.synthesiser,
+    passes: context.passes,
+    merged: false,
+    rounds: 0,
+    converged: true,
+    // The slug is the label, because the label is not prose any more — it is the name of a
+    // line in a file, and that is what makes "nothing off the menu" checkable.
+    entries: habits.map((habit) => ({ label: habit.slug, items: habit.items, items_traced: habit.items.length })),
+    dropped_unattributable: context.dropped,
+  };
+
+  const opening =
+    `Chosen by ${context.synthesiser} from braintrust's own menu of argument habits, against ` +
+    'what it wrote down when it read each item. The words are braintrust\'s; which of them ' +
+    'describe this person is what the model decided.';
+
+  const body = habits.map((habit) => {
+    const authored = habitFor(habit.slug);
+    return authored ? `### ${authored.instruction}` : '';
+  });
+
+  if (habits.length === 0) {
+    // **Absent rather than empty, and said in prose.** A block with no lines under a
+    // heading reads as a persona who argues no particular way; a sentence saying braintrust
+    // found none reads as what actually happened.
+    body.push(
+      "braintrust could not recognise how this person argues from these notes. Nothing is " +
+        'published from this compile; the previous persona is still the one answering.',
+    );
+  }
+
+  return {
+    descriptive_md: [inferredMarker(context.items_synthesised), opening, ...body.filter(Boolean)].join('\n\n'),
+    evidence,
+  };
+}
 
 /**
  * One Note, as the synthesiser sees it. The `[id]` marker is what an entry's attribution

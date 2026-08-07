@@ -469,6 +469,37 @@ Compile with that as the reason. Collapsing the two was tried and rejected in th
 in the extractor's shape reached the gate as *"beliefs carried nothing to serve"*, which sends whoever reads it
 looking at the Corpus instead of at the endpoint.
 
+### Reasoning is chosen from a menu, not written — [#163](https://github.com/cgbarlow/braintrust/issues/163)
+
+**The compile selects; it never writes.** Every line a Persona can say about how someone argues is authored in
+`src/compile/habits.ts` — 23 habits, organised by where in an argument the move happens. The model is shown
+each habit's *test* (deliberately about the move, not the subject) and answers with slugs and Item ids; the
+words a reader gets are the menu's own. A conclusion cannot reach a Script, because a Script is assembled only
+from text this repository holds. `habits_are_on_the_menu` checks it at the gate as well, because the rule
+matters more than the code path.
+
+**The three-item floor is gone, and so is the count.** The old layer asked for a free description and kept
+whatever cleared a floor of three Items. Measured: the synthesiser's verdict on a given habit agrees with
+itself **85%** of the time, but the count of Items it cites **moves by 1.4** — and three sat on the fattest
+part of that distribution. So the block halved between rebuilds for reasons that had nothing to do with the
+person, and a reader watching it get thinner could not point at what changed. **Nothing now ships or fails on
+a count**, and no count reaches a reader anywhere in the payload.
+
+**Four lines, ranked by evidence, ties broken deterministically** — more Items first, then menu order, so the
+same reply always produces the same four lines in the same order. Fewer than four when a thin Corpus genuinely
+supports fewer: **the ranking never force-fits**, because a habit invented to reach four is worse than a block
+of three. When nothing traces at all the block is **absent rather than empty**, and the layer says so in prose
+— a heading with nothing under it reads as a person who argues no particular way, which is a claim braintrust
+did not make.
+
+**Two lines resting on the identical set of Items become one.** Measured on five real Corpora: 9 of 52
+shipping lines carried evidence identical to another line, and one Person had four lines all resting on the
+same three Items. A reader shown four lines believes four things were found. The tie-break that picks the
+survivor is a function of the reply and nothing else — measured stable across three seeds on every twin group
+found — and `habits_rest_on_distinct_evidence` refuses a Compile where it did not happen.
+
+The draft menu and every measurement are on `prototype/argument-habits-menu` and `probe/style-stability-152`.
+
 **Synthesis is versioned separately from measurement.** `compiler_version` is
 `0.1.0+measured-3.core-1.positions-2.revisions-1` — the hypothesis that produced the counts, the prompt that produced the
 prose, and the prompt that grouped the Positions. Three versions rather than one because they change for
@@ -620,6 +651,8 @@ the way the compiler fails:
 | `coverage_reconciles` | Coverage counts match `braintrust_items` |
 | `positions_are_cited` | every Position resolves to at least one real citation |
 | `positions_have_not_collapsed` | the Position count is not a collapse against the previous Compile |
+| `habits_are_on_the_menu` | every line describing how someone argues is text braintrust authored |
+| `habits_rest_on_distinct_evidence` | no two lines in the argument-habits block rest on the identical set of Items |
 | `speak_opens_with_disclosure` | the first line a reader hears is the disclosure, word for word, and not an instruction addressed to the model |
 | `revisions_have_not_swept` | no more than half the Positions were superseded on this rebuild |
 

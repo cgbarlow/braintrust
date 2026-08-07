@@ -58,7 +58,12 @@ function facts(overrides: Partial<GateFacts> = {}): GateFacts {
         basis: 'inferred',
         descriptive_md: `${inferredMarker(4)}\n\nNames the constraint before the capability.`,
         generative_md: null,
-        evidence: { entries: [{ label: 'Names the constraint first', items: ['a1'], items_traced: 1 }] },
+        evidence: {
+          entries: [
+            { label: 'opens-on-the-mistaken-instinct', items: ['a1'], items_traced: 1 },
+            { label: 'closes-on-a-procedure', items: ['b2'], items_traced: 1 },
+          ],
+        },
       },
       {
         layer: 'beliefs',
@@ -324,6 +329,77 @@ describe('positions', () => {
  * certain a reader will hear something, and what they are owed there is what they are
  * talking to. When that line was an instruction, an instruction is what got read out.
  */
+/**
+ * **The compile selects; it never writes.** Every line a reader gets about how someone
+ * argues is text authored in `src/compile/habits.ts` — checked here as well as enforced in
+ * the selection, deliberately, because the rule matters more than the code path.
+ */
+describe('the argument-habits block', () => {
+  const withHabits = (entries: { label: string; items: string[] }[]) =>
+    facts({
+      layers: facts().layers.map((one) =>
+        one.layer === 'reasoning' ? { ...one, evidence: { entries } } : one,
+      ),
+    });
+
+  it('may not carry a line braintrust did not author', () => {
+    const verdict = checkCompile(
+      withHabits([{ label: 'Treats prompting skill as the scarce resource', items: ['a1'] }]),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /habits_are_on_the_menu: /);
+    assert.match(verdict.reason!, /not on the menu/);
+  });
+
+  it('is satisfied by every line being on the menu', () => {
+    const verdict = checkCompile(
+      withHabits([
+        { label: 'opens-on-a-case', items: ['a1'] },
+        { label: 'reasons-by-analogy', items: ['b2'] },
+      ]),
+    );
+
+    assert.equal(check(verdict, 'habits_are_on_the_menu').passed, true);
+  });
+
+  /**
+   * Measured on five real corpora: 9 of 52 shipping lines carried evidence identical to
+   * another line. A reader shown four lines believes four things were found; when the
+   * evidence is the same set, one thing was found and worded four ways.
+   */
+  it('may not carry two lines resting on the identical set of items', () => {
+    const verdict = checkCompile(
+      withHabits([
+        { label: 'opens-on-the-mistaken-instinct', items: ['a1', 'b2', 'c3'] },
+        { label: 'opens-on-the-buried-assumption', items: ['c3', 'a1', 'b2'] },
+      ]),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /habits_rest_on_distinct_evidence: /);
+    assert.match(verdict.reason!, /more findings than braintrust made/);
+  });
+
+  it('is satisfied by two lines that overlap without being identical', () => {
+    const verdict = checkCompile(
+      withHabits([
+        { label: 'opens-on-a-case', items: ['a1', 'b2'] },
+        { label: 'reasons-by-analogy', items: ['a1', 'b2', 'c3'] },
+      ]),
+    );
+
+    assert.equal(check(verdict, 'habits_rest_on_distinct_evidence').passed, true);
+  });
+
+  it('says nothing about a persona whose block is absent', () => {
+    const verdict = checkCompile(withHabits([]));
+
+    assert.equal(check(verdict, 'habits_are_on_the_menu').passed, true);
+    assert.equal(check(verdict, 'habits_rest_on_distinct_evidence').passed, true);
+  });
+});
+
 describe('the first line a reader hears', () => {
   it('must be the disclosure, word for word', () => {
     const verdict = checkCompile(
@@ -417,6 +493,8 @@ describe('the gate as an enumerable list of checks', () => {
       'coverage_reconciles',
       'positions_are_cited',
       'positions_have_not_collapsed',
+      'habits_are_on_the_menu',
+      'habits_rest_on_distinct_evidence',
       'speak_opens_with_disclosure',
       'revisions_have_not_swept',
     ]);

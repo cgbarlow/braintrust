@@ -18,6 +18,9 @@
  */
 
 import type { ExtractorConfig } from '../config.js';
+import { MENU, type ChosenHabit } from './habits.js';
+
+export type { ChosenHabit } from './habits.js';
 import { BraintrustError } from '../errors.js';
 import { fetchPatiently, type Fetcher } from '../net/fetch.js';
 import { isEventStream, joinStream } from '../net/stream.js';
@@ -49,6 +52,18 @@ export const POSITION_VERSION = 'positions-2';
  * would most want to argue with.
  */
 export const REVISION_VERSION = 'revisions-1';
+
+/**
+ * Versioned apart again, because this prompt does not write anything.
+ *
+ * `habits-1` is the menu. The Reasoning layer used to ask for a free description and keep
+ * whatever cleared a three-item floor; it now chooses from
+ * [an authored menu](./habits.ts) and the compile renders that menu's own words. The
+ * version rides here so that adding a habit to the menu — which changes what every Persona
+ * can say about how somebody argues — rebuilds the fleet rather than changing meaning
+ * silently.
+ */
+export const HABITS_VERSION = 'habits-1';
 
 /** Synthesis is a long read for a model, like the extractor's. Not a 20-second fetch. */
 /**
@@ -123,6 +138,8 @@ export type Synthesiser = {
   generation: string;
   /** `model@positions-version`. The growing layer says which prompt grouped it. */
   clusterer: string;
+  /** `model@habits-version`. Which menu a persona's argument habits were chosen from. */
+  habits: string;
   /** `model@revisions-version`. Which prompt decided a Position was superseded. */
   judge: string;
   model: string;
@@ -140,6 +157,14 @@ export type Synthesiser = {
    * been told apart. See ./merge.ts.
    */
   group(stage: MergeStage, digest: string): Promise<MergeGroup[]>;
+  /**
+   * How this person argues, chosen from the menu rather than written.
+   *
+   * The one call on this surface whose answer braintrust does not render: it comes back as
+   * slugs and Item ids, and the prose a reader gets is authored in ./habits.ts. A model
+   * that returns something off the menu has returned nothing.
+   */
+  chooseHabits(digest: string): Promise<ChosenHabit[]>;
   /** The fourth question, and the only one that can take something off the record. */
   judgePairs(digest: string): Promise<JudgedPair[]>;
 };
@@ -440,6 +465,7 @@ export function createSynthesiser(
 
   return {
     generation: `${config.model}@${SYNTHESIS_VERSION}`,
+    habits: `${config.model}@${HABITS_VERSION}`,
     clusterer: `${config.model}@${POSITION_VERSION}`,
     judge: `${config.model}@${REVISION_VERSION}`,
     model: config.model,
@@ -461,6 +487,10 @@ export function createSynthesiser(
      */
     async group(stage, digest): Promise<MergeGroup[]> {
       return readGroupContent(await ask(MERGE_PROMPT, digest, labelled(stage, 'merge')), url);
+    },
+
+    async chooseHabits(digest): Promise<ChosenHabit[]> {
+      return readHabitContent(await ask(habitsPrompt(), digest, 'habits'), url);
     },
 
     async judgePairs(digest): Promise<JudgedPair[]> {
@@ -680,6 +710,84 @@ export function readJudgementContent(content: string, url: string): JudgedPair[]
         pair: pair.trim(),
         relation: relation as JudgedPair['relation'],
         rationale: typeof rationale === 'string' ? rationale.trim() : '',
+      },
+    ];
+  });
+}
+
+/**
+ * The menu prompt, and the only one that asks a model to *choose* rather than to write.
+ *
+ * **It is built from the menu rather than duplicating it**, so a habit added to
+ * ./habits.ts is a habit the model is offered, and there is no second list to keep in step.
+ * Each line is the slug and the `test` — deliberately about the *move* rather than the
+ * subject, because two people writing about the same field argue differently and that
+ * difference is the only thing here worth having.
+ *
+ * **No quota.** The instruction to return fewer rather than reach a number is the whole of
+ * "no force-fitting": the count that ships is decided in code, from evidence, and a model
+ * asked for four would supply four whatever the Corpus held.
+ */
+export function habitsPrompt(): string {
+  return [
+    "You are reading braintrust's own notes on many published items by one author — for each",
+    'item, how the argument runs. No single item states how this person thinks. Recognising',
+    'that across all of them is the job.',
+    '',
+    'You are NOT writing a description. You are choosing from the fixed menu below. You may',
+    'only return slugs that appear in it; anything else is discarded.',
+    '',
+    'Return a single JSON object, and nothing else:',
+    '',
+    '{ "habits": [ { "slug": "...", "items": ["item-id", ...] } ] }',
+    '',
+    'slug — copied exactly from the menu below.',
+    'items — the ids of the items this habit is visible in, copied exactly from the [id]',
+    '  markers in the notes. Only ids you were actually given: an id that is not among them',
+    '  will be dropped, and a habit left with none will be dropped with it.',
+    '',
+    'Choose only habits that are characteristic of this person across several items. A habit',
+    '  visible once is a thing that happened, not a way of arguing. Leave it out.',
+    'Do not fill a quota. Three habits that are really there beats eight that are partly',
+    '  hoped for, and returning none is a valid answer.',
+    'Do not choose on subject matter. Two people writing about the same field argue',
+    '  differently, and that difference is the only thing here worth having.',
+    '',
+    'THE MENU',
+    ...MENU.map((habit) => `- ${habit.slug}: ${habit.test}`),
+  ].join('\n');
+}
+
+/**
+ * The menu answer, read the way every other answer on this surface is read: tolerant about
+ * the wrapper, strict about the contents.
+ *
+ * An empty `habits` is legitimate — the prompt says so, and a Corpus can genuinely support
+ * no habit worth naming. A *missing* one is not, for the same live-found reason as the
+ * others: an endpoint answering a different question would reach the gate as a Persona that
+ * argues no particular way, which reads as a thin corpus rather than a misconfiguration.
+ *
+ * Membership of the menu is **not** checked here. It is checked where the ids are — in
+ * ./habits.ts, against the same list the prompt was built from.
+ */
+export function readHabitContent(content: string, url: string): ChosenHabit[] {
+  const parsed = readObject(content, url);
+
+  if (!Array.isArray(parsed.habits)) {
+    throw new BraintrustError(
+      `The synthesiser at ${url} returned JSON with no habits array: ${content.slice(0, 200)}…`,
+    );
+  }
+
+  return parsed.habits.flatMap((habit: unknown) => {
+    const { slug, items } = (habit ?? {}) as Partial<ChosenHabit>;
+    if (typeof slug !== 'string' || slug.trim() === '') return [];
+    return [
+      {
+        slug: slug.trim(),
+        items: Array.isArray(items)
+          ? items.filter((one: unknown): one is string => typeof one === 'string')
+          : [],
       },
     ];
   });
