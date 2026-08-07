@@ -17,6 +17,8 @@ import { describe, it } from 'node:test';
 import {
   checkCompile,
   CORE_LAYERS,
+  GATE_CHECKS,
+  gateCheckIds,
   POSITION_COLLAPSE_FLOOR,
   REVISION_SWEEP_CEILING,
   type GateFacts,
@@ -323,5 +325,92 @@ describe('the reason a rejection carries', () => {
 
     assert.match(verdict.reason!, /beliefs missing/);
     assert.match(verdict.reason!, /failed is 7/);
+  });
+
+  /**
+   * A reason that describes the fault without naming the rule leaves whoever reads it
+   * grepping prose for the check they need to understand. The id is the way back to the
+   * guarantee that was being protected.
+   */
+  it('names which check failed, not only what went wrong', () => {
+    const verdict = checkCompile(
+      facts({
+        layers: facts().layers.filter((one) => one.layer !== 'beliefs'),
+        coverage_evidence: { ...ITEMS, failed: 7 },
+      }),
+    );
+
+    assert.match(verdict.reason!, /core_layers_present: /);
+    assert.match(verdict.reason!, /coverage_reconciles: /);
+
+    // Every named check is one the gate actually runs, so the name leads somewhere.
+    for (const id of verdict.reason!.matchAll(/(\w+): /g)) {
+      assert.ok(gateCheckIds().includes(id[1]!), `${id[1]} should be a check the gate runs`);
+    }
+  });
+
+  it('names only the checks that failed', () => {
+    const verdict = checkCompile(facts({ coverage_evidence: { ...ITEMS, failed: 7 } }));
+
+    assert.match(verdict.reason!, /coverage_reconciles: /);
+    assert.doesNotMatch(verdict.reason!, /positions_are_cited/);
+  });
+});
+
+/**
+ * The gate is a list, not a function with a clause per rule. Five more checks are coming
+ * and none of them should have to restructure it first.
+ */
+describe('the gate as an enumerable list of checks', () => {
+  it('can list every check by name without running any of them', () => {
+    assert.deepEqual(gateCheckIds(), [
+      'core_layers_present',
+      'voice_has_both_forms',
+      'inferred_layers_marked',
+      'coverage_reconciles',
+      'positions_are_cited',
+      'positions_have_not_collapsed',
+      'revisions_have_not_swept',
+    ]);
+  });
+
+  it('says what each check guarantees, readable without a compile to run it against', () => {
+    for (const definition of GATE_CHECKS) {
+      assert.ok(definition.guarantees.trim().length > 20, `${definition.id} should say what it protects`);
+    }
+  });
+
+  it('runs exactly the checks on the list, in the order they are on it', () => {
+    assert.deepEqual(
+      checkCompile(facts()).checks.map((one) => one.check),
+      gateCheckIds(),
+    );
+  });
+
+  /**
+   * The point of the prefactor: a new check is an entry in the list. If `checkCompile`
+   * ever grows a branch per check again, this stops being true and the next five tickets
+   * pay for it.
+   */
+  it('takes a new check by appending to the list, with no edit to the gate control flow', () => {
+    const added = {
+      id: 'a_check_added_later',
+      guarantees: 'nothing at all, and it is here to prove adding one changes no control flow',
+      run: () => ({ passed: false, detail: 'refused on principle' }),
+    };
+
+    GATE_CHECKS.push(added);
+    try {
+      const verdict = checkCompile(facts());
+
+      assert.equal(verdict.passed, false);
+      assert.match(verdict.reason!, /a_check_added_later: refused on principle/);
+      assert.equal(check(verdict, 'a_check_added_later').passed, false);
+    } finally {
+      GATE_CHECKS.pop();
+    }
+
+    // …and removing it puts the gate back exactly as it was.
+    assert.equal(checkCompile(facts()).passed, true);
   });
 });
