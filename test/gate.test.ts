@@ -24,6 +24,7 @@ import {
   type GateFacts,
 } from '../src/compile/gate.js';
 import { inferredMarker } from '../src/compile/infer.js';
+import { SPOKEN_DISCLOSURE } from '../src/disclosure.js';
 
 const ITEMS = {
   retrieved: 4,
@@ -72,6 +73,9 @@ function facts(overrides: Partial<GateFacts> = {}): GateFacts {
     positions: [],
     previous_positions: 0,
     superseded_positions: 0,
+    // Rendered the way the compiler renders it, so the fixture is a compile that would
+    // actually serve rather than one built to satisfy a check.
+    speak: `${SPOKEN_DISCLOSURE}\n\nSay that line first, word for word…`,
     ...overrides,
   };
 }
@@ -81,12 +85,12 @@ function check(verdict: ReturnType<typeof checkCompile>, name: string) {
 }
 
 describe('a compile that earns promotion', () => {
-  it('passes every check, and there are seven of them', () => {
+  it('passes every check there is', () => {
     const verdict = checkCompile(facts());
 
     assert.equal(verdict.passed, true);
     assert.equal(verdict.reason, null);
-    assert.equal(verdict.checks.length, 7);
+    assert.equal(verdict.checks.length, GATE_CHECKS.length);
     assert.ok(verdict.checks.every((one) => one.passed));
   });
 
@@ -314,6 +318,49 @@ describe('positions', () => {
   });
 });
 
+/**
+ * **A model recites the top of the block it was handed, verbatim** — measured across six
+ * payload variants and ~130 replies. So the first line is the one place braintrust can be
+ * certain a reader will hear something, and what they are owed there is what they are
+ * talking to. When that line was an instruction, an instruction is what got read out.
+ */
+describe('the first line a reader hears', () => {
+  it('must be the disclosure, word for word', () => {
+    const verdict = checkCompile(
+      facts({ speak: 'You are a braintrust model of Nate B. Jones. You are not that person.' }),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /speak_opens_with_disclosure: /);
+    assert.match(verdict.reason!, /the first thing a reader hears is not what they are talking to/);
+  });
+
+  /**
+   * Compared rather than pattern-matched, which is the whole reason the sentence is fixed:
+   * a regex is exactly how a disclosure drifts into something that still matches and no
+   * longer discloses.
+   */
+  it('is not satisfied by something close to it', () => {
+    for (const near of [
+      'A braintrust persona is a compiled model of what a person has published.',
+      `  ${SPOKEN_DISCLOSURE}`,
+      `${SPOKEN_DISCLOSURE.replace(', not the person.', '.')}`,
+    ]) {
+      assert.equal(
+        check(checkCompile(facts({ speak: near })), 'speak_opens_with_disclosure').passed,
+        false,
+        `"${near}" should not pass for the disclosure`,
+      );
+    }
+  });
+
+  it('is not satisfied by one further down the script', () => {
+    const buried = `You are a braintrust model of Nate B. Jones.\n\n${SPOKEN_DISCLOSURE}`;
+
+    assert.equal(check(checkCompile(facts({ speak: buried })), 'speak_opens_with_disclosure').passed, false);
+  });
+});
+
 describe('the reason a rejection carries', () => {
   it('collects every failure, because a compiler is rarely wrong in one way', () => {
     const verdict = checkCompile(
@@ -370,6 +417,7 @@ describe('the gate as an enumerable list of checks', () => {
       'coverage_reconciles',
       'positions_are_cited',
       'positions_have_not_collapsed',
+      'speak_opens_with_disclosure',
       'revisions_have_not_swept',
     ]);
   });

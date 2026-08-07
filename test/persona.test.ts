@@ -101,7 +101,7 @@ describe('loading a persona', () => {
     assert.match(speak, /braintrust model of Nate B\. Jones/);
     // The four words that make "a model of" unambiguous rather than a compliment.
     assert.match(speak, /not the person/);
-    assert.match(speak, /Do not say it again/);
+    assert.match(speak, /Do not say them again/);
   });
 
   it('carries basis in receipts, where it cannot be spoken or paraphrased away', async () => {
@@ -184,8 +184,10 @@ describe('a persona whose rules have moved under it', () => {
     assert.equal(withheld.speak, never.speak);
     assert.deepEqual(withheld.receipts, never.receipts);
     assert.doesNotMatch(withheld.speak, /HOW THEY ARGUE/);
-    // Nothing about versions, rules or rebuilds reaches the prose meant to be spoken.
-    assert.doesNotMatch(withheld.speak, /version|withheld|rebuild|compil/i);
+    // Nothing about versions, rules or rebuilds reaches the prose meant to be spoken. The
+    // disclosure's own "compiled model" is not an exception to this — it is the one thing
+    // in the script that is addressed to a reader, and it says the same for every persona.
+    assert.doesNotMatch(withheld.speak, /version|withheld|rebuil|out of date|stale/i);
   });
 
   it('is served rather than refused, because the cost of refusal lands on the reader', async () => {

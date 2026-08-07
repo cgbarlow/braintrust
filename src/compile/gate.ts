@@ -19,6 +19,7 @@
  * See docs/design/compiler.md §5.
  */
 
+import { SPOKEN_DISCLOSURE } from '../disclosure.js';
 import { INFERRED_MARKER } from './infer.js';
 
 export const CORE_LAYERS = ['beliefs', 'coverage', 'reasoning', 'voice'] as const;
@@ -76,6 +77,14 @@ export type GateFacts = {
   previous_positions: number;
   /** Positions this Compile put on the earlier side of a `revised` relation. */
   superseded_positions: number;
+  /**
+   * The Script this Compile would serve, rendered through the same path a reader gets.
+   *
+   * **Rendered rather than stored, and rendered here rather than looked up.** A gate
+   * checking a lookalike would be checking something nobody serves — the one failure that
+   * would let the disclosure go missing while every check passed.
+   */
+  speak: string;
 };
 
 /** What one check decided about one Compile, and why. */
@@ -176,6 +185,12 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
     guarantees:
       'the position count has not fallen far enough against the previous compile to read as a silent failure rather than a quiet week',
     run: positionsHaveNotCollapsed,
+  },
+  {
+    id: 'speak_opens_with_disclosure',
+    guarantees:
+      'the first line a reader hears is the disclosure, word for word, and is not an instruction addressed to the model',
+    run: speakOpensWithDisclosure,
   },
   {
     id: 'revisions_have_not_swept',
@@ -344,6 +359,32 @@ function revisionsHaveNotSwept(facts: GateFacts): GateCheckResult {
       ? `${superseded} of ${now} position(s) were superseded on this rebuild`
       : `${superseded} of ${now} position(s) were superseded on one rebuild, past the ${ceiling} ` +
         'this compile had to stay under — that is a judge changing its mind, not a person',
+  };
+}
+
+/**
+ * The first line, exactly.
+ *
+ * **A model recites the top of the block it was handed, verbatim, whatever is there** —
+ * measured across six payload variants and ~130 replies. So the first line is the one place
+ * braintrust can be certain a reader will hear something, and what they are owed there is
+ * what they are talking to. When that line was an instruction, an instruction is what got
+ * read out.
+ *
+ * Compared rather than pattern-matched, which is the whole reason the sentence is fixed: a
+ * line that varied per Persona could only be checked by a regex, and a regex is exactly how
+ * a disclosure drifts into something that still matches and no longer discloses.
+ */
+function speakOpensWithDisclosure(facts: GateFacts): GateCheckResult {
+  const first = facts.speak.split('\n')[0] ?? '';
+  const passed = first === SPOKEN_DISCLOSURE;
+
+  return {
+    passed,
+    detail: passed
+      ? 'the script opens with the disclosure, word for word'
+      : `the script opens with "${first.slice(0, 80)}…" rather than the disclosure, so the ` +
+        'first thing a reader hears is not what they are talking to',
   };
 }
 

@@ -22,6 +22,30 @@ export function subjectFor(displayName: string): string {
 }
 
 /**
+ * The sentence a reader hears first, and the only line of a Script that is not addressed
+ * to the model.
+ *
+ * **A model recites the first line of the block it was handed, verbatim, whatever that
+ * line is.** Measured across six payload variants and ~130 replies: both the Hermes profile
+ * and the tool description independently tell it to, and it does. So the first line is not
+ * a place to put an instruction — it is the one place braintrust can be certain a reader
+ * will hear something, and what a reader is owed there is what they are talking to.
+ *
+ * **Fixed, and identical for every Persona and every session.** Nothing about the Person is
+ * in it. A sentence that varied would be one a client could learn to strip as boilerplate
+ * for one Persona and not another, and it would stop being checkable by comparison — which
+ * is what makes it a publication-blocking check rather than a hope. Who the Persona is
+ * arrives in the same reply, one line later, and travels in the subject string besides.
+ *
+ * **The two-field split is rejected**, and this is what replaces it. Separating a spoken
+ * field from an instructing field was the worst of the six variants measured, for exactly
+ * the same reason: a model reads the top of what it is given, and a second field is not the
+ * top of anything.
+ */
+export const SPOKEN_DISCLOSURE =
+  'A braintrust persona is a compiled model of what a person has published, not the person.';
+
+/**
  * The server instructions: **rules that span tools, and nothing else.**
  *
  * This is the only surface a client reads before it has chosen a tool, so it is the only

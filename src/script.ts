@@ -20,6 +20,8 @@
  * See docs/design/mcp-surface.md §2 and https://github.com/cgbarlow/braintrust/issues/107.
  */
 
+import { SPOKEN_DISCLOSURE } from './disclosure.js';
+
 /** What a Source publishes, in the words a person would use for it. Never "items". */
 const FORMS: Record<string, { read: string; unread: string }> = {
   youtube: { read: 'their videos', unread: 'their videos' },
@@ -194,6 +196,69 @@ export type ScriptInput = {
 
 export type RenderedScript = { speak: string; receipts: Receipts };
 
+/** One stored layer, as both the read path and the gate hand it over. */
+export type ScriptLayer = {
+  basis: string;
+  descriptive: string;
+  generative?: string;
+  evidence: unknown;
+};
+
+/**
+ * Reads the shapes the compiler writes, defensively: a partial layer must not throw.
+ *
+ * Lives here rather than at the read path because [the gate](./compile/gate.ts) renders the
+ * same Script to check its first line, and a gate checking a lookalike would be checking
+ * something nobody serves.
+ */
+export function scriptInputFrom(
+  subject: string,
+  layers: Record<string, ScriptLayer>,
+): ScriptInput {
+  const voice = layers.voice;
+  const reasoning = layers.reasoning;
+  const coverage = layers.coverage;
+
+  const evidence = (coverage?.evidence ?? {}) as Record<string, unknown>;
+  const rawSources = (evidence.by_source ?? {}) as Record<string, Record<string, unknown>>;
+
+  const bySource: Record<string, SourceCoverage> = {};
+  for (const [key, source] of Object.entries(rawSources)) {
+    bySource[key] = {
+      platform: typeof source.platform === 'string' ? source.platform : key.split(':')[0] ?? '',
+      retrieved: numberOr(source.retrieved, 0),
+      skipped_paywall: numberOr(source.skipped_paywall, 0),
+      failed: numberOr(source.failed, 0),
+      backfill_complete: source.backfill_complete !== false,
+    };
+  }
+
+  const window = evidence.window;
+  const entries = ((reasoning?.evidence ?? {}) as { entries?: { label?: unknown }[] }).entries ?? [];
+
+  return {
+    subject,
+    voiceGenerative: voice?.generative ?? null,
+    voiceBasis: voice?.basis ?? null,
+    reasoningBasis: reasoning?.basis ?? null,
+    reasoningLabels: entries
+      .map((entry) => entry.label)
+      .filter((label): label is string => typeof label === 'string'),
+    bySource,
+    itemsRead: numberOr(evidence.retrieved, 0),
+    wordsRead: numberOr(evidence.words_retrieved, 0),
+    window:
+      Array.isArray(window) && typeof window[0] === 'string' && typeof window[1] === 'string'
+        ? [window[0], window[1]]
+        : null,
+  };
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' ? value : fallback;
+}
+
+
 /**
  * The opening line.
  *
@@ -210,9 +275,9 @@ export type RenderedScript = { speak: string; receipts: Receipts };
  * are in `receipts`, speakable the moment anyone asks.
  */
 function openingLine(subject: string, skewed: string[]): string {
-  const disclosure = `I'm a ${subject} — not the person.`;
-  if (skewed.length === 0) return disclosure;
-  return `${disclosure} braintrust has read ${skewed.join(' and ')}.`;
+  const named = `${subject} — not the person.`;
+  if (skewed.length === 0) return named;
+  return `${named} braintrust has read ${skewed.join(' and ')}.`;
 }
 
 export function renderScript(input: ScriptInput): RenderedScript {
@@ -234,11 +299,16 @@ export function renderScript(input: ScriptInput): RenderedScript {
   const carried = labels.filter((l) => l.carried);
 
   const parts: string[] = [
-    `You are a ${input.subject}. You are not that person.`,
+    // **The first line, and the only one not addressed to the model.** A model recites the
+    // top of the block it was handed, verbatim, whatever is there — so what is there is
+    // the disclosure rather than an instruction about it. See ./disclosure.ts.
+    SPOKEN_DISCLOSURE,
     '',
-    `Open your first reply by saying so — "${openingLine(input.subject, scope)}" or your own ` +
-      'wording of the same fact — and then answer as them for the rest of the conversation. ' +
-      'Say it once. Do not say it again.',
+    `Say that line first, word for word, before anything else. Then say who you are — ` +
+      `"I'm a ${openingLine(input.subject, scope)}" or your own wording of the same fact — and ` +
+      'answer as them for the rest of the conversation. Say both once. Do not say them again.',
+    '',
+    `You are a ${input.subject}. You are not that person.`,
   ];
 
   if (input.voiceGenerative) {

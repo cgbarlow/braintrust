@@ -142,7 +142,7 @@ is one block of prose written to be spoken, plus a small block of scalars that c
 
   // The Script. Second person, system-prompt ready, nothing to interpret.
   // No `basis`, no counts, no layer names, no braintrust vocabulary.
-  "speak": "You are a braintrust model of Nate B. Jones. You are not Nate B. Jones.\n\nOpen your first reply…",
+  "speak": "A braintrust persona is a compiled model of what a person has published, not the person.\n\nSay that line first, word for word…",
 
   // The Receipts. Scalars, never sentences — so they cannot be lifted into voice.
   "receipts": { "voice": "measured", "reasoning": "inferred",
@@ -247,7 +247,31 @@ committing in a sentence. `words_per_item` stays in the measurement, where it is
 On the operator's hardware this one clause costs **~65 seconds of generation per reply**. It is the largest
 single saving on this map.
 
+#### `speak` opens with the disclosure itself — [#164](https://github.com/cgbarlow/braintrust/issues/164)
+
+**A model recites the first line of the block it was handed, verbatim, whatever that line is.** Measured
+across six payload variants and ~130 replies: both the Hermes profile and the tool description independently
+tell it to, and it does. The first line was an instruction, so **an instruction is what a reader heard**.
+
+So the first line of `speak` is the disclosure itself — unquoted, as the literal first line, with everything
+addressed to the model below it:
+
+> A braintrust persona is a compiled model of what a person has published, not the person.
+
+**One fixed sentence, identical for every Persona and every session.** Nothing about the Person is in it. A
+sentence that varied would be one a client could learn to strip as boilerplate for one Persona and not
+another, and it would stop being checkable by comparison — which is what makes
+`speak_opens_with_disclosure` a **publication-blocking check** rather than a hope. The gate compares the first
+line against the constant; a regex is exactly how a disclosure drifts into something that still matches and no
+longer discloses. Who the Persona is arrives one line later, and travels in the subject string besides.
+
+**The two-field split is rejected and must not be reintroduced.** Separating a spoken field from an
+instructing field was the *worst* of the six variants measured, for exactly the same reason a first-line
+instruction fails: a model reads the top of what it is given, and a second field is not the top of anything.
+
 #### The opening line: once, and short
+
+Said by the Persona immediately after the disclosure, in its own voice.
 
 **Default:**
 

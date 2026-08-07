@@ -11,8 +11,8 @@ import { COMPILER_VERSION, withheldLayers } from './compile/version.js';
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
-import type { Receipts, ScriptInput, SourceCoverage } from './script.js';
-import { renderScript } from './script.js';
+import type { Receipts } from './script.js';
+import { renderScript, scriptInputFrom } from './script.js';
 
 export type CorpusSummary = {
   items_retrieved: number;
@@ -319,53 +319,6 @@ function layersOf(loaded: Awaited<ReturnType<typeof loadCurrent>> & {}): Record<
   return layers;
 }
 
-/** Reads the shapes the compiler writes, defensively: a partial layer must not throw. */
-function scriptInputFrom(
-  subject: string,
-  layers: Record<string, LoadedLayerPayload>,
-): ScriptInput {
-  const voice = layers.voice;
-  const reasoning = layers.reasoning;
-  const coverage = layers.coverage;
-
-  const evidence = (coverage?.evidence ?? {}) as Record<string, unknown>;
-  const rawSources = (evidence.by_source ?? {}) as Record<string, Record<string, unknown>>;
-
-  const bySource: Record<string, SourceCoverage> = {};
-  for (const [key, source] of Object.entries(rawSources)) {
-    bySource[key] = {
-      platform: typeof source.platform === 'string' ? source.platform : key.split(':')[0] ?? '',
-      retrieved: numberOr(source.retrieved, 0),
-      skipped_paywall: numberOr(source.skipped_paywall, 0),
-      failed: numberOr(source.failed, 0),
-      backfill_complete: source.backfill_complete !== false,
-    };
-  }
-
-  const window = evidence.window;
-  const entries = ((reasoning?.evidence ?? {}) as { entries?: { label?: unknown }[] }).entries ?? [];
-
-  return {
-    subject,
-    voiceGenerative: voice?.generative ?? null,
-    voiceBasis: voice?.basis ?? null,
-    reasoningBasis: reasoning?.basis ?? null,
-    reasoningLabels: entries
-      .map((entry) => entry.label)
-      .filter((label): label is string => typeof label === 'string'),
-    bySource,
-    itemsRead: numberOr(evidence.retrieved, 0),
-    wordsRead: numberOr(evidence.words_retrieved, 0),
-    window:
-      Array.isArray(window) && typeof window[0] === 'string' && typeof window[1] === 'string'
-        ? [window[0], window[1]]
-        : null,
-  };
-}
-
-function numberOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' ? value : fallback;
-}
 
 /**
  * The Script, rendered fresh from the stored layers on every call.
