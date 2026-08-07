@@ -78,7 +78,30 @@ export type GateFacts = {
   superseded_positions: number;
 };
 
-export type GateCheck = { check: string; passed: boolean; detail: string };
+/** What one check decided about one Compile, and why. */
+export type GateCheckResult = { passed: boolean; detail: string };
+
+/**
+ * One publication-blocking check, as a thing rather than as a branch.
+ *
+ * **The gate is a list, not a function with a clause per rule.** Checks are added by appending to
+ * {@link GATE_CHECKS}; nothing about the control flow that runs them changes, and nothing
+ * has to be edited twice. That matters because the checks outnumber their author's memory:
+ * a maintainer looking at a `rejected_reason` needs to find the check that produced it and
+ * read what it was protecting, without reading the whole gate to work out which branch ran.
+ */
+export type GateCheckDefinition = {
+  /** Stable, and the name a rejection records. Never renamed once a Compile has carried it. */
+  id: string;
+  /**
+   * What passing guarantees, in one sentence — readable **without running the check**, which
+   * is the whole point of the checks being enumerable.
+   */
+  guarantees: string;
+  run(facts: GateFacts): GateCheckResult;
+};
+
+export type GateCheck = GateCheckResult & { check: string };
 
 export type GateVerdict = {
   passed: boolean;
@@ -88,22 +111,83 @@ export type GateVerdict = {
 };
 
 export function checkCompile(facts: GateFacts): GateVerdict {
-  const checks = [
-    coreLayersPresent(facts),
-    voiceHasBothForms(facts),
-    inferredLayersMarked(facts),
-    coverageReconciles(facts),
-    positionsAreCited(facts),
-    positionsHaveNotCollapsed(facts),
-    revisionsHaveNotSwept(facts),
-  ];
+  const checks = GATE_CHECKS.map((definition) => ({
+    check: definition.id,
+    ...definition.run(facts),
+  }));
 
   const failed = checks.filter((check) => !check.passed);
+
   return {
     passed: failed.length === 0,
     checks,
-    reason: failed.length === 0 ? null : failed.map((check) => check.detail).join(' '),
+    // **Named, not just described.** A reason that says what went wrong without saying
+    // which check said it leaves a maintainer grepping prose for the rule they need to
+    // read. The id is the way back to the guarantee it was protecting.
+    reason:
+      failed.length === 0
+        ? null
+        : failed.map((check) => `${check.check}: ${check.detail}`).join('; '),
   };
+}
+
+/**
+ * Every publication-blocking check there is, in the order they run.
+ *
+ * **This list is the gate.** Adding a rule means adding an entry here and nothing else —
+ * `checkCompile` has no branch per check to extend, and no caller has to be told. Removing
+ * one means deleting an entry. Reading the gate means reading this list.
+ *
+ * Order is presentation only: every check runs on every Compile, and a rejection carries
+ * all the reasons rather than the first.
+ */
+export const GATE_CHECKS: GateCheckDefinition[] = [
+  {
+    id: 'core_layers_present',
+    guarantees:
+      'all four core layers exist on this compile and each carries something a client could serve',
+    run: coreLayersPresent,
+  },
+  {
+    id: 'voice_has_both_forms',
+    guarantees:
+      'voice carries an instruction and the measurements behind it, so the instruction can be checked against its evidence',
+    run: voiceHasBothForms,
+  },
+  {
+    id: 'inferred_layers_marked',
+    guarantees:
+      'every layer a model wrote opens with the marker that survives being pasted into a system prompt',
+    run: inferredLayersMarked,
+  },
+  {
+    id: 'coverage_reconciles',
+    guarantees:
+      "coverage's counts match the item rows they claim to count, so a persona naming its own blind spots is telling the truth",
+    run: coverageReconciles,
+  },
+  {
+    id: 'positions_are_cited',
+    guarantees: 'every position resolves to at least one citation braintrust can show',
+    run: positionsAreCited,
+  },
+  {
+    id: 'positions_have_not_collapsed',
+    guarantees:
+      'the position count has not fallen far enough against the previous compile to read as a silent failure rather than a quiet week',
+    run: positionsHaveNotCollapsed,
+  },
+  {
+    id: 'revisions_have_not_swept',
+    guarantees:
+      'this rebuild has not retired so much of what someone holds that it describes the judge rather than the author',
+    run: revisionsHaveNotSwept,
+  },
+];
+
+/** Every check that runs, by name, without running any of them. */
+export function gateCheckIds(): string[] {
+  return GATE_CHECKS.map((check) => check.id);
 }
 
 /**
@@ -113,7 +197,7 @@ export function checkCompile(facts: GateFacts): GateVerdict {
  * saying so, and no entries. So an inferred layer is empty when it lists nothing,
  * whatever prose surrounds the fact.
  */
-function coreLayersPresent(facts: GateFacts): GateCheck {
+function coreLayersPresent(facts: GateFacts): GateCheckResult {
   const missing: string[] = [];
   const empty: string[] = [];
 
@@ -127,7 +211,6 @@ function coreLayersPresent(facts: GateFacts): GateCheck {
   }
 
   return {
-    check: 'core_layers_present',
     passed: missing.length === 0 && empty.length === 0,
     detail:
       missing.length === 0 && empty.length === 0
@@ -154,13 +237,12 @@ function isEmpty(row: GateLayer): boolean {
  * instruction unfalsifiable, and only `descriptive` means two clients build two different
  * personalities from identical data.
  */
-function voiceHasBothForms(facts: GateFacts): GateCheck {
+function voiceHasBothForms(facts: GateFacts): GateCheckResult {
   const voice = facts.layers.find((one) => one.layer === 'voice');
   const passed =
     !!voice && voice.descriptive_md.trim() !== '' && (voice.generative_md ?? '').trim() !== '';
 
   return {
-    check: 'voice_has_both_forms',
     passed,
     detail: passed
       ? 'voice carries an instruction and the measurements it came from'
@@ -172,13 +254,12 @@ function voiceHasBothForms(facts: GateFacts): GateCheck {
  * The marker rule, mechanically. `basis` is the structural fact — a layer a model wrote —
  * and this is where "then it must say so in its prose" is enforced rather than trusted.
  */
-function inferredLayersMarked(facts: GateFacts): GateCheck {
+function inferredLayersMarked(facts: GateFacts): GateCheckResult {
   const unmarked = facts.layers
     .filter((one) => one.basis === 'inferred' && !INFERRED_MARKER.test(one.descriptive_md.trim()))
     .map((one) => one.layer);
 
   return {
-    check: 'inferred_layers_marked',
     passed: unmarked.length === 0,
     detail:
       unmarked.length === 0
@@ -192,11 +273,10 @@ function inferredLayersMarked(facts: GateFacts): GateCheck {
  * own blind spots is only worth anything if the naming is true, and this is the one layer
  * whose every number can be checked against something that is not itself.
  */
-function coverageReconciles(facts: GateFacts): GateCheck {
+function coverageReconciles(facts: GateFacts): GateCheckResult {
   const evidence = facts.coverage_evidence as Partial<ItemCounts> | null | undefined;
   if (!evidence || typeof evidence !== 'object') {
     return {
-      check: 'coverage_reconciles',
       passed: false,
       detail: 'coverage carried no structured evidence to reconcile against the item rows',
     };
@@ -207,7 +287,6 @@ function coverageReconciles(facts: GateFacts): GateCheck {
   );
 
   return {
-    check: 'coverage_reconciles',
     passed: off.length === 0,
     detail:
       off.length === 0
@@ -219,11 +298,10 @@ function coverageReconciles(facts: GateFacts): GateCheck {
 }
 
 /** A Position braintrust cannot cite is a Position it does not have. */
-function positionsAreCited(facts: GateFacts): GateCheck {
+function positionsAreCited(facts: GateFacts): GateCheckResult {
   const uncited = facts.positions.filter((position) => position.citations === 0);
 
   return {
-    check: 'positions_are_cited',
     passed: uncited.length === 0,
     detail:
       uncited.length === 0
@@ -235,14 +313,13 @@ function positionsAreCited(facts: GateFacts): GateCheck {
   };
 }
 
-function positionsHaveNotCollapsed(facts: GateFacts): GateCheck {
+function positionsHaveNotCollapsed(facts: GateFacts): GateCheckResult {
   const now = facts.positions.length;
   const before = facts.previous_positions;
   const floor = Math.floor(before * POSITION_COLLAPSE_FLOOR);
   const passed = before === 0 || now >= floor;
 
   return {
-    check: 'positions_have_not_collapsed',
     passed,
     detail: passed
       ? `${now} position(s) against ${before} on the previous compile`
@@ -255,14 +332,13 @@ function positionsHaveNotCollapsed(facts: GateFacts): GateCheck {
  * Persona where most of what someone holds has been retired in one rebuild is the failure
  * that looks like working software, because every individual row is well-formed.
  */
-function revisionsHaveNotSwept(facts: GateFacts): GateCheck {
+function revisionsHaveNotSwept(facts: GateFacts): GateCheckResult {
   const now = facts.positions.length;
   const superseded = facts.superseded_positions;
   const ceiling = Math.floor(now * REVISION_SWEEP_CEILING);
   const passed = now === 0 || superseded <= ceiling;
 
   return {
-    check: 'revisions_have_not_swept',
     passed,
     detail: passed
       ? `${superseded} of ${now} position(s) were superseded on this rebuild`

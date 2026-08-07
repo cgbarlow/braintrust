@@ -574,13 +574,22 @@ sweep. Failing means *not published*.
 The v1 checks are **structural, never semantic** — a check that needs a model to run is a check that can fail
 the way the compiler fails:
 
-- all four Core layers present and non-empty
-- Voice carries both `descriptive_md` and `generative_md`
-- every layer with `basis = 'inferred'` opens with the marker
-- Coverage counts reconcile against `braintrust_items`
-- every Position resolves to at least one real citation
-- Position count is not a collapse against the previous Compile
-- no more than half the Positions were superseded on this rebuild
+| Check | What passing guarantees |
+|---|---|
+| `core_layers_present` | all four Core layers exist and each carries something a client could serve |
+| `voice_has_both_forms` | Voice carries both `descriptive_md` and `generative_md`, so the instruction can be checked against its evidence |
+| `inferred_layers_marked` | every layer with `basis = 'inferred'` opens with the marker |
+| `coverage_reconciles` | Coverage counts match `braintrust_items` |
+| `positions_are_cited` | every Position resolves to at least one real citation |
+| `positions_have_not_collapsed` | the Position count is not a collapse against the previous Compile |
+| `revisions_have_not_swept` | no more than half the Positions were superseded on this rebuild |
+
+**The gate is a list, not a function with a clause per rule.** Every check is a named entry carrying the
+guarantee it protects and the reason it gives when it fails, so the whole set can be listed *without running
+it* and a rejection records **which** check failed rather than only that one did. Adding a check is appending
+an entry; nothing about the control flow that runs them changes. That is the point — the checks outnumber
+their author's memory, and a maintainer reading a `rejected_reason` needs the name to lead back to what was
+being protected.
 
 The promoting transaction is in [`schema.md`](./schema.md#rebuilding). Four properties it buys: a failed
 Compile changes nothing; a rejected Compile keeps its rows for inspection; `on delete cascade` does all the
