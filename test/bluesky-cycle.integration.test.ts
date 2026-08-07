@@ -336,8 +336,15 @@ describe('reading Bluesky end to end, against real Postgres', { skip }, () => {
     });
 
     it('cites the individual post, not the day it was read in', async () => {
+      // Asked in the day's own words, read back off the rows. The gate is absolute
+      // similarity against a conservative floor, and a three-word paraphrase of a
+      // short-form corpus does not clear it — which is by design and is a different
+      // subject from this test's, which is which URL a citation resolves to.
+      const stored = await days();
+      const query = stored.find((day) => day.body_text.length > 0)!.body_text;
+
       const found = await findPositions(
-        { person: 'ethan-mollick', query: 'what the bottleneck actually is' },
+        { person: 'ethan-mollick', query },
         {
           db,
           embedder: createEmbedder(testEmbeddingsConfig, fakeEmbeddings().fetcher),

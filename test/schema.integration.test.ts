@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { after, before, describe, it } from 'node:test';
 
+import { COMPILER_VERSION } from '../src/compile/version.js';
 import { createDb, type PostgresDb } from '../src/db.js';
 import { listPersonas } from '../src/personas.js';
 
@@ -23,6 +24,7 @@ const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema t
 
 const TABLES = [
   'braintrust_position_relations',
+  'braintrust_position_embeddings',
   'braintrust_position_citations',
   'braintrust_positions',
   'braintrust_persona_layers',
@@ -279,7 +281,12 @@ describe('schema.sql against real Postgres', { skip }, () => {
 
   it('serves list_personas from real rows', async () => {
     await reset();
-    assert.deepEqual(await listPersonas(db), { personas: [] });
+    // The listing says which rules are current even when it lists nobody — that is how a
+    // client tells "no personas" from "a braintrust that cannot say what it is running".
+    assert.deepEqual(await listPersonas(db), {
+      personas: [],
+      current_compiler_version: COMPILER_VERSION,
+    });
 
     const person = await insertPerson('nate-b-jones', 'Nate B. Jones');
     await insertPerson('someone-else', 'Aaron Someone');

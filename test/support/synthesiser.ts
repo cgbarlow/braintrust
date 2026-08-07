@@ -178,3 +178,25 @@ export function pairsFromDigest(digest: string): string[] {
 export function indicesFromDigest(digest: string): number[] {
   return [...digest.matchAll(/^\[(\d+)\]/gm)].map((match) => Number(match[1]));
 }
+
+/**
+ * Words in the NATO alphabet, which is a list of distinct words nobody has to invent.
+ *
+ * The corpus is indexed with a bag of words, so `Position 1.` and `Position 2.` are the same
+ * vector: the digits are too short to be counted and `position` is all that is left. A
+ * statement that collapses that way is two positions graded on one thing, which the publish
+ * gate blocks — correctly, because in a real corpus two positions worded identically are one
+ * position written twice.
+ */
+const CODEWORDS = [
+  'alfa', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india', 'juliett',
+  'kilo', 'lima', 'mike', 'november', 'oscar', 'papa', 'quebec', 'romeo', 'sierra', 'tango',
+  'uniform', 'victor', 'whisky', 'xray', 'yankee', 'zulu',
+];
+
+/** A stand-in Position statement that is distinct *in words*, not merely in digits. */
+export function distinctStatement(index: number): string {
+  const word = CODEWORDS[index % CODEWORDS.length]!;
+  const rest = Math.floor(index / CODEWORDS.length);
+  return `Position ${word}${rest > 0 ? ` ${CODEWORDS[rest - 1]!}` : ''}, as braintrust would put it.`;
+}

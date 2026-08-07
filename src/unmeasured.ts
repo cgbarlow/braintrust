@@ -52,10 +52,24 @@
 export const UNMEASURED_RETRIEVAL_FLOOR = 0.55;
 
 /**
- * The scale `fit` grades against when a Compile measured no span of its own.
+ * **`fit` has no unmeasured value, and that is the exception this file needs to state.**
  *
- * Conservative here means **wide**: a wide span grades genuine matches as `partial` where a
- * narrow one would call weak matches `close`. A fit grade that is merely uninformative is a
- * smaller failure than one that is confidently wrong.
+ * There was one: a deliberately wide span, on the reasoning that a wide scale grades genuine
+ * matches `partial` where a narrow one would call weak matches `close`, and that an
+ * uninformative grade is a smaller failure than a confidently wrong one. The first half was
+ * sound and the conclusion was not. **A grade has no cautious direction.** A floor points up
+ * and an uncalibrated Persona simply declines more; a grade has two ways to be wrong that
+ * point opposite ways — `distant` on the answer a reader wanted, `close` on the one they did
+ * not — and no setting of the scale avoids both. A wide span does not decline; it *guesses*,
+ * and it guesses `partial` on everything, which is the shape the live probe found: 46 `close`
+ * grades of which 21 went to Positions a reader rejects outright.
+ *
+ * So the third option is taken, and it only exists for a grade: **say nothing.** A Persona
+ * whose Compile measured no cut of its own returns every Position it holds, in the order the
+ * statement score puts them, with `fit: 'ungraded'` beside each — which is not a fourth grade
+ * but the absence of one. See ./compile/fit.ts and ./find.ts.
+ *
+ * The general rule stands and this sharpens it: an unmeasured *number* takes its cautious
+ * value, unmeasured *prose* is absent until rebuilt, and an unmeasured *judgement* is
+ * withheld. What braintrust could not measure is in the receipts.
  */
-export const UNMEASURED_FIT_SPAN = 0.2;

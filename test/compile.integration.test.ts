@@ -35,7 +35,7 @@ import { createDb, type Db, type PostgresDb, type TransactionalDb } from '../src
 import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { chunkItem } from '../src/retrieval/index.js';
 import { fakeEmbedder } from './support/embeddings.js';
-import { fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
+import { distinctStatement, fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
 
 const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
 const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
@@ -217,7 +217,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     // compile.
     assert.deepEqual(
       synthesiser.calls.map((call) => `${call.kind}:${call.mode}`),
-      ['reasoning:pass', 'beliefs:pass', 'positions:pass'],
+      // `habits` rather than `reasoning`: the argument-habits block is now chosen from an
+      // authored menu, so what the model is asked for is a selection and not a paragraph.
+      ['habits:pass', 'beliefs:pass', 'positions:pass'],
     );
 
     // Every item's note is in the core digests, and none of the item bodies are.
@@ -643,13 +645,83 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     assert.deepEqual(report.compiled, []);
     assert.equal(report.rejected[0]!.person, 'nate');
-    assert.match(report.rejected[0]!.reason, /beliefs, reasoning carried nothing to serve/);
+    // Beliefs alone: a synthesiser that returns nothing empties the layer it writes, and
+    // reasoning is no longer one of them — its lines come off the authored menu.
+    assert.match(report.rejected[0]!.reason, /beliefs carried nothing to serve/);
 
     // Not published, and not deleted either. The persona that was already there is
     // untouched and still the one a client is served.
     assert.equal(await currentCompileId(), before);
     const persona = await explainPersona(db, 'nate');
     assert.equal((persona.layers.voice!.evidence as { items_measured: number }).items_measured, ITEMS);
+  });
+
+  /**
+   * **The check that catches the fourth `fit` defect, blocking a real compile.**
+   *
+   * Two positions worded the same way embed to the same vector, so `fit` would have to give
+   * them the same score — which is the shape all three shipped defects had, and 41 of 92 live
+   * positions carried it. The previous persona keeps answering and the next run tries again.
+   */
+  it('refuses to publish positions that would be graded on the same thing', async () => {
+    await compile({ embedder: fakeEmbedder() });
+    const before = await currentCompileId();
+
+    await addItem('post-twinned', body(9), '2025-10-01');
+    const report = await compile({
+      embedder: fakeEmbedder(),
+      synthesiser: fakeSynthesiser({
+        // One statement, worded identically for every group. In a real corpus that is one
+        // position written twice; here it is the defect, arriving at the gate.
+        positionsFor: (claims) =>
+          claims.map((claim, index) => ({
+            slug: `position-${index}`,
+            statement: 'The very same sentence, every time.',
+            claims: [claim],
+          })),
+      }),
+    });
+
+    assert.deepEqual(report.compiled, []);
+    assert.match(report.rejected[0]!.reason, /positions_are_graded_apart/);
+    assert.match(report.rejected[0]!.reason, /graded on the same thing/);
+    assert.equal(await currentCompileId(), before, 'yesterday persona is untouched');
+  });
+
+  /**
+   * A deployment with no embeddings endpoint publishes a persona that grades nothing. Making
+   * a grade a condition of having a persona would be a much larger claim than the check is
+   * making — and every other compile in this file is one of these.
+   */
+  it('publishes a compile that grades nothing, because nothing shared is nothing to confuse', async () => {
+    const report = await compile();
+
+    assert.deepEqual(report.compiled, ['nate']);
+    assert.equal(
+      await count('select count(*) from braintrust_position_embeddings'),
+      0,
+      'no endpoint, no statement vectors, and no grade to get wrong',
+    );
+  });
+
+  it('embeds every statement it publishes, so no answer mixes graded and ungraded positions', async () => {
+    await compile({ embedder: fakeEmbedder() });
+
+    const positions = await count(
+      `select count(*) from braintrust_positions p
+         join braintrust_compiles c on c.id = p.compile_id
+        where c.status = 'current'`,
+    );
+    assert.ok(positions > 1);
+    assert.equal(
+      await count(
+        `select count(*) from braintrust_position_embeddings pe
+           join braintrust_positions p on p.id = pe.position_id
+           join braintrust_compiles c on c.id = p.compile_id
+          where c.status = 'current'`,
+      ),
+      positions,
+    );
   });
 
   it('keeps a rejected compile rows and its reason, because that is what a diagnosis reads', async () => {
@@ -887,7 +959,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       positionsFor: (claims) =>
         claims.map((claim, index) => ({
           slug: `position-${index}`,
-          statement: `Position ${index}.`,
+          statement: distinctStatement(index),
           claims: [claim],
         })),
       // One revision and the rest left standing, which is what a judge told to answer
@@ -944,7 +1016,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       positionsFor: (claims) =>
         claims.map((claim, index) => ({
           slug: `position-${index}`,
-          statement: `Position ${index}.`,
+          statement: distinctStatement(index),
           claims: [claim],
         })),
       judgementsFor: (pairs) =>
@@ -979,7 +1051,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         positionsFor: (claims) =>
           claims.map((claim, index) => ({
             slug: `position-${index}`,
-            statement: `Position ${index}.`,
+            statement: distinctStatement(index),
             claims: [claim],
           })),
         judgementsFor: (pairs) =>

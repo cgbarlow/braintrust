@@ -342,6 +342,14 @@ create table braintrust_position_citations (
   quote        text not null
 );
 
+create table braintrust_position_embeddings (
+  position_id uuid not null references braintrust_positions(id) on delete cascade,
+  model       text not null,
+  embedding   vector(1024) not null,
+  created_at  timestamptz not null default now(),
+  primary key (position_id, model)
+);
+
 create table braintrust_position_relations (
   id                uuid primary key default gen_random_uuid(),
   compile_id        uuid not null references braintrust_compiles(id) on delete cascade,
@@ -352,6 +360,18 @@ create table braintrust_position_relations (
   rationale         text
 );
 ```
+
+**`braintrust_position_embeddings` is what `fit` is graded from**, and it is a row rather than a serve-time
+computation because the statements do not change between questions: embedding twenty of them on every question
+would put a model call on the read path for a constant. `model` is in the primary key for the same reason it is
+in `braintrust_embeddings` — a better model is a new set of rows.
+
+It exists because for three versions `fit` graded the best Chunk of the best Item behind a Position, which
+**every Position drawn from that Item shares**: 41 of 92 live Positions carried a score identical to another's,
+and asked about *machine dream* three of Chris Barlow's came back on the same `0.652` and the same `close`. A
+Position's own statement is the only thing in the schema that is one per Position and about what the Position
+says. See [mcp-surface.md](./mcp-surface.md) and
+[#140](https://github.com/cgbarlow/braintrust/issues/140).
 
 **`held_since` is recomputed every compile**, which is what makes it honest: a backfill that finds older
 evidence moves it earlier, and no stale value survives to contradict the corpus.

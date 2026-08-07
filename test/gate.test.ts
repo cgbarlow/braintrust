@@ -89,6 +89,18 @@ function check(verdict: ReturnType<typeof checkCompile>, name: string) {
   return verdict.checks.find((one) => one.check === name)!;
 }
 
+/**
+ * A well-formed Position row: cited, and graded on a statement of its own.
+ *
+ * `graded_on` fingerprints the vector `fit` would be computed from, so two Positions sharing
+ * one is two Positions that must carry the same score. Defaulting it to the slug is the
+ * normal case — a distinct statement per Position — and a test that wants the defect passes
+ * the same fingerprint twice.
+ */
+function position(slug: string, citations: number, graded_on: string | null = slug) {
+  return { slug, citations, graded_on };
+}
+
 describe('a compile that earns promotion', () => {
   it('passes every check there is', () => {
     const verdict = checkCompile(facts());
@@ -254,8 +266,8 @@ describe('positions', () => {
     const verdict = checkCompile(
       facts({
         positions: [
-          { slug: 'speed-is-not-the-constraint', citations: 3 },
-          { slug: 'uncited', citations: 0 },
+          position('speed-is-not-the-constraint', 3),
+          position('uncited', 0),
         ],
       }),
     );
@@ -267,7 +279,7 @@ describe('positions', () => {
   it('may not collapse against the compile they would replace', () => {
     const verdict = checkCompile(
       facts({
-        positions: [{ slug: 'one', citations: 1 }],
+        positions: [position('one', 1)],
         previous_positions: 20,
       }),
     );
@@ -281,7 +293,7 @@ describe('positions', () => {
   it('may thin out without collapsing, because a quiet week is not a bug', () => {
     const verdict = checkCompile(
       facts({
-        positions: Array.from({ length: 10 }, (_, index) => ({ slug: `p${index}`, citations: 1 })),
+        positions: Array.from({ length: 10 }, (_, index) => position(`p${index}`, 1)),
         previous_positions: 20,
       }),
     );
@@ -293,7 +305,7 @@ describe('positions', () => {
   it('may not be swept off current in one rebuild by a judge having a bad afternoon', () => {
     const verdict = checkCompile(
       facts({
-        positions: Array.from({ length: 10 }, (_, index) => ({ slug: `p${index}`, citations: 1 })),
+        positions: Array.from({ length: 10 }, (_, index) => position(`p${index}`, 1)),
         superseded_positions: 8,
       }),
     );
@@ -307,13 +319,75 @@ describe('positions', () => {
   it('lets a person change their mind about some of it, because that is the product', () => {
     const verdict = checkCompile(
       facts({
-        positions: Array.from({ length: 10 }, (_, index) => ({ slug: `p${index}`, citations: 1 })),
+        positions: Array.from({ length: 10 }, (_, index) => position(`p${index}`, 1)),
         superseded_positions: 5,
       }),
     );
 
     assert.equal(REVISION_SWEEP_CEILING, 0.5);
     assert.equal(verdict.passed, true);
+  });
+
+  /**
+   * **The check that catches the fourth `fit` defect.**
+   *
+   * All three that shipped were the same shape: a grade about the question computed from a
+   * quantity every Position in the answer shared. Measured live before the fix, 41 of 92
+   * Positions carried a score identical to another's — three of them reading `close` on one
+   * Substack post for a question none of them answered. All three were caught by a person
+   * reading an odd answer, and there is no person watching.
+   */
+  describe('must be graded apart, so no two in one answer can carry the same score', () => {
+    it('fails when two positions are graded on the same thing', () => {
+      const verdict = checkCompile(
+        facts({
+          positions: [
+            position('guild-hall-uses-quests', 1, 'the-same-substack-post'),
+            position('quests-beat-goals', 1, 'the-same-substack-post'),
+            position('goal-setting-feels-like-homework', 1, 'its-own-statement'),
+          ],
+        }),
+      );
+
+      assert.equal(verdict.passed, false);
+      assert.match(verdict.reason!, /graded on the same thing/);
+      assert.match(verdict.reason!, /guild-hall-uses-quests \/ quests-beat-goals/);
+    });
+
+    it('passes when every position is graded on its own statement', () => {
+      assert.equal(
+        check(
+          checkCompile(facts({ positions: [position('one', 1), position('two', 1)] })),
+          'positions_are_graded_apart',
+        ).passed,
+        true,
+      );
+    });
+
+    /**
+     * A deployment with no embeddings endpoint compiles a Persona whose answers carry no
+     * grade at all. Refusing to publish it would make a grade a condition of having a
+     * Persona, which is a much larger claim than this check is making.
+     */
+    it('passes a compile that grades nothing, because nothing shared is nothing to confuse', () => {
+      const verdict = checkCompile(
+        facts({ positions: [position('one', 1, null), position('two', 1, null)] }),
+      );
+
+      assert.equal(check(verdict, 'positions_are_graded_apart').passed, true);
+      assert.match(check(verdict, 'positions_are_graded_apart').detail, /nothing is graded/);
+    });
+
+    it('fails the middle, where some positions are graded and others are not', () => {
+      // A client reads a missing grade beside a present one as braintrust having formed a
+      // view about the ungraded position. It has not; it failed to embed a sentence.
+      const verdict = checkCompile(
+        facts({ positions: [position('graded', 1), position('not-graded', 1, null)] }),
+      );
+
+      assert.equal(verdict.passed, false);
+      assert.match(verdict.reason!, /1 of 2 position\(s\) have no statement vector/);
+    });
   });
 
   it('passes a compile with no positions at all, which is where v1 starts', () => {
@@ -492,6 +566,7 @@ describe('the gate as an enumerable list of checks', () => {
       'inferred_layers_marked',
       'coverage_reconciles',
       'positions_are_cited',
+      'positions_are_graded_apart',
       'positions_have_not_collapsed',
       'habits_are_on_the_menu',
       'habits_rest_on_distinct_evidence',

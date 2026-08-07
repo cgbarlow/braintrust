@@ -39,7 +39,7 @@ import {
   type QueryGate,
 } from '../src/retrieval/index.js';
 import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
-import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
+import { fakeEmbeddings, TEST_DIMENSION, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeSynthesiser, type FakeOptions } from './support/synthesiser.js';
 
 const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
@@ -108,6 +108,18 @@ const ITEMS = [
 /** Every claim braintrust holds, in the order the compiler numbers them: newest item first. */
 const CLAIMS_PER_ITEM = 2;
 
+/**
+ * What the claims say, in that same order — so a stand-in synthesiser can write a Position
+ * statement that is *about* the claim it groups rather than a placeholder.
+ *
+ * That matters now that `fit` grades the statement: a persona whose statements share no
+ * vocabulary with anything anybody published has no measurable scale of its own and grades
+ * nothing at all, which is a state worth one test and a poor default for the rest.
+ */
+const CLAIM_STATEMENTS = [...ITEMS]
+  .reverse()
+  .flatMap((item) => item.claims.map((claim) => claim.statement));
+
 /** Indexed and read, but the note it carries asserts nothing — so no Position cites it. */
 const UNCLAIMED = {
   external_id: 'pricing',
@@ -130,10 +142,30 @@ const topical: Embedder = {
   url: 'https://example.test/v1/embeddings',
   async embed(inputs: string[]): Promise<number[][]> {
     return inputs.map((text) =>
-      /eval/i.test(text) ? [1, 0, 0] : /context|memory/i.test(text) ? [0, 1, 0] : [0, 0, 1],
+      // As wide as the column, because these vectors are stored now as well as compared: a
+      // Position's statement is embedded on every compile, and that is what `fit` grades.
+      byTopic(text, /eval/i.test(text) ? 0 : /context|memory/i.test(text) ? 1 : 2),
     );
   },
 };
+
+/**
+ * A vector the topic dominates and the text still distinguishes.
+ *
+ * The topic slot is what makes a neighbourhood predictable. The speck is what makes two
+ * different sentences two different vectors — no two real statements are the same vector, and
+ * a fake that says they are trips the publication-blocking check on positions being graded
+ * apart, which is the check doing its job rather than a fixture braintrust should accommodate.
+ */
+function byTopic(text: string, slot: number): number[] {
+  const vector = new Array<number>(TEST_DIMENSION).fill(0);
+  vector[slot] = 1;
+
+  let hash = 7;
+  for (const character of text) hash = (hash * 31 + character.charCodeAt(0)) % 100_003;
+  vector[3 + (hash % (TEST_DIMENSION - 3))] = 0.001;
+  return vector;
+}
 
 describe('finding positions, against real Postgres', { skip }, () => {
   let db: PostgresDb;
@@ -229,7 +261,10 @@ describe('finding positions, against real Postgres', { skip }, () => {
    * and this test is not about the model — it is about what braintrust does with the
    * grouping, which is where every guarantee in the answer comes from.
    */
-  function compile(positionsFor?: FakeOptions['positionsFor'], options: FakeOptions = {}) {
+  /** The synthesiser's options, plus what the compile itself is given. */
+  type CompileOptions = FakeOptions & { embedder?: Embedder };
+
+  function compile(positionsFor?: FakeOptions['positionsFor'], options: CompileOptions = {}) {
     return compileCorpus({
       db,
       extractor: GENERATION,
@@ -240,13 +275,33 @@ describe('finding positions, against real Postgres', { skip }, () => {
           ((claims) =>
             claims.map((claim, index) => ({
               slug: `position-${index}`,
-              statement: `Position ${index}, as braintrust would put it.`,
+              // braintrust's own sentence about the claim it groups, which is what `fit`
+              // grades. A placeholder here would make every position ungraded, because a
+              // statement about nothing has no measurable distance from a question.
+              statement: CLAIM_STATEMENTS[index] ?? `Position ${index}, as braintrust would put it.`,
               claims: [claim],
             }))),
       }),
+      // The revision tests name their own embedder, whose neighbourhoods are predictable.
+      // `graded` names the corpus's own bag of words, which is what puts a vector behind
+      // every statement and a measured cut behind every grade.
       ...(options.judgementsFor ? { embedder: topical } : {}),
+      ...(options.embedder ? { embedder: options.embedder } : {}),
       log: () => {},
     });
+  }
+
+  /**
+   * The same compile, with an embeddings endpoint — so the statements are embedded and the
+   * cut is measured, which is what `fit` needs to be a grade rather than an absence.
+   *
+   * Kept apart from the default deliberately. A calibrated persona measures a floor of its
+   * own, which is *lower* than the conservative fallback an uncalibrated one uses, so the two
+   * answer different sets of questions — and the retrieval claims in this file are about the
+   * gate rather than about the grade.
+   */
+  function graded(positionsFor?: FakeOptions['positionsFor'], options: CompileOptions = {}) {
+    return compile(positionsFor, { ...options, embedder });
   }
 
   /**
@@ -376,25 +431,164 @@ describe('finding positions, against real Postgres', { skip }, () => {
     assert.equal(answer.nothing_matched, undefined);
   });
 
-  it('carries the similarity each position was graded from, on the same scale as the floor', async () => {
-    await compile();
+  it('carries the number each position was graded from, and orders the answer by it', async () => {
+    await graded();
 
     const answer = await find({ query: await chunkTextOf('evals') });
     const top = answer.positions[0]!;
 
-    // The grade alone could not be checked: `fit` has shipped wrong twice and both times the
-    // number behind it was computed and discarded, so a `close` on an uncovered question and
-    // a `close` on a real one were indistinguishable from the payload.
-    assert.ok(top.similarity >= MATCH_FLOOR, `${top.similarity} cleared the floor to be here`);
-    assert.ok(top.similarity <= 1);
+    // The grade alone could not be checked: `fit` has shipped wrong three times and every
+    // time the number behind it was computed and discarded, so a `close` on an uncovered
+    // question and a `close` on a real one were indistinguishable from the payload.
+    assert.ok(top.similarity! > 0, `${top.similarity} is the statement's own score`);
+    assert.ok(top.similarity! <= 1);
+    assert.equal(top.similarity, Math.round(top.similarity! * 1000) / 1000);
 
-    // Same scale as the empty answer reports, so the two can be read against each other.
-    assert.equal(top.similarity, Math.round(top.similarity * 1000) / 1000);
-
-    // Ranked order is similarity order, which is what makes a mid-list `close` visible as
-    // one rather than having to be taken on trust.
-    const scores = answer.positions.map((one) => one.similarity);
+    // **Grade and order are the same number, so they cannot disagree.** The list used to be
+    // ordered by the best chunk of the best item behind each position — which orders answers
+    // the way a reader would 51% of the time, where 50% is a coin.
+    const scores = answer.positions.map((one) => one.similarity!);
     assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
+  });
+
+  /**
+   * **The tie this whole change opened on, at the seam.** Asked the braintrust model of Chris
+   * Barlow about *machine dream*, three Positions came back with identical `similarity: 0.652`
+   * and identical `fit: close` — all three cited one Substack post, so all three inherited
+   * that post's score and could not be told apart. Live, 41 of 92 Positions shared their
+   * number with another, in 18 groups, 10 of which held Positions a reader grades differently.
+   *
+   * Two Positions from one Item are two different sentences, and that is now the whole of what
+   * separates them.
+   */
+  it('grades two positions from the same item differently, because their statements differ', async () => {
+    await graded();
+
+    const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
+    const fromOneItem = answer.positions.filter((position) =>
+      position.citations.every((citation) => citation.url === 'https://example.test/evals'),
+    );
+
+    assert.ok(fromOneItem.length >= 2, `${fromOneItem.length} positions rest on the same item`);
+    assert.equal(
+      new Set(fromOneItem.map((one) => one.similarity)).size,
+      fromOneItem.length,
+      'no two positions drawn from one item may carry the same score',
+    );
+
+    // And the difference is not a rounding artefact: it is large enough to change the word a
+    // reader reads. Under the old grade these two were both `close` on the same number.
+    assert.ok(
+      new Set(fromOneItem.map((one) => one.fit)).size > 1,
+      `two positions from one item read differently: ${fromOneItem.map((one) => `${one.slug}=${one.fit}`).join(', ')}`,
+    );
+  });
+
+  /**
+   * **What the publication-blocking check actually buys, arriving at a reader.**
+   *
+   * The check forbids the *construction* — two Positions graded on one thing — because that
+   * was the defect: 41 of 92 Positions shared a number they could not fail to share. It does
+   * not forbid arithmetic. Two Positions with no words in common with the question both bottom
+   * out at zero overlap in this corpus's bag of words, and being told two things equally do
+   * not answer you is not the failure this check exists to catch.
+   */
+  it('gives no two positions the same score for a reason a reader would care about', async () => {
+    await graded();
+
+    const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
+    const ranked = answer.positions.filter((one) => (one.similarity ?? 0) > 0);
+    const scores = ranked.map((one) => one.similarity);
+
+    assert.ok(ranked.length >= 2, 'more than one position is actually being ranked');
+    assert.equal(new Set(scores).size, scores.length, `${scores.join(', ')} should all differ`);
+  });
+
+  /**
+   * **Nothing is withheld on the strength of a low grade.** A threshold here would be
+   * braintrust quietly choosing what a reader may see, and the never-hide posture predates
+   * this grade. What the grade changed is *place in the list*, which is where the harm was:
+   * a reader reads down and quotes the top.
+   */
+  it('returns a position that answers nothing, last and marked weak, rather than dropping it', async () => {
+    await graded();
+
+    const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
+    const offTopic = answer.positions.filter((position) =>
+      position.citations.every((citation) => citation.url === 'https://example.test/context'),
+    );
+
+    assert.ok(offTopic.length > 0, 'a position about another subject still came back');
+    for (const position of offTopic) {
+      assert.equal(position.fit, 'distant', `${position.slug} says plainly that it is no answer`);
+      // Present, cited, and last — the three things together are the whole posture.
+      assert.ok(position.citations.length > 0);
+      assert.ok(
+        answer.positions.indexOf(position) >= answer.positions.length - offTopic.length,
+        `${position.slug} sank to the bottom rather than out of the list`,
+      );
+    }
+  });
+
+  /**
+   * **The gate stays on Chunks and the grade stays on statements.** Selecting what reaches
+   * this Corpus and ranking what came back are different jobs, and conflating them is how
+   * `fit` came to be graded on a quantity that describes the Item.
+   */
+  it('selects candidates on chunks and grades them on statements, which are different jobs', async () => {
+    await graded();
+
+    // A question whose words are in the `context` item. Positions about evals are candidates
+    // only because a chunk matched; their statements say they are not answers.
+    const answer = await find({ query: await chunkTextOf('context'), limit: 50 });
+
+    const top = answer.positions[0]!;
+    assert.ok(
+      top.citations.every((citation) => citation.url === 'https://example.test/context'),
+      'the best-graded position is the one whose own statement is about the question',
+    );
+
+    // And the two jobs disagree, which is the point: positions about another subject are in
+    // the answer — a chunk match put them there — and their own statements say they are no
+    // answer. Selection let them in; grading tells the truth about them.
+    const elsewhere = answer.positions.filter((position) =>
+      position.citations.every((citation) => citation.url !== 'https://example.test/context'),
+    );
+    assert.ok(elsewhere.length > 0, 'the chunk gate admitted positions from other items');
+    assert.ok(
+      elsewhere.every((one) => one.fit === 'distant'),
+      'and none of them is graded as an answer',
+    );
+  });
+
+  /**
+   * **A compile that never measured a cut declines to grade rather than guessing.** The
+   * position, its citations and its place in the list are all unaffected; the one thing
+   * missing is the claim braintrust cannot support.
+   */
+  it('declines to grade when the compile measured no scale of its own', async () => {
+    await graded();
+    const before = await find({ query: await chunkTextOf('evals'), limit: 50 });
+
+    // The same compile with its fit measurement removed — the one thing that differs.
+    await db.query(
+      `update braintrust_compiles set corpus_stats = corpus_stats - 'fit' where status = 'current'`,
+    );
+    const after = await find({ query: await chunkTextOf('evals'), limit: 50 });
+
+    assert.ok(before.positions.some((one) => one.fit !== 'ungraded'), 'it did grade before');
+    assert.deepEqual(
+      after.positions.map((one) => one.fit),
+      after.positions.map(() => 'ungraded'),
+    );
+
+    // Everything else is untouched: the same positions, in the same order, with the number
+    // the grade would have come from still visible.
+    assert.deepEqual(
+      after.positions.map((one) => one.slug),
+      before.positions.map((one) => one.slug),
+    );
+    assert.ok(after.positions.every((one) => one.similarity !== null));
   });
 
   it('returns a one-item position graded low rather than hiding it', async () => {
@@ -693,6 +887,7 @@ describe('finding positions, against real Postgres', { skip }, () => {
     // adjacent material, on its single best passage against the lecture's single best.
     assert.equal(answer.positions[0]!.citations[0]!.url, `https://example.test/${SHARP}`);
   });
+
 
   it('refuses for a person who has never been compiled rather than serving passages', async () => {
     await assert.rejects(find(), /has no persona/);

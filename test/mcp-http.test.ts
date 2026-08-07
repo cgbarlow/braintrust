@@ -258,8 +258,16 @@ describe('the retrieval tool, on a server that has an embeddings endpoint', () =
     assert.match(find.description!, /below_floor/);
     assert.match(find.description!, /nothing_indexed/);
     assert.doesNotMatch(find.description!, /did_not_select/);
-    // The number behind `fit`, without which neither grade can be checked.
-    assert.match(find.description!, /`similarity` is the number `fit` was graded from/);
+    // The number behind `fit`, without which neither grade can be checked — and what it is
+    // now a number about: the position's own statement, not the item it was drawn from.
+    assert.match(find.description!, /`similarity` is the number both the grade and the order/);
+    assert.match(find.description!, /the position's own statement/);
+    // The list is in grade order, so a client is not left to sort it and the two cannot
+    // disagree. Ordering is where the harm landed: a reader reads down and quotes the top.
+    assert.match(find.description!, /ordered by `fit`/);
+    // And nothing is withheld for grading badly, which a client has to be told or it will
+    // assume an absence means braintrust found nothing.
+    assert.match(find.description!, /Nothing is withheld/);
     // An empty answer still cannot tell you they never said it.
     assert.match(find.description!, /cannot tell you they never said it/);
     // Quotes stay a must-not-get-wrong.

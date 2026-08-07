@@ -18,8 +18,9 @@
 
 import type { TransactionalDb } from '../db.js';
 import { notesFor } from '../notes/store.js';
-import type { Embedder } from '../retrieval/embed.js';
+import { vectorLiteral, type Embedder } from '../retrieval/embed.js';
 import { coverageLayer, withVoicePopulation } from './coverage.js';
+import { calibrateFit, notGradeable } from './fit.js';
 import { checkCompile } from './gate.js';
 import { compileHabits, inferLayer, INFERRED_LAYERS } from './infer.js';
 import { compilePositions } from './positions.js';
@@ -40,6 +41,7 @@ import {
   writeLayer,
   writePositions,
   writeRelations,
+  writeStatementVectors,
   type CompilablePerson,
 } from './store.js';
 import type { Synthesiser } from './synthesis.js';
@@ -267,6 +269,29 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     const grouped = await compilePositions(notes, deps.synthesiser);
     const positionIds = await writePositions(deps.db, compileId, grouped.positions);
 
+    // The statements, embedded — what `fit` grades on, and the reason two Positions drawn
+    // from one Item can be told apart at all. Before the gate, because the check that no two
+    // Positions in one answer carry the same score reads these rows.
+    //
+    // A statement the endpoint would not embed is a statement with no vector, and the gate
+    // refuses to publish a Compile where some Positions are graded and others are not — so
+    // this either writes all of them or the Persona is not published, and yesterday's keeps
+    // answering. Silently grading half an answer is the one outcome not on the table.
+    if (deps.embedder) {
+      const statements = grouped.positions.map((position) => position.statement);
+      const vectors = await deps.embedder.embed(statements);
+
+      await writeStatementVectors(
+        deps.db,
+        deps.embedder.model,
+        grouped.positions.flatMap((position, index) => {
+          const vector = vectors[index];
+          const id = positionIds.get(position.slug);
+          return vector && id ? [{ positionId: id, vector: vectorLiteral(vector) }] : [];
+        }),
+      );
+    }
+
     if (grouped.dropped_uncitable > 0) {
       log(
         `braintrust: dropped ${grouped.dropped_uncitable} position(s) of ${person.slug} that ` +
@@ -376,8 +401,42 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
         `${calibrated.separation === 'separated' ? `, ${calibrated.probes.in} in / ${calibrated.probes.out} out` : ''}).`,
     );
 
+    // And the second measurement, for the second job. The gate decides what reaches this
+    // Corpus, on Chunks; this decides how what came back is ordered and graded, on the
+    // statements. Two numbers on two scales, because one number asked to carry both is how
+    // `fit` came to order answers no better than a coin.
+    //
+    // Wrapped for the same reason: a Persona whose grade could not be calibrated still
+    // serves every Position it holds, ungraded.
+    let graded = notGradeable('No embeddings endpoint is configured.');
+    if (deps.embedder) {
+      graded = await calibrateFit({
+        db: deps.db,
+        embedder: deps.embedder,
+        compileId,
+        positionIds: [...positionIds.values()],
+        quotes: grouped.positions.flatMap((position) =>
+          position.citations.map((citation) => citation.quote),
+        ),
+      }).catch((error: unknown) => {
+        log(
+          `braintrust: could not calibrate the fit grade for ${person.slug} — ${String(error)}. ` +
+            'Its positions are unaffected and come back ungraded.',
+        );
+        return notGradeable('The calibration pass failed.');
+      });
+    }
+
+    log(
+      graded.cut === null
+        ? `braintrust: ${person.slug} grades nothing — ${graded.separation}. ${graded.note}`
+        : `braintrust: fit cut for ${person.slug} is ${graded.cut} in a span of ${graded.span} ` +
+          `(${graded.probes.in} quotes / ${graded.probes.out} off-corpus).`,
+    );
+
     await promote(deps.db, person.id, compileId, {
       selectivity: calibrated,
+      fit: graded,
       items_retrieved: coverage.evidence.retrieved,
       items_skipped_paywall: coverage.evidence.skipped_paywall,
       items_skipped_short: coverage.evidence.skipped_short,
@@ -407,6 +466,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
 }
 
 export * from './coverage.js';
+export * from './fit.js';
 export * from './gate.js';
 export * from './infer.js';
 export * from './positions.js';

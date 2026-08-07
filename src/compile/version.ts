@@ -42,6 +42,15 @@ import { POSITION_VERSION, REVISION_VERSION, SYNTHESIS_VERSION } from './synthes
  * unchanged; what an unmeasured Persona does with the absence of one is not. See
  * ../unmeasured.ts.
  *
+ * **`measured-6` is `fit` grading the thing it is about.** For three versions the grade
+ * about the question was computed from the best Chunk of the best Item behind a Position —
+ * a quantity every Position drawn from that Item shares, and one that orders answers the
+ * way a reader would 51% of the time. It now grades the Position's own statement, which
+ * needs a vector per Position and a cut measured on that distribution: two new measured
+ * facts, and load-bearing here rather than documentary. Without the bump, every Persona
+ * already compiled would keep serving grades from the discredited number until its subject
+ * next published. See ./fit.ts.
+ *
  * **`measured-3` was the self-calibrated gate**: a Compile now measures its own Persona's
  * selectivity margin and stores it (see ./selectivity.ts). A new measured fact is exactly
  * what this constant is for — and here it is load-bearing rather than documentary. A
@@ -51,7 +60,7 @@ import { POSITION_VERSION, REVISION_VERSION, SYNTHESIS_VERSION } from './synthes
  * waiting for its subject to publish something — which is the one condition that has
  * nothing to do with whether braintrust can now measure its gate.
  */
-export const MEASUREMENT_VERSION = 'measured-5';
+export const MEASUREMENT_VERSION = 'measured-6';
 
 /**
  * What a Compile that could not compare revisions records instead of `revisions-1`.
