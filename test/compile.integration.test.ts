@@ -217,7 +217,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     // compile.
     assert.deepEqual(
       synthesiser.calls.map((call) => `${call.kind}:${call.mode}`),
-      ['reasoning:pass', 'beliefs:pass', 'positions:pass'],
+      // `habits` rather than `reasoning`: the argument-habits block is now chosen from an
+      // authored menu, so what the model is asked for is a selection and not a paragraph.
+      ['habits:pass', 'beliefs:pass', 'positions:pass'],
     );
 
     // Every item's note is in the core digests, and none of the item bodies are.
@@ -643,7 +645,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     assert.deepEqual(report.compiled, []);
     assert.equal(report.rejected[0]!.person, 'nate');
-    assert.match(report.rejected[0]!.reason, /beliefs, reasoning carried nothing to serve/);
+    // Beliefs alone: a synthesiser that returns nothing empties the layer it writes, and
+    // reasoning is no longer one of them — its lines come off the authored menu.
+    assert.match(report.rejected[0]!.reason, /beliefs carried nothing to serve/);
 
     // Not published, and not deleted either. The persona that was already there is
     // untouched and still the one a client is served.
