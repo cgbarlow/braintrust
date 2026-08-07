@@ -26,8 +26,8 @@ const REASONING = {
   generative_md: null,
   evidence: {
     entries: [
-      { label: 'Treats prompting skill as the scarce resource', items_traced: 8 },
-      { label: 'Infrastructure-first focus', items_traced: 4 },
+      { label: 'opens-on-the-mistaken-instinct', items: ['a1', 'b2', 'c3'] },
+      { label: 'closes-on-a-procedure', items: ['a1'] },
     ],
   },
 };
@@ -112,15 +112,13 @@ describe('loading a persona', () => {
     assert.equal(receipts.reasoning, 'inferred');
   });
 
-  it('counts the labels it had to carry, and never lets that go quiet', async () => {
-    const { receipts, speak } = await loadPersona(db(), 'nate-b-jones');
+  it('speaks the menu own words for how they argue, and hands over no count', async () => {
+    const { speak } = await loadPersona(db(), 'nate-b-jones');
 
-    // Anything can be listed verbatim, so a carrier could absorb a broken compile without
-    // anything looking wrong. The count is the only instrument that catches it.
-    assert.equal(receipts.labels_carried, 1);
-    assert.match(speak, /Treat prompting skill as the scarce resource\./);
-    assert.match(speak, /You habitually frame things this way:/);
-    assert.match(speak, /Infrastructure-first focus/);
+    assert.match(speak, /- Open by naming the thing most people reach for first, and why it fails them\./);
+    // The slug is a name in a file, not something a reader ever sees.
+    assert.doesNotMatch(speak, /opens-on-the-mistaken-instinct/);
+    assert.doesNotMatch(speak, /\d+ of \d+ items/);
   });
 
   it('says which generation of notes the persona was built from', async () => {

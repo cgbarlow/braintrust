@@ -20,6 +20,7 @@
  */
 
 import { SPOKEN_DISCLOSURE } from '../disclosure.js';
+import { isOnTheMenu, twinEvidence } from './habits.js';
 import { INFERRED_MARKER } from './infer.js';
 
 export const CORE_LAYERS = ['beliefs', 'coverage', 'reasoning', 'voice'] as const;
@@ -185,6 +186,18 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
     guarantees:
       'the position count has not fallen far enough against the previous compile to read as a silent failure rather than a quiet week',
     run: positionsHaveNotCollapsed,
+  },
+  {
+    id: 'habits_are_on_the_menu',
+    guarantees:
+      "every line describing how someone argues is text braintrust authored, so a conclusion cannot reach a persona's script",
+    run: habitsAreOnTheMenu,
+  },
+  {
+    id: 'habits_rest_on_distinct_evidence',
+    guarantees:
+      'no two lines in the argument-habits block rest on the identical set of items, so four lines mean four things were found',
+    run: habitsRestOnDistinctEvidence,
   },
   {
     id: 'speak_opens_with_disclosure',
@@ -359,6 +372,68 @@ function revisionsHaveNotSwept(facts: GateFacts): GateCheckResult {
       ? `${superseded} of ${now} position(s) were superseded on this rebuild`
       : `${superseded} of ${now} position(s) were superseded on one rebuild, past the ${ceiling} ` +
         'this compile had to stay under — that is a judge changing its mind, not a person',
+  };
+}
+
+/** The habits this Compile chose, as the Reasoning layer records them. */
+function chosenHabits(facts: GateFacts): { slug: string; items: string[] }[] {
+  const reasoning = facts.layers.find((one) => one.layer === 'reasoning');
+  const entries = (reasoning?.evidence as { entries?: unknown } | null | undefined)?.entries;
+  if (!Array.isArray(entries)) return [];
+
+  return entries.flatMap((entry: unknown) => {
+    const { label, items } = (entry ?? {}) as { label?: unknown; items?: unknown };
+    if (typeof label !== 'string') return [];
+    return [
+      {
+        slug: label,
+        items: Array.isArray(items) ? items.filter((one): one is string => typeof one === 'string') : [],
+      },
+    ];
+  });
+}
+
+/**
+ * **The compile selects; it never writes.** Every line a reader gets about how someone
+ * argues is text authored in ../compile/habits.ts, so a conclusion cannot reach a Script.
+ *
+ * Checked here as well as enforced in the selection, deliberately — the same doubling as
+ * "a Position braintrust cannot cite is dropped". The rule matters more than the code path.
+ */
+function habitsAreOnTheMenu(facts: GateFacts): GateCheckResult {
+  const off = chosenHabits(facts)
+    .map((habit) => habit.slug)
+    .filter((slug) => !isOnTheMenu(slug));
+
+  return {
+    passed: off.length === 0,
+    detail:
+      off.length === 0
+        ? 'every argument habit is a line braintrust authored'
+        : `${off.slice(0, 5).join(', ')} ${off.length === 1 ? 'is' : 'are'} not on the menu, so ` +
+          'the persona would say something braintrust did not write',
+  };
+}
+
+/**
+ * Two lines resting on the identical set of Items are one thing found and worded twice.
+ *
+ * Measured on five real Corpora: 9 of 52 shipping lines carried evidence identical to
+ * another line, and one Person had four lines all resting on the same three Items. **A
+ * reader shown four lines believes four things were found.** The selection resolves this by
+ * a tie-break that is a function of the reply and nothing else, and this is the check that
+ * the resolution actually happened.
+ */
+function habitsRestOnDistinctEvidence(facts: GateFacts): GateCheckResult {
+  const twins = twinEvidence(chosenHabits(facts));
+
+  return {
+    passed: twins.length === 0,
+    detail:
+      twins.length === 0
+        ? 'every argument habit rests on its own evidence'
+        : `${twins.length} group(s) of habits rest on identical evidence, so the block would ` +
+          'read as more findings than braintrust made',
   };
 }
 
