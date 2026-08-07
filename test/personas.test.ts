@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { COMPILER_VERSION } from '../src/compile/version.js';
 import type { Db, QueryResult } from '../src/db.js';
 import { listPersonas } from '../src/personas.js';
 
@@ -19,7 +20,11 @@ function fakeDb(rows: Record<string, unknown>[], blocked: Record<string, unknown
 
 describe('listPersonas', () => {
   it('returns an empty list against an empty database', async () => {
-    assert.deepEqual(await listPersonas(fakeDb([])), { personas: [] });
+    assert.deepEqual(await listPersonas(fakeDb([])), {
+      personas: [],
+      // What *current* is, so a listing's compiler_version has something to be read against.
+      current_compiler_version: COMPILER_VERSION,
+    });
   });
 
   it('names a persona as a model, never with the bare name', async () => {

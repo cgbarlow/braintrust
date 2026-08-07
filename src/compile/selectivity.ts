@@ -50,8 +50,9 @@
  */
 
 import type { Db } from '../db.js';
-import { RETRIEVAL_FLOOR, selectivity } from '../find.js';
+import { selectivity } from '../find.js';
 import { vectorLiteral, type Embedder } from '../retrieval/embed.js';
+import { UNMEASURED_RETRIEVAL_FLOOR } from '../unmeasured.js';
 
 /**
  * Questions no Person braintrust models has published about. Deliberately mundane: a
@@ -122,15 +123,23 @@ export type CalibratedSelectivity = {
   note: string;
 };
 
-/** The honest answer when there is nothing to measure with. Never an invented number. */
+/**
+ * The honest answer when there is nothing to measure with. Never an invented number — and
+ * never a convenient one either: the fallback sits above every floor braintrust has
+ * measured, so a Persona that could not calibrate its own gate is **cautious rather than
+ * credulous**. See ../unmeasured.ts.
+ */
 export const notMeasurable = (reason: string): CalibratedSelectivity => ({
-  floor: RETRIEVAL_FLOOR,
+  floor: UNMEASURED_RETRIEVAL_FLOOR,
   separation: 'not_measurable',
   in_low: null,
   out_high: null,
   span: null,
   probes: { in: 0, out: 0 },
-  note: `${reason} Falling back to the shipped default, which is not a measured value.`,
+  note:
+    `${reason} Falling back to the unmeasured default, which sits above every floor ` +
+    'braintrust has measured — so this persona declines more than a calibrated one would, ' +
+    'rather than less.',
 });
 
 export type CalibrateDeps = {
@@ -178,15 +187,24 @@ export async function calibrateSelectivity(
   const probes = { in: inTops.length, out: outTops.length };
 
   if (outHigh >= inLow) {
-    // The endpoint cannot tell covered from uncovered on this Corpus. **The fallback is
-    // permissive, and that is a reversal.** The margin version put the threshold at the
-    // off-corpus ceiling, reasoning that refusing too much is the safer failure — and then
-    // did exactly that to a live Persona, which answered nothing at all. A Persona that
-    // over-answers is wrong in a way a reader can see and challenge; one that refuses
-    // everything is indistinguishable from a broken deployment and is worth less than no
-    // Persona. So an unusable measurement falls back rather than being enforced.
+    // The endpoint cannot tell covered from uncovered on this Corpus, so the measurement
+    // is not used and the unmeasured value stands.
+    //
+    // **This branch used to fall back permissively, and that was the wrong reading of the
+    // right lesson.** The margin version put the threshold at the off-corpus *ceiling* —
+    // a number measured on this Corpus, by the instrument that had just failed on it — and
+    // a live Persona then answered nothing at all. The conclusion drawn was that
+    // over-answering is the safer failure. The narrower and correct conclusion is that an
+    // unusable measurement must not be *enforced*: falling back to a value measured
+    // nowhere is fine, falling back to one measured by the broken instrument is not.
+    //
+    // What the fallback itself should be is a separate question, and the answer is the
+    // same as everywhere else — the conservative one. A Persona whose gate could not be
+    // measured declines more; it does not decline everything, because the value is a
+    // constant well below where real questions land rather than a ceiling that moves with
+    // whatever just went wrong.
     return {
-      floor: RETRIEVAL_FLOOR,
+      floor: UNMEASURED_RETRIEVAL_FLOOR,
       separation: 'overlapping',
       in_low: round(inLow),
       out_high: round(outHigh),
@@ -194,8 +212,9 @@ export async function calibrateSelectivity(
       probes,
       note:
         'In-corpus and off-corpus questions did not separate on this embeddings model, so ' +
-        'the measurement was not used and the shipped default stands. This persona may ' +
-        'answer questions its corpus does not cover.',
+        'the measurement was not used and the unmeasured default stands. That default sits ' +
+        'above every floor braintrust has measured, so this persona declines more than a ' +
+        'calibrated one would.',
     };
   }
 

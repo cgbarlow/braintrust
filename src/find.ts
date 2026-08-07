@@ -37,6 +37,7 @@ import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
 import { vectorLiteral, type Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
+import { UNMEASURED_FIT_SPAN, UNMEASURED_RETRIEVAL_FLOOR } from './unmeasured.js';
 
 /**
  * How many **Items** the vector search ranks. The Items are what map to Positions, so this
@@ -74,6 +75,17 @@ export const MATCH_PASSAGES = 60;
 
 
 /**
+ * The operator's override, or nothing. Set, it wins for every Persona.
+ *
+ * Exists for the same reason its predecessor did — an escape hatch, not configuration —
+ * and nothing in any document asks anybody to set it.
+ */
+export const FLOOR_OVERRIDE =
+  process.env.BRAINTRUST_RETRIEVAL_FLOOR === undefined
+    ? null
+    : Number(process.env.BRAINTRUST_RETRIEVAL_FLOOR);
+
+/**
  * How similar the best-matching Chunk has to be before braintrust will answer at all.
  *
  * **This replaces the selectivity margin, which measured the endpoint rather than the
@@ -97,34 +109,25 @@ export const MATCH_PASSAGES = 60;
  * questions land. **The instrument was never wrong; the setting was, and nobody had
  * measured it.**
  *
- * This constant is now only the fallback, for a Persona compiled before the floor was
- * measured or on a Corpus where the probes did not separate. The value in force is
- * normally measured per Persona on every Compile — see compile/selectivity.ts.
+ * The value in force is normally measured per Persona on every Compile — see
+ * compile/selectivity.ts. What a Persona does when it has measured none is
+ * {@link UNMEASURED_RETRIEVAL_FLOOR}, and **that number now sits above the measured range
+ * rather than below it**: `0.35` was this file's own admitted guess, and leaving it as the
+ * fallback meant the Persona that knew least about its gate was the most credulous. See
+ * ./unmeasured.ts.
  */
-export const RETRIEVAL_FLOOR = Number(process.env.BRAINTRUST_RETRIEVAL_FLOOR ?? 0.35);
-
-/**
- * The operator's override, or nothing. Set, it wins for every Persona.
- *
- * Exists for the same reason its predecessor did — an escape hatch, not configuration —
- * and nothing in any document asks anybody to set it.
- */
-export const FLOOR_OVERRIDE =
-  process.env.BRAINTRUST_RETRIEVAL_FLOOR === undefined
-    ? null
-    : Number(process.env.BRAINTRUST_RETRIEVAL_FLOOR);
+export const RETRIEVAL_FLOOR = FLOOR_OVERRIDE ?? UNMEASURED_RETRIEVAL_FLOOR;
 
 /**
  * The scale `fit` grades against when a Compile measured no span of its own. Unmeasured,
- * and deliberately wide: a fit grade that is merely uninformative is a smaller failure
- * than one that calls a weak match `close`.
+ * and deliberately wide — see {@link UNMEASURED_FIT_SPAN}.
  */
-export const DEFAULT_SPAN = 0.2;
+export const DEFAULT_SPAN = UNMEASURED_FIT_SPAN;
 
 /** The floor in force for one Persona: the override, else what its Compile measured, else the fallback. */
 export function floorFor(measured: number | null): number {
   if (FLOOR_OVERRIDE !== null) return FLOOR_OVERRIDE;
-  return measured ?? RETRIEVAL_FLOOR;
+  return measured ?? UNMEASURED_RETRIEVAL_FLOOR;
 }
 
 /**

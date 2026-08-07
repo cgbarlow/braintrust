@@ -7,6 +7,7 @@
  */
 
 import { loadCurrent, personExists } from './compile/store.js';
+import { COMPILER_VERSION, withheldLayers } from './compile/version.js';
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
@@ -156,10 +157,16 @@ async function blockedSources(db: Db): Promise<Map<string, BlockedSource[]>> {
   return byPerson;
 }
 
-export async function listPersonas(db: Db): Promise<{ personas: PersonaListing[] }> {
+export async function listPersonas(
+  db: Db,
+): Promise<{ personas: PersonaListing[]; current_compiler_version: string }> {
   const { rows } = await db.query<Row>(LIST_SQL);
   const blocked = await blockedSources(db);
-  return { personas: rows.map((row) => toListing(row, blocked.get(row.person))) };
+  return {
+    personas: rows.map((row) => toListing(row, blocked.get(row.person))),
+    // Once, at the top: every listing's `compiler_version` is read against this one.
+    current_compiler_version: COMPILER_VERSION,
+  };
 }
 
 function toListing(row: Row, blocked: BlockedSource[] | undefined): PersonaListing {
@@ -231,6 +238,12 @@ export type LoadedPersonaPayload = {
   subject: string;
   compiled_at: string | null;
   compiler_version: string;
+  /**
+   * What *current* is. Without it, `compiler_version` is a string with nothing to be read
+   * against — a reader holding one cannot tell a Persona built under today's rules from one
+   * built under rules braintrust has since replaced.
+   */
+  current_compiler_version: string;
   /** Which generation of Notes this Persona was built from. Declared, never inferred. */
   extractor: string | null;
   /** The Script. Ready to speak, with nothing in it to interpret. */
@@ -248,8 +261,15 @@ export type ExplainedPersonaPayload = {
   subject: string;
   compiled_at: string | null;
   compiler_version: string;
+  current_compiler_version: string;
   extractor: string | null;
   layers: Record<string, LoadedLayerPayload>;
+  /**
+   * Layers this Persona has but may not serve, because the rules that wrote them have
+   * moved. Present only when there are any — an empty field would read as a fact about the
+   * Persona rather than the absence of one.
+   */
+  withheld?: { layer: string; reason: string }[];
 };
 
 async function currentOrFail(db: Db, slug: string) {
@@ -269,9 +289,26 @@ async function currentOrFail(db: Db, slug: string) {
   );
 }
 
+/**
+ * The layers this Persona may still serve.
+ *
+ * **Prose governed by a rule that has moved is absent, not stale.** A number has a
+ * conservative direction and can take it; a paragraph a model already wrote does not, so
+ * the only honest options are to serve it or not to. What is withheld here is withheld
+ * *for this reader, immediately* — the version comparison happens on the read rather than
+ * on a clock, so nobody is served prose built under rules braintrust has since changed
+ * while a rebuild is pending. See ./unmeasured.ts.
+ *
+ * **The absence is silent in the Script and named in the receipts.** A Persona missing its
+ * Reasoning reads exactly like one that never had it — no second kind of silence — and the
+ * question *why* belongs where questions about braintrust's own workings belong.
+ */
 function layersOf(loaded: Awaited<ReturnType<typeof loadCurrent>> & {}): Record<string, LoadedLayerPayload> {
+  const withheld = new Set(withheldLayers(loaded.compiler_version));
   const layers: Record<string, LoadedLayerPayload> = {};
+
   for (const layer of loaded.layers) {
+    if (withheld.has(layer.layer)) continue;
     layers[layer.layer] = {
       basis: layer.basis,
       descriptive: layer.descriptive_md,
@@ -350,6 +387,7 @@ export async function loadPersona(db: Db, person: string): Promise<LoadedPersona
     subject,
     compiled_at: loaded.compiled_at?.toISOString() ?? null,
     compiler_version: loaded.compiler_version,
+    current_compiler_version: COMPILER_VERSION,
     extractor: loaded.extractor,
     speak,
     receipts,
@@ -368,11 +406,25 @@ export async function explainPersona(db: Db, person: string): Promise<ExplainedP
   const slug = person.trim();
   const loaded = await currentOrFail(db, slug);
 
+  const withheld = withheldLayers(loaded.compiler_version);
+
   return {
     subject: subjectFor(loaded.display_name),
     compiled_at: loaded.compiled_at?.toISOString() ?? null,
     compiler_version: loaded.compiler_version,
+    current_compiler_version: COMPILER_VERSION,
     extractor: loaded.extractor,
     layers: layersOf(loaded),
+    ...(withheld.length > 0
+      ? {
+          withheld: withheld.map((layer) => ({
+            layer,
+            reason:
+              'The rules that wrote this layer have changed since it was compiled. Prose has ' +
+              'no cautious version of itself, so braintrust withholds it rather than serving ' +
+              'text built under rules it no longer follows. A rebuild restores it.',
+          })),
+        }
+      : {}),
   };
 }

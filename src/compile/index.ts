@@ -19,7 +19,6 @@
 import type { TransactionalDb } from '../db.js';
 import { notesFor } from '../notes/store.js';
 import type { Embedder } from '../retrieval/embed.js';
-import { VERSION } from '../version.js';
 import { coverageLayer, withVoicePopulation } from './coverage.js';
 import { checkCompile } from './gate.js';
 import { inferLayer, INFERRED_LAYERS } from './infer.js';
@@ -43,68 +42,9 @@ import {
   writeRelations,
   type CompilablePerson,
 } from './store.js';
-import {
-  POSITION_VERSION,
-  REVISION_VERSION,
-  SYNTHESIS_VERSION,
-  type Synthesiser,
-} from './synthesis.js';
+import type { Synthesiser } from './synthesis.js';
+import { compilerVersion } from './version.js';
 import { voiceLayer } from './voice.js';
-
-/**
- * Bumped when the measured layers change shape or the voice patterns change — the
- * hypothesis is part of the compiler, so a Persona should say which version of it
- * produced the numbers. `compiler_version` is on the Compile row and travels out through
- * both read tools, alongside the synthesis prompt version that wrote the other half.
- *
- * **`measured-2` is the mixed-Corpus change**: Voice now selects a population by length
- * and names it, and Coverage leads with words and carries `by_form`. The counts are the
- * same counts; *which Items they are counted over* is not, and a Persona has to be able
- * to say which rule measured it. `VOICE_MIN_WORDS` rides here too, so tuning the floor
- * rebuilds every Persona and the change is visible rather than silent.
- *
- * **`measured-4` is the gate measuring the right quantity.** `measured-3` calibrated
- * #115's selectivity margin, which the first live run showed measures the embeddings model
- * rather than the Corpus — three Personas, three sizes, one number, and a Persona refusing
- * its own subject. The floor is absolute top similarity now. Same machinery, same
- * automation; the quantity changed. See ./selectivity.ts.
- *
- * **`measured-3` was the self-calibrated gate**: a Compile now measures its own Persona's
- * selectivity margin and stores it (see ./selectivity.ts). A new measured fact is exactly
- * what this constant is for — and here it is load-bearing rather than documentary. A
- * Persona whose Corpus has not moved has no `has_unseen`, so **the only thing that can
- * rebuild it is this version changing.** Without the bump, every Persona compiled before
- * the calibration shipped would keep serving on the unmeasured fallback indefinitely,
- * waiting for its subject to publish something — which is the one condition that has
- * nothing to do with whether braintrust can now measure its gate.
- */
-export const MEASUREMENT_VERSION = 'measured-4';
-
-/**
- * What a Compile that could not compare revisions records instead of `revisions-1`.
- *
- * Revision detection needs an embeddings endpoint to find candidate pairs, and that
- * endpoint is allowed to be absent — the Core is measured from Item text and synthesised
- * from Notes, so a missing embedder delays the vectors rather than the Persona. But a row
- * claiming `revisions-1` when nothing was compared is a Persona asserting it looked for
- * changes of mind and found none, which is a different sentence from *nobody looked*.
- */
-export const REVISION_SKIPPED = 'revisions-none';
-
-/**
- * **The version records what this Compile could actually do, not what the code supports.**
- *
- * It is not a constant, because the same code produces a different Persona depending on
- * what it was configured with — and the difference is exactly the thing a later run has to
- * notice, via `CompilablePerson.stale_compiler`.
- */
-export function compilerVersion(options: { revisions: boolean }): string {
-  const revisions = options.revisions ? REVISION_VERSION : REVISION_SKIPPED;
-  return `${VERSION}+${MEASUREMENT_VERSION}.${SYNTHESIS_VERSION}.${POSITION_VERSION}.${revisions}`;
-}
-
-/** The fully-capable string. Kept for callers that mean "the current code", not "this run". */
-export const COMPILER_VERSION = compilerVersion({ revisions: true });
 
 /**
  * How long a `running` Compile may sit before a later run treats its process as gone.
@@ -463,4 +403,5 @@ export * from './positions.js';
 export * from './revisions.js';
 export * from './store.js';
 export * from './synthesis.js';
+export * from './version.js';
 export * from './voice.js';
