@@ -319,6 +319,12 @@ type ListingVideo = {
 type Listing = {
   videos: ListingVideo[];
   continuation?: string | undefined;
+  /**
+   * The channel has no videos, and the listing said so rather than failing to answer.
+   * Carried so a caller can tell an ordinary end-of-listing from a channel that never
+   * had anything — the walk stops the same way for both, but they read differently.
+   */
+  empty?: boolean;
 };
 
 /**
@@ -338,13 +344,16 @@ export function readListing(body: string): Listing {
     throw new BraintrustError('The YouTube video listing did not return JSON.');
   }
 
-  const items = gridItems(parsed);
-  if (items.length === 0) {
+  const found = gridItems(parsed);
+  if (found === null) {
     throw new BraintrustError(
-      'braintrust could not find any videos in the YouTube listing. That usually means the ' +
-        'response shape changed, not that the channel is empty.',
+      'braintrust could not read the YouTube listing at all — the response carried no channel ' +
+        'tabs and no continuation. That is the response shape changing, not a channel with ' +
+        'nothing in it.',
     );
   }
+  if (found.kind === 'no-videos') return { videos: [], empty: true };
+  const items = found.items;
 
   const videos: ListingVideo[] = [];
   let continuation: string | undefined;
@@ -388,19 +397,48 @@ type GridItem = any;
  * The items array, from either shape the endpoint uses: the first page nests them
  * under the Videos tab, and a continuation appends them at the top level.
  */
-function gridItems(parsed: any): GridItem[] {
-  const tabs = parsed?.contents?.twoColumnBrowseResultsRenderer?.tabs ?? [];
+/**
+ * Where the videos are, or why there are none — and the middle answer is the whole
+ * reason this returns a shape rather than an array.
+ *
+ * **A channel with no videos has no Videos tab at all.** Measured 2026-08-05: a browse
+ * carrying `VIDEOS_TAB_PARAMS` comes back from a populated channel with nine tabs, the
+ * Videos one selected and holding a `richGridRenderer`; the same request to
+ * `UC05PHiH74VWHuqh_AF9h21Q` comes back with **one** tab, Home, and a
+ * `sectionListRenderer`. YouTube honoured the request and had no Videos tab to give.
+ *
+ * That is a fact about the channel, in exactly the sense braintrust already accepts one
+ * level down — *a video with no words in it is a fact about the video, not a fetch to
+ * retry*. Read as a failure it costs an error in the log and a `backfill incomplete` on
+ * the source every night for as long as anyone follows that person.
+ *
+ * `null` is reserved for the case the old message claimed for all three: no browse
+ * envelope, no tabs, no continuation action. That is the renderer tree moving under
+ * braintrust, and it still says so loudly.
+ */
+type Grid = { kind: 'items'; items: GridItem[] } | { kind: 'no-videos' } | null;
+
+function gridItems(parsed: any): Grid {
+  // A continuation page carries its own envelope. Present and empty is the listing
+  // ending; absent entirely is the shape change, even on a page whose predecessor read.
+  const actions = parsed?.onResponseReceivedActions;
+  if (Array.isArray(actions)) {
+    for (const action of actions) {
+      const contents = action?.appendContinuationItemsAction?.continuationItems;
+      if (Array.isArray(contents)) return { kind: 'items', items: contents };
+    }
+  }
+
+  const tabs = parsed?.contents?.twoColumnBrowseResultsRenderer?.tabs;
+  if (!Array.isArray(tabs) || tabs.length === 0) return null;
+
   for (const tab of tabs) {
     const contents = tab?.tabRenderer?.content?.richGridRenderer?.contents;
-    if (Array.isArray(contents) && contents.length > 0) return contents;
+    if (Array.isArray(contents)) return { kind: 'items', items: contents };
   }
 
-  for (const action of parsed?.onResponseReceivedActions ?? []) {
-    const contents = action?.appendContinuationItemsAction?.continuationItems;
-    if (Array.isArray(contents) && contents.length > 0) return contents;
-  }
-
-  return [];
+  // Tabs, and not one of them is a video grid.
+  return { kind: 'no-videos' };
 }
 
 function durationFromBadges(overlays: any[]): number | undefined {
