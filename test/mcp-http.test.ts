@@ -11,6 +11,7 @@ import { after, before, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
+import { COMPILER_VERSION } from '../src/compile/version.js';
 import { DISCLOSURE } from '../src/disclosure.js';
 import { createApp } from '../src/http/app.js';
 import { createEmbedder } from '../src/retrieval/index.js';
@@ -201,7 +202,10 @@ describe('the MCP surface', () => {
 
     const content = result.content as { type: string; text: string }[];
     assert.equal(content[0]!.type, 'text');
-    assert.deepEqual(JSON.parse(content[0]!.text), { personas: [] });
+    assert.deepEqual(JSON.parse(content[0]!.text), {
+      personas: [],
+      current_compiler_version: COMPILER_VERSION,
+    });
     await client.close();
   });
 });
@@ -292,7 +296,10 @@ describe('statelessness', () => {
     await client.connect(transport);
     const result = await client.callTool({ name: 'braintrust_list_personas', arguments: {} });
     const content = result.content as { type: string; text: string }[];
-    assert.deepEqual(JSON.parse(content[0]!.text), { personas: [] });
+    assert.deepEqual(JSON.parse(content[0]!.text), {
+      personas: [],
+      current_compiler_version: COMPILER_VERSION,
+    });
     await client.close();
   });
 

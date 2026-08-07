@@ -107,7 +107,9 @@ Who exists, whether they have ever been compiled, and how stale each Core is. **
                 "window": ["2025-08-01", "2026-07-29"] },
     "blocked": [{ "platform": "youtube", "handle": "UC0C…",
                   "since": "2026-07-14T03:02:11.004Z" }]   // absent when nothing is blocked
-}] }
+  }],
+  "current_compiler_version": "1.0.0+measured-5.core-1.positions-2.revisions-1"
+}
 ```
 
 **Staleness is `compiled_at` and the client judges it**; braintrust does not define "stale". `compiled: false`
@@ -134,6 +136,8 @@ is one block of prose written to be spoken, plus a small block of scalars that c
 { "subject": "braintrust model of Nate B. Jones",
   "compiled_at": "2026-07-28T09:14:22Z",
   "compiler_version": "0.3.1",
+  // What *current* is, so the line above has something to be read against.
+  "current_compiler_version": "1.0.0+measured-5.core-1.positions-2.revisions-1",
   "extractor": "gpt-5@notes-1",
 
   // The Script. Second person, system-prompt ready, nothing to interpret.
@@ -488,9 +492,46 @@ pins the reasons that exist and the absence of the one that does not.
 
 **And the `overlapping` fallback reversed.** It used to enforce the off-corpus ceiling, on the reasoning that
 refusing too much is the safer failure. It then did exactly that to a live Persona, which answered nothing at
-all. **A Persona that over-answers is wrong in a way a reader can see and challenge; one that refuses
-everything is indistinguishable from a broken deployment.** An unusable measurement is now discarded rather
-than enforced.
+all. An unusable measurement is now **discarded rather than enforced** — the ceiling was a number produced by
+the very instrument that had just failed, and enforcing it was the mistake. What stands in its place is
+[the unmeasured value](#an-unmeasured-quantity-takes-its-most-conservative-value), which is measured nowhere
+and therefore cannot inherit a broken measurement.
+
+##### An unmeasured quantity takes its most conservative value — [#168](https://github.com/cgbarlow/braintrust/issues/168)
+
+The fallback pointed the wrong way. Every floor braintrust has ever measured sits between **0.44 and 0.52**,
+and the fallback for a Persona that had measured none was **0.35** — *below the whole range*. So the Persona
+that knew least about its own gate was the most credulous, letting through exactly what a measured value would
+have caught. That is the whole of why a Persona answered a question about poaching eggs. An absence of
+evidence had been read as evidence of absence.
+
+**An unmeasured quantity now takes its most conservative value, not its most convenient one.** For the
+retrieval floor that is a constant **above** the measured range, and deliberately a *constant* rather than a
+calculation over what the rest of the fleet measured — one Person's calibration moving another Person's gate
+is a coupling nobody can debug and nobody asked for. By design this produces **more empty answers**: an empty
+answer costs a reader one question, where a confident answer to a question nobody wrote about costs them their
+reason to trust any of the others.
+
+**Prose has no conservative direction, so its half of the rule is different.** There is no careful way to read
+a paragraph written under a rule that has since changed, so **synthesised text governed by a part of the
+compiler that has moved is absent until rebuilt** — see [compiler.md §3](./compiler.md). Counts are unaffected:
+withholding Coverage would tell a reader *less* about what braintrust has not read, which is the opposite of
+cautious.
+
+Two things the rule is careful not to do.
+
+**No second kind of silence.** A Persona declining because it could not measure its own gate is
+indistinguishable from one declining because the question is genuinely off its Corpus — same `reason`, same
+`say`, same shape. A distinct reason code was recommended and declined: it would tell a reader about
+braintrust's internals in the one place that is supposed to be about the Person. What braintrust could not
+measure lives in the receipts, where questions about braintrust's own workings belong.
+
+**An uncalibrated Persona is not refused.** The cost of refusal lands on a reader who did nothing wrong; the
+cost of caution lands on a question that was probably a stretch.
+
+And so that a version string has something to be read against, **what *current* is gets published**:
+`load_persona`, `explain_persona` and `list_personas` all carry `current_compiler_version` beside the version
+the Persona was built with.
 
 ##### The Compile measures its own gate — [#128](https://github.com/cgbarlow/braintrust/issues/128)
 
@@ -686,6 +727,12 @@ measured or guessed? What was that Voice instruction derived from?*
 **A Persona never answers those from its Script.** Either the fact is in `receipts` or the client calls this.
 Answering *"how much have you read?"* from voice is the failure the whole arrangement exists to prevent, and it
 is worse than a slow answer. See rule 4.
+
+**It carries `current_compiler_version`, and `withheld` when there is something to withhold.** A layer whose
+rules have moved is absent from `layers` and named here with the reason — silent to the Person's voice, and
+answerable to whoever asks braintrust about itself. `withheld` is absent rather than empty when nothing is
+being withheld: an empty list would read as a fact about the Persona rather than the absence of one. See
+[an unmeasured quantity takes its most conservative value](#an-unmeasured-quantity-takes-its-most-conservative-value).
 
 *Not decided: the `layer` filter's exact shape, and whether it accepts a `compiled_at` for pinning.*
 

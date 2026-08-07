@@ -16,7 +16,7 @@ import {
   notMeasurable,
   OFF_CORPUS_PROBES,
 } from '../src/compile/selectivity.js';
-import { RETRIEVAL_FLOOR } from '../src/find.js';
+import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 import { fakeDb } from './support/fake-db.js';
 
 /**
@@ -93,10 +93,15 @@ describe('calibrating the gate', () => {
     const result = await calibrateSelectivity({ db, embedder, person: 'p', statements: STATEMENTS });
 
     assert.equal(result.separation, 'overlapping');
-    // Deliberately permissive, and a reversal: the margin version enforced the off-corpus
-    // ceiling here and refused a live persona's own subject. A persona that over-answers
-    // can be challenged by a reader; one that refuses everything is worth less than none.
-    assert.equal(result.floor, RETRIEVAL_FLOOR, 'the measurement is discarded, not enforced');
+    // Discarded rather than enforced, which is the lesson the margin version taught: it
+    // put the threshold at the off-corpus ceiling — a number measured by the instrument
+    // that had just failed — and refused a live persona its own subject. What stands in
+    // its place is a constant measured nowhere, and the cautious one.
+    assert.equal(
+      result.floor,
+      UNMEASURED_RETRIEVAL_FLOOR,
+      'the measurement is discarded, not enforced — and what stands in its place is the cautious value',
+    );
     assert.equal(result.span, null, 'and fit is given no scale it did not earn');
     assert.match(result.note, /did not separate/);
   });
@@ -111,9 +116,30 @@ describe('calibrating the gate', () => {
     });
 
     assert.equal(result.separation, 'not_measurable');
-    assert.equal(result.floor, RETRIEVAL_FLOOR);
+    assert.equal(result.floor, UNMEASURED_RETRIEVAL_FLOOR);
     assert.equal(result.in_low, null);
-    assert.match(result.note, /not a measured value/);
+    assert.match(result.note, /unmeasured default/);
+  });
+
+  /**
+   * The rule this file exists to hold up. An absence of evidence had been read as evidence
+   * of absence: the fallback sat at 0.35 while every floor braintrust had ever measured sat
+   * between 0.44 and 0.52, so the persona that knew least about its own gate was the one
+   * most willing to answer. That is how a persona answered about poaching an egg.
+   */
+  it('falls back above the measured range, so an uncalibrated persona is cautious not credulous', async () => {
+    const { db, embedder } = harness({});
+    const result = await calibrateSelectivity({
+      db,
+      embedder,
+      person: 'p',
+      statements: STATEMENTS.slice(0, MIN_IN_CORPUS - 1),
+    });
+
+    assert.ok(result.floor > 0.52, 'above every floor braintrust has measured');
+    // A constant, never a calculation over what other personas measured — one person's
+    // calibration must not move another person's gate.
+    assert.equal(result.floor, UNMEASURED_RETRIEVAL_FLOOR);
   });
 
   it('never reports a measured outcome without the evidence for one', async () => {

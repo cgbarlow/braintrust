@@ -38,6 +38,7 @@ import {
   type Embedder,
   type QueryGate,
 } from '../src/retrieval/index.js';
+import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeSynthesiser, type FakeOptions } from './support/synthesiser.js';
 
@@ -329,6 +330,34 @@ describe('finding positions, against real Postgres', { skip }, () => {
     // tuned wrong" — which is exactly what the live probe could not tell until this existed.
     assert.equal(answer.nothing_matched!.floor, MATCH_FLOOR);
     assert.ok(answer.nothing_matched!.nearest_similarity! < MATCH_FLOOR);
+  });
+
+  /**
+   * **No second kind of silence.** An uncalibrated persona declines a question a calibrated
+   * one also declines, and neither announces why. The caution lives in the number the gate
+   * uses, never in the shape or the wording of what comes back — a reader must not be able
+   * to tell "braintrust could not measure its own gate" from "they never wrote about this".
+   */
+  it('declines an off-corpus question the same way whether or not its gate was measured', async () => {
+    await compile();
+    const question = 'lunar module descent stage telemetry during the moon landing';
+    const calibrated = await find({ query: question });
+
+    // The same compile, with its measured floor removed — the one thing that differs.
+    await db.query(
+      `update braintrust_compiles set corpus_stats = corpus_stats - 'selectivity'
+        where status = 'current'`,
+    );
+    const uncalibrated = await find({ query: question });
+
+    assert.deepEqual(uncalibrated.positions, []);
+    assert.deepEqual(uncalibrated.passages, []);
+    assert.equal(uncalibrated.nothing_matched!.reason, calibrated.nothing_matched!.reason);
+    assert.equal(uncalibrated.nothing_matched!.say, calibrated.nothing_matched!.say);
+    assert.deepEqual(Object.keys(uncalibrated.nothing_matched!).sort(), Object.keys(calibrated.nothing_matched!).sort());
+
+    // …and the caution is real: the floor it used is the unmeasured one, above the range.
+    assert.equal(uncalibrated.nothing_matched!.floor, UNMEASURED_RETRIEVAL_FLOOR);
   });
 
   it('says the window itself was empty, which reads differently again', async () => {

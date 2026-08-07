@@ -475,6 +475,20 @@ prose, and the prompt that grouped the Positions. Three versions rather than one
 different reasons, and all of them are cheap in a way bumping `notes-1` is not: they re-read Notes that
 already exist rather than re-reading the Corpus.
 
+**The parts say what moved; they do not license rebuilding piecemeal.** A rules change rebuilds the *whole*
+Persona. What the decomposition is for is deciding what a Persona may **serve in the meantime**, and that is
+decided part by part on the read rather than on a clock: a Persona is compared against the running compiler
+when it is loaded, so nobody is served prose built under rules braintrust has since changed while a rebuild
+is pending.
+
+**Prose governed by a part that has moved is absent, not stale.** A number has a conservative direction and
+takes it; a paragraph a model already wrote does not, so the only honest options are to serve it or not to —
+see [an unmeasured quantity takes its most conservative value](./mcp-surface.md#an-unmeasured-quantity-takes-its-most-conservative-value).
+The absence is silent in the Script: a Persona withholding its Reasoning reads exactly like one that never had
+any, and `explain_persona` carries the `withheld` list because that is where questions about braintrust's own
+workings belong. A version braintrust cannot decompose — one written by an older braintrust — reports **every**
+part moved, for the same reason the floor falls back upward.
+
 ---
 
 ## 4. Revisions: show the tension, never assert it
@@ -853,8 +867,9 @@ embedding cost.
   Items. Same status and same honesty as the chunk window and the retrieval floor: a starting point to tune
   against real retrieval results. What is *not* left open is which side of the collapse the truncation sits
   on; only how wide the pool feeding it is.
-- **The retrieval floor a question has to clear**, built at 0.35 cosine similarity. It is the one threshold
-  here that **cannot** be measured against the real Corpus, because it is a property of the embeddings model
-  an operator configures and braintrust declares none. What v1 does instead is make it visible: an empty
-  answer reports the nearest similarity it saw and the floor it had to clear, so the number can be tuned from
-  evidence rather than guessed at twice.
+- **The retrieval floor a question has to clear.** Measured per Persona on every Compile; the number below is
+  only what a Persona that measured none falls back to. It was built at 0.35 — *below* the 0.44–0.52 range
+  every measured floor has landed in, so the Persona that knew least about its gate was the most credulous.
+  It is now a constant **above** that range, because **an unmeasured quantity takes its most conservative
+  value**. An empty answer still reports the nearest similarity it saw and the floor it had to clear, so the
+  number can be tuned from evidence rather than guessed at twice.

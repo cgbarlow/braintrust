@@ -11,13 +11,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BraintrustError } from '../src/errors.js';
+import { COMPILER_VERSION } from '../src/compile/version.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 import { fakeDb } from './support/fake-db.js';
 
 const REASONING = {
   display_name: 'Nate B. Jones',
   compiled_at: new Date('2026-07-31T09:14:22.000Z'),
-  compiler_version: '0.1.0+measured-1',
+  compiler_version: COMPILER_VERSION,
   extractor: 'gpt-5@notes-1',
   layer: 'reasoning',
   basis: 'inferred',
@@ -34,7 +35,7 @@ const REASONING = {
 const VOICE = {
   display_name: 'Nate B. Jones',
   compiled_at: new Date('2026-07-31T09:14:22.000Z'),
-  compiler_version: '0.1.0+measured-1',
+  compiler_version: COMPILER_VERSION,
   extractor: 'gpt-5@notes-1',
   layer: 'voice',
   basis: 'measured',
@@ -128,11 +129,78 @@ describe('loading a persona', () => {
     // Declared on the compile row, never inferred from whatever happens to be configured
     // now — two generations coexist while a prompt upgrade re-reads the corpus.
     assert.equal(payload.extractor, 'gpt-5@notes-1');
-    assert.equal(payload.compiler_version, '0.1.0+measured-1');
+    assert.equal(payload.compiler_version, COMPILER_VERSION);
     // ISO 8601, like every other tool — not the database's own rendering of a timestamp.
     assert.equal(payload.compiled_at, '2026-07-31T09:14:22.000Z');
   });
 
+  it('says what current is, so the version it carries has something to be read against', async () => {
+    const payload = await loadPersona(db(), 'nate-b-jones');
+
+    // A version string alone tells a reader nothing: they cannot tell a persona built
+    // under today's rules from one built under rules braintrust has since replaced.
+    assert.equal(payload.current_compiler_version, COMPILER_VERSION);
+  });
+});
+
+/**
+ * A persona built under rules braintrust has since changed. Prose has no cautious version
+ * of itself, so the paragraphs those rules wrote are absent until a rebuild — and the catch
+ * happens on the read, so it is already true for the reader who triggered it.
+ */
+describe('a persona whose rules have moved under it', () => {
+  const behind = (rows: Record<string, unknown>[]) =>
+    compiledDb(rows.map((row) => ({ ...row, compiler_version: '0.1.0+measured-1' })));
+
+  it('withholds the prose a moved part wrote', async () => {
+    const payload = await explainPersona(behind([VOICE, REASONING, COVERAGE]), 'nate-b-jones');
+
+    assert.ok(!('reasoning' in payload.layers), 'reasoning was written under rules that moved');
+    // …and keeps everything a measurement produced, which has a cautious value instead.
+    assert.ok('voice' in payload.layers);
+    assert.ok('coverage' in payload.layers);
+  });
+
+  it('says which layers it withheld and why, in the receipts rather than in voice', async () => {
+    const payload = await explainPersona(behind([VOICE, REASONING, COVERAGE]), 'nate-b-jones');
+
+    assert.deepEqual(
+      payload.withheld?.map((one) => one.layer),
+      ['reasoning', 'beliefs'],
+    );
+    assert.match(payload.withheld![0]!.reason, /rebuild restores it/);
+  });
+
+  /**
+   * **No second kind of silence.** A cautious absence has to read exactly like a genuine
+   * one: a persona withholding its reasoning must be indistinguishable, in the script, from
+   * one that never had any. Anything else tells a reader about braintrust's internals in
+   * the one place that is supposed to be about the person.
+   */
+  it('reads exactly like a persona that never had that layer', async () => {
+    const withheld = await loadPersona(behind([VOICE, REASONING, COVERAGE]), 'nate-b-jones');
+    const never = await loadPersona(compiledDb([VOICE, COVERAGE]), 'nate-b-jones');
+
+    assert.equal(withheld.speak, never.speak);
+    assert.deepEqual(withheld.receipts, never.receipts);
+    assert.doesNotMatch(withheld.speak, /HOW THEY ARGUE/);
+    // Nothing about versions, rules or rebuilds reaches the prose meant to be spoken.
+    assert.doesNotMatch(withheld.speak, /version|withheld|rebuild|compil/i);
+  });
+
+  it('is served rather than refused, because the cost of refusal lands on the reader', async () => {
+    const payload = await loadPersona(behind([VOICE, REASONING, COVERAGE]), 'nate-b-jones');
+
+    assert.ok(payload.speak.length > 0);
+    assert.equal(payload.subject, 'braintrust model of Nate B. Jones');
+  });
+
+  it('leaves a persona on the current rules whole', async () => {
+    const payload = await explainPersona(compiledDb([VOICE, REASONING, COVERAGE]), 'nate-b-jones');
+
+    assert.ok('reasoning' in payload.layers);
+    assert.equal(payload.withheld, undefined, 'an empty field would read as a fact rather than none');
+  });
 });
 
 describe('explaining a persona', () => {
