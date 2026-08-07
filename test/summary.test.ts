@@ -18,6 +18,7 @@ function report(overrides: Partial<CycleReport> = {}): CycleReport {
     paused: 0,
     blocked: 0,
     rebuild_pending: [],
+    serving_behind: [],
     stopped_early: false,
     corpus: {
       pending: 0,
@@ -277,6 +278,40 @@ describe('the run summary', () => {
       );
       assert.match(summary, /answered again; block cleared/);
       assert.doesNotMatch(summary, /still blocked/);
+    });
+  });
+
+  /**
+   * The scheduled check reaches the one line nobody reads unless something is wrong. A
+   * check whose result never leaves the report is not a check — one persona differed on
+   * part of its compiler version for three days with nothing watching.
+   */
+  describe('a persona still serving on rules that have moved', () => {
+    it('says so, and names who', () => {
+      const summary = summarise(report({ serving_behind: ['ethan-mollick', 'nate-b-jones'] }));
+
+      assert.match(summary, /serving behind the compiler: ethan-mollick, nate-b-jones/);
+      // …and what a reader gets in the meantime, so the line is actionable rather than alarming.
+      assert.match(summary, /tightened gate/);
+      assert.match(summary, /next run retries the rebuild/);
+    });
+
+    it('says nothing at all when the run left nobody behind', () => {
+      assert.doesNotMatch(summarise(report({ serving_behind: [] })), /serving behind/);
+    });
+
+    /**
+     * A run where nothing was due is exactly when a persona left behind by a rules change
+     * goes unnoticed — which is how one differed on part of its compiler version for three
+     * days. The check runs every cycle, and so does the line that reports it.
+     */
+    it('says so even on a run where nothing was due', () => {
+      const idle = summarise(
+        report({ sources: [], notes: undefined, compile: undefined, serving_behind: ['nate-b-jones'] }),
+      );
+
+      assert.match(idle, /nothing was due/);
+      assert.match(idle, /serving behind the compiler: nate-b-jones/);
     });
   });
 });

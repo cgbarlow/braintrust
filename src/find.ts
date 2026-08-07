@@ -37,6 +37,7 @@ import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
 import { vectorLiteral, type Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
+import { movedParts } from './compile/version.js';
 import { UNMEASURED_FIT_SPAN, UNMEASURED_RETRIEVAL_FLOOR } from './unmeasured.js';
 
 /**
@@ -124,9 +125,25 @@ export const RETRIEVAL_FLOOR = FLOOR_OVERRIDE ?? UNMEASURED_RETRIEVAL_FLOOR;
  */
 export const DEFAULT_SPAN = UNMEASURED_FIT_SPAN;
 
-/** The floor in force for one Persona: the override, else what its Compile measured, else the fallback. */
-export function floorFor(measured: number | null): number {
+/**
+ * The floor in force for one Persona: the override, else what its Compile measured, else
+ * the fallback.
+ *
+ * **A floor measured under rules that have since changed is not a measurement any more.**
+ * When the measurement half of the compiler has moved under a Persona, its stored floor
+ * becomes an unmeasured quantity and takes the conservative value — and it does so **on
+ * this read**, for the reader who arrived, rather than when a rebuild eventually catches
+ * up. That is what makes the staleness window zero for anyone actually reading: the catch
+ * happens on the read, not on a clock. See ./unmeasured.ts.
+ *
+ * `version` omitted means *do not ask* — the caller is testing the fallback itself rather
+ * than serving a Persona.
+ */
+export function floorFor(measured: number | null, version?: string | null): number {
   if (FLOOR_OVERRIDE !== null) return FLOOR_OVERRIDE;
+  if (version !== undefined && movedParts(version).includes('measurement')) {
+    return UNMEASURED_RETRIEVAL_FLOOR;
+  }
   return measured ?? UNMEASURED_RETRIEVAL_FLOOR;
 }
 
@@ -279,6 +296,11 @@ type CurrentCompile = {
   measured_floor: number | null;
   /** The gap between the probe groups, which is the scale `fit` grades against. */
   measured_span: number | null;
+  /**
+   * Which rules built this Persona. Read here so the gate can be tightened **on this
+   * read** when they have moved, rather than when a rebuild eventually catches up.
+   */
+  compiler_version: string | null;
 };
 
 export async function findPositions(args: FindArgs, deps: FindDeps): Promise<FindPayload> {
@@ -324,7 +346,7 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // The gate, before anything is ranked. A question that merely lands in this Corpus gets
   // no answer at all — not a weakly-graded one — because the ranking behind a landed
   // question is the Corpus's own centroid rather than anything about what was asked.
-  const floor = floorFor(compile.measured_floor);
+  const floor = floorFor(compile.measured_floor, compile.compiler_version);
   const span = compile.measured_span ?? DEFAULT_SPAN;
   const field = await selectivity(deps.db, vectorLiteral(vector), search);
   const selected = field.top !== null && field.top >= floor;
@@ -401,7 +423,7 @@ async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | un
   >(
     // What this Persona's own Compile measured. Null for anything compiled before the
     // floor was measured, which is what floorFor() falls back for.
-    `select c.id, p.display_name, c.finished_at as compiled_at,
+    `select c.id, p.display_name, c.finished_at as compiled_at, c.compiler_version,
             (c.corpus_stats -> 'selectivity' ->> 'floor') as measured_floor,
             (c.corpus_stats -> 'selectivity' ->> 'span')  as measured_span
        from braintrust_people p

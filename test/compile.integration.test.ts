@@ -24,6 +24,7 @@ import {
   checkCompile,
   compileCorpus,
   compilerVersion,
+  personasBehind,
   gateFacts,
   INFERRED_MARKER,
   STALE_COMPILE_MS,
@@ -561,6 +562,38 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         lines.some((line) => line.includes('rebuilt because the compiler changed, not the corpus')),
         lines.join('\n'),
       );
+    });
+
+    /**
+     * **The scheduled check**, asked after a run rather than before it. The rebuild trigger
+     * is `stale_compiler`; this asserts the run left nobody behind, and it is asked whether
+     * or not anyone is looking — because staleness fixed only for the personas somebody
+     * happens to read is the failure this replaces.
+     */
+    it('reports nobody serving behind the compiler once a run has caught up', async () => {
+      await compile({ embedder: fakeEmbedder() });
+
+      assert.deepEqual(await personasBehind(db, compilerVersion({ revisions: true })), []);
+    });
+
+    it('names a persona left serving on rules that have moved', async () => {
+      await compile({ embedder: fakeEmbedder() });
+      await db.query(
+        `update braintrust_compiles set compiler_version = '0.9.0+measured-4.core-1.positions-2.revisions-1'
+          where status = 'current'`,
+      );
+
+      assert.deepEqual(await personasBehind(db, compilerVersion({ revisions: true })), ['nate']);
+    });
+
+    it('says nothing about a paused persona, because a pause is the user freezing it', async () => {
+      await compile({ embedder: fakeEmbedder() });
+      await db.query(
+        `update braintrust_compiles set compiler_version = 'something-older' where status = 'current'`,
+      );
+      await db.query('update braintrust_people set paused_at = now() where id = $1', [personId]);
+
+      assert.deepEqual(await personasBehind(db, compilerVersion({ revisions: true })), []);
     });
   });
 
