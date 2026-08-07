@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { SPOKEN_DISCLOSURE } from '../src/disclosure.js';
 import {
   isStructuralSkew,
   renderLabel,
@@ -140,12 +141,81 @@ describe('a structural blind spot', () => {
 });
 
 describe('the script', () => {
+/**
+   * **The first line, and the only one not addressed to the model.** A model recites the
+   * top of the block it was handed, verbatim, whatever is there — measured across six
+   * payload variants and ~130 replies, with both the Hermes profile and the tool
+   * description independently telling it to. When that line was an instruction, an
+   * instruction is what a reader heard.
+   */
+  it('opens with the disclosure itself, unquoted, as the literal first line', () => {
+    const { speak } = renderScript(input());
+
+    assert.equal(speak.split('\n')[0], SPOKEN_DISCLOSURE);
+    // Unquoted: a line in quotation marks is a line a model reports rather than says.
+    assert.doesNotMatch(speak.split('\n')[0]!, /["'`]/);
+  });
+
+  it('says the same sentence for every persona and every session', () => {
+    const nate = renderScript(input());
+    const ethan = renderScript(input({ subject: 'braintrust model of Ethan Mollick' }));
+    const skewed = renderScript(
+      input({
+        bySource: {
+          'youtube:UC0C': {
+            platform: 'youtube',
+            retrieved: 40,
+            skipped_paywall: 0,
+            failed: 0,
+            backfill_complete: true,
+          },
+          'substack:nate': {
+            platform: 'substack',
+            retrieved: 1,
+            skipped_paywall: 23,
+            failed: 0,
+            backfill_complete: true,
+          },
+        },
+      }),
+    );
+
+    for (const { speak } of [nate, ethan, skewed]) {
+      assert.equal(speak.split('\n')[0], SPOKEN_DISCLOSURE);
+    }
+    // Rendered fresh on every call and identical every time — nothing about the session,
+    // the corpus or the person reaches it.
+    assert.equal(renderScript(input()).speak, nate.speak);
+  });
+
+  it('puts everything addressed to the model below it', () => {
+    const { speak } = renderScript(input());
+    const [first, ...rest] = speak.split('\n');
+
+    assert.equal(first, SPOKEN_DISCLOSURE);
+    // The instruction that used to be the first line is still there — one line down.
+    assert.match(rest.join('\n'), /You are a braintrust model of Nate B\. Jones\. You are not that person\./);
+    assert.doesNotMatch(first!, /You are|Open your|Say /);
+  });
+
+  /**
+   * The two-field split was the worst of the six variants measured, for the same reason a
+   * first-line instruction fails: a model reads the top of what it is given, and a second
+   * field is not the top of anything.
+   */
+  it('is one field, because splitting spoken from instructing was measured and rejected', () => {
+    const rendered = renderScript(input());
+
+    assert.deepEqual(Object.keys(rendered).sort(), ['receipts', 'speak']);
+    assert.ok(!('say' in rendered) && !('instruct' in rendered));
+  });
+
   it('discloses once and says not to repeat it', () => {
     const { speak } = renderScript(input());
 
     assert.match(speak, /braintrust model of Nate B\. Jones/);
     assert.match(speak, /not the person/);
-    assert.match(speak, /Say it once\. Do not say it again\./);
+    assert.match(speak, /Say both once\. Do not say them again\./);
   });
 
   it('leads with scope, not scale, when a source is majority unread', () => {

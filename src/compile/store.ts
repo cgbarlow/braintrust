@@ -12,6 +12,8 @@
  */
 
 import type { Db, TransactionalDb } from '../db.js';
+import { subjectFor } from '../disclosure.js';
+import { renderScript, scriptInputFrom } from '../script.js';
 import type { CoverageEvidence, SourceCoverage } from './coverage.js';
 import { VOICE_MIN_WORDS } from './voice.js';
 import type { GateFacts, GateLayer, ItemCounts } from './gate.js';
@@ -436,6 +438,11 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     [compileId],
   );
 
+  const person = await db.query<{ display_name: string }>(
+    'select display_name from braintrust_people where id = $1',
+    [personId],
+  );
+
   const counts = items.rows[0]!;
   return {
     layers: layers.rows.map((row) => ({
@@ -458,6 +465,24 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     positions: positions.rows.map((row) => ({ slug: row.slug, citations: Number(row.citations) })),
     previous_positions: Number(previous.rows[0]!.count),
     superseded_positions: Number(superseded.rows[0]!.count),
+    // Rendered through the same path a reader gets, so the gate checks the thing that
+    // ships rather than a lookalike built for checking.
+    speak: renderScript(
+      scriptInputFrom(
+        subjectFor(person.rows[0]?.display_name ?? ''),
+        Object.fromEntries(
+          layers.rows.map((row) => [
+            row.layer,
+            {
+              basis: row.basis,
+              descriptive: row.descriptive_md,
+              ...(row.generative_md !== null ? { generative: row.generative_md } : {}),
+              evidence: row.evidence,
+            },
+          ]),
+        ),
+      ),
+    ).speak,
   };
 }
 

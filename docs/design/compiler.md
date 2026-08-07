@@ -620,6 +620,7 @@ the way the compiler fails:
 | `coverage_reconciles` | Coverage counts match `braintrust_items` |
 | `positions_are_cited` | every Position resolves to at least one real citation |
 | `positions_have_not_collapsed` | the Position count is not a collapse against the previous Compile |
+| `speak_opens_with_disclosure` | the first line a reader hears is the disclosure, word for word, and not an instruction addressed to the model |
 | `revisions_have_not_swept` | no more than half the Positions were superseded on this rebuild |
 
 **The gate is a list, not a function with a clause per rule.** Every check is a named entry carrying the
