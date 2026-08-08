@@ -172,3 +172,24 @@ _Avoid_: contested, conflicting
 **Drifting**:
 Emphasis has moved between two Positions without either contradicting the other.
 _Avoid_: trending, evolving
+
+### braintrust checking itself
+
+**Interrogation**:
+braintrust asking a model holding a Persona — and nothing to look anything up with — whether the guarantees
+braintrust makes about that Persona still hold. What a Persona **does**, as distinct from what a Compile
+**is**, which is the publish gate's question. Never blocks anything: it is one live call to a synthesiser
+that is not reproducible, so it is evidence rather than proof.
+_Avoid_: eval, test, audit, health check
+
+**Assertion**:
+One thing an Interrogation asks. Four of them, three about the compiler and one about a Person. Distinct
+from a **publication-blocking check**, which is structural, cheap, runs before anything serves, and needs no
+audience at all.
+_Avoid_: check, rule, assertion test
+
+**Fault**:
+A live failure braintrust has found in itself and **cannot repair** — one that only a code change clears.
+That is what distinguishes it from staleness, which braintrust fixes by rebuilding and tells nobody about. A
+Fault's audience is the maintainer, so it becomes one deduplicated issue on the repo.
+_Avoid_: error, alert, incident, warning

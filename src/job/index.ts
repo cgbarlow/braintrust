@@ -18,6 +18,13 @@ import { createSynthesiser, SYNTHESIS_TIMEOUT_MS } from '../compile/index.js';
 import { ConfigError, loadConfig, type Config } from '../config.js';
 import { createDb, type PostgresDb } from '../db.js';
 import { runCycle, summarise } from '../ingest/cycle.js';
+import {
+  createInterrogator,
+  createIssueFiler,
+  loggingIssueFiler,
+  runInterrogation,
+  summariseInterrogation,
+} from '../interrogate/index.js';
 import { createFetcher, type Fetcher } from '../net/fetch.js';
 import { SERVER_NAME, SERVER_VERSION } from '../mcp.js';
 import { createExtractor, EXTRACTOR_TIMEOUT_MS } from '../notes/index.js';
@@ -73,12 +80,64 @@ async function main(): Promise<void> {
     });
 
     console.log(summarise(report));
+
+    await interrogate(db, config, fetcher, () => stopping);
+
     console.log(
       `${SERVER_NAME}: run finished in ` +
         `${Math.round((Date.parse(report.finished) - Date.parse(report.started)) / 1000)}s.`,
     );
   } finally {
     await db.close();
+  }
+}
+
+/**
+ * braintrust asks itself the four questions it cannot answer by reading its own code.
+ *
+ * **The job's last act, not its first.** A Persona the cycle has just rebuilt is the one
+ * worth asking about, and the interrogation is the only part of a run whose failure changes
+ * nothing — so it belongs after the work that would have been lost.
+ *
+ * **It never fails the run.** An unreachable endpoint is not evidence that a persona is
+ * inventing claims, and a cron job that goes red for it would turn the check braintrust needs
+ * most into the one an operator learns to ignore. The ingest already happened; the
+ * interrogation stays due and the next run asks again.
+ *
+ * Skipped when the run was cut short, because an assertion asked against a fleet that is
+ * half rebuilt is asking about a state nobody serves.
+ */
+async function interrogate(
+  db: PostgresDb,
+  config: Config,
+  fetcher: Fetcher,
+  stopping: () => boolean,
+): Promise<void> {
+  if (stopping()) return;
+
+  const issues = config.issues
+    ? createIssueFiler(config.issues, fetcher)
+    : loggingIssueFiler((line) => console.error(line));
+
+  try {
+    const report = await runInterrogation({
+      db,
+      interrogator: createInterrogator(
+        config.extractor,
+        createFetcher({ timeoutMs: SYNTHESIS_TIMEOUT_MS }),
+      ),
+      issues,
+      log: (line) => console.log(line),
+    });
+
+    const summary = summariseInterrogation(report);
+    if (summary) console.log(summary);
+  } catch (error) {
+    console.error(
+      `${SERVER_NAME}: the interrogation did not complete — ${
+        error instanceof Error ? error.message : String(error)
+      }\n  Nothing was concluded about any persona, and every assertion stays due.`,
+    );
   }
 }
 

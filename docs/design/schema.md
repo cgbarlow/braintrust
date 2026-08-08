@@ -576,6 +576,49 @@ claim a complete corpus.
 through a ~395-item re-read would be a persona built from a quarter of the corpus. Waiting keeps the
 previous persona live for the duration.
 
+## Two tables that are about braintrust, not about a person
+
+```sql
+create table braintrust_interrogations (
+  id                uuid primary key default gen_random_uuid(),
+  assertion         text not null,
+  person_slug       text,             -- null for an assertion about the compiler
+  subject_slug      text not null,
+  compiler_version  text not null,
+  interrogator      text not null,
+  passed            boolean not null,
+  detail            text not null,
+  ran_at            timestamptz not null default now()
+);
+
+create table braintrust_faults (
+  fault_key        text primary key, -- assertion plus subject
+  assertion        text not null,
+  person_slug      text,
+  detail           text not null,
+  first_failed_at  timestamptz not null default now(),
+  last_failed_at   timestamptz not null default now(),
+  reported_at      timestamptz,
+  reported_issue   text,
+  escalated_at     timestamptz,
+  escalated_issue  text
+);
+```
+
+**Their separation from everything above is the guarantee, not an accident of layout.** A failing
+interrogation keeps a Persona serving unchanged (compiler.md §8), and that is checkable rather than merely
+intended because the interrogation writes here and nowhere else — never a `status`, a layer or a version.
+
+**`fault_key` is the deduplication.** A fault already open opens no second issue however many runs re-observe
+it, without searching an issue tracker to find out. `first_failed_at` is never moved once set: it is the clock
+the one-day limit runs on, and a fault that reset it every run would never escalate. A row is **deleted** when
+its assertion passes — cleared by a pass, never by an issue being closed.
+
+**Neither table has a foreign key to `braintrust_people`.** A compiler fault is about braintrust and outlives
+any particular person, and a fault about somebody since unfollowed is still a fault worth reading. `person_slug`
+being null is a fact rather than a gap: it means the assertion is a property of the compiler, so it runs once
+per compiler version rather than once per persona.
+
 ## House-style requirements
 
 Not optional if braintrust is to compose cleanly with a user's OB1:

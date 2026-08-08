@@ -11,6 +11,8 @@ import { COMPILER_VERSION, retiredLayers, withheldLayers } from './compile/versi
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
+import { withdrawnLayers } from './interrogate/schedule.js';
+import { escalatedFaults } from './interrogate/store.js';
 import type { Receipts } from './script.js';
 import { renderScript, scriptInputFrom } from './script.js';
 
@@ -314,9 +316,20 @@ async function currentOrFail(db: Db, slug: string) {
  * looking anything up, and a Persona compiled before it was retired still has the row. It
  * never reaches a payload again from the moment this deploys, whatever that row says and
  * whenever that Persona was last built. See ./compile/version.ts.
+ *
+ * **And a third way a layer can be missing: braintrust judged itself and lost.** A Persona
+ * that fails its interrogation keeps serving *unchanged* — no warning, nothing withdrawn,
+ * because one live call to a non-reproducible synthesiser is evidence rather than proof. But
+ * a day is the outer limit. Past it the affected layer arrives here and goes absent, which is
+ * the one thing on this map a reader reliably trips over, and a second issue opens for the
+ * maintainer who has not shipped a fix. Absent rather than flagged, for the same reason
+ * withholding is: there is no second kind of silence. See ./interrogate/schedule.ts.
  */
-function layersOf(loaded: Awaited<ReturnType<typeof loadCurrent>> & {}): Record<string, LoadedLayerPayload> {
-  const withheld = new Set(withheldLayers(loaded.compiler_version));
+function layersOf(
+  loaded: Awaited<ReturnType<typeof loadCurrent>> & {},
+  withdrawn: string[] = [],
+): Record<string, LoadedLayerPayload> {
+  const withheld = new Set([...withheldLayers(loaded.compiler_version), ...withdrawn]);
   const retired = new Set(retiredLayers(loaded.layers.map((layer) => layer.layer)));
   const layers: Record<string, LoadedLayerPayload> = {};
 
@@ -347,7 +360,8 @@ export async function loadPersona(db: Db, person: string): Promise<LoadedPersona
   const slug = person.trim();
   const loaded = await currentOrFail(db, slug);
   const subject = subjectFor(loaded.display_name);
-  const { speak, receipts } = renderScript(scriptInputFrom(subject, layersOf(loaded)));
+  const withdrawn = withdrawnLayers(await escalatedFaults(db), slug);
+  const { speak, receipts } = renderScript(scriptInputFrom(subject, layersOf(loaded, withdrawn)));
 
   return {
     subject,
@@ -373,6 +387,7 @@ export async function explainPersona(db: Db, person: string): Promise<ExplainedP
   const loaded = await currentOrFail(db, slug);
 
   const withheld = withheldLayers(loaded.compiler_version);
+  const withdrawn = withdrawnLayers(await escalatedFaults(db), slug);
 
   return {
     subject: subjectFor(loaded.display_name),
@@ -380,16 +395,32 @@ export async function explainPersona(db: Db, person: string): Promise<ExplainedP
     compiler_version: loaded.compiler_version,
     current_compiler_version: COMPILER_VERSION,
     extractor: loaded.extractor,
-    layers: layersOf(loaded),
-    ...(withheld.length > 0
+    layers: layersOf(loaded, withdrawn),
+    ...(withheld.length > 0 || withdrawn.length > 0
       ? {
-          withheld: withheld.map((layer) => ({
-            layer,
-            reason:
-              'The rules that wrote this layer have changed since it was compiled. Prose has ' +
-              'no cautious version of itself, so braintrust withholds it rather than serving ' +
-              'text built under rules it no longer follows. A rebuild restores it.',
-          })),
+          withheld: [
+            ...withheld.map((layer) => ({
+              layer,
+              reason:
+                'The rules that wrote this layer have changed since it was compiled. Prose has ' +
+                'no cautious version of itself, so braintrust withholds it rather than serving ' +
+                'text built under rules it no longer follows. A rebuild restores it.',
+            })),
+            // Named here and nowhere else, which is the whole arrangement: the absence is
+            // silent to a reader and explicable to anyone who asks braintrust about itself.
+            ...withdrawn
+              .filter((layer) => !withheld.includes(layer))
+              .map((layer) => ({
+                layer,
+                reason:
+                  'braintrust interrogated itself, failed, and has been failing for more than a ' +
+                  'day. The fault is in the compiler rather than in this persona, so nothing was ' +
+                  'rebuilt and nothing else changed — but a day is the outer limit, and past it ' +
+                  'the affected part goes absent rather than being served under a claim ' +
+                  'braintrust can no longer make. A passing interrogation restores it with no ' +
+                  'rebuild.',
+              })),
+          ],
         }
       : {}),
   };

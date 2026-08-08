@@ -24,6 +24,22 @@ export type ExtractorConfig = {
   apiKey?: string | undefined;
 };
 
+/**
+ * Where braintrust files a fault only a person can clear.
+ *
+ * **Optional, and its absence is loud rather than fatal.** braintrust runs unattended; making
+ * this required would stop a deployment from starting over a channel it may never need. What
+ * it must not do is fail quietly, so an unconfigured deployment prints the whole issue to the
+ * job log on every run until somebody either configures a tracker or ships the fix. See
+ * ./interrogate/issues.ts.
+ */
+export type IssuesConfig = {
+  /** `owner/repo` on GitHub. */
+  repo: string;
+  /** A token with `issues: write` on that repo. */
+  token: string;
+};
+
 export type Config = {
   /** Supabase session pooler, port 5432. Not PostgREST. */
   databaseUrl: string;
@@ -31,6 +47,8 @@ export type Config = {
   mcpKey: string;
   embeddings: EmbeddingsConfig;
   extractor: ExtractorConfig;
+  /** Absent when nobody said where a fault should go. */
+  issues?: IssuesConfig | undefined;
   port: number;
 };
 
@@ -125,6 +143,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadOp
       model: env.BRAINTRUST_EXTRACTOR_MODEL!.trim(),
       apiKey: env.BRAINTRUST_EXTRACTOR_API_KEY?.trim() || undefined,
     },
+    // Both or neither. A repo with no token cannot file and a token with no repo has
+    // nowhere to file to, and half a channel that looks configured is worse than none.
+    issues:
+      env.BRAINTRUST_ISSUES_REPO?.trim() && env.BRAINTRUST_ISSUES_TOKEN?.trim()
+        ? {
+            repo: env.BRAINTRUST_ISSUES_REPO.trim(),
+            token: env.BRAINTRUST_ISSUES_TOKEN.trim(),
+          }
+        : undefined,
     port,
   };
 }

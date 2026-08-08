@@ -934,6 +934,66 @@ embedding cost.
 
 ---
 
+## 8. braintrust interrogates itself, and files the issue
+
+[#171](https://github.com/cgbarlow/braintrust/issues/171), [#153](https://github.com/cgbarlow/braintrust/issues/153)
+
+The gate (§5) checks what a Compile **is**. This checks what a Persona **does** once a model is holding it —
+and the central guarantee of the whole design is one of those: *a persona with no way to look anything up
+cannot produce that person's distinctive claims.* No amount of reading braintrust's own code settles it,
+because the thing being asserted is about a third party.
+
+**The split that decides everything here is a fault braintrust can repair versus a fault only a person can.**
+A Persona behind the compiler is the first kind — it is rebuilt and nobody needs telling. A Persona just
+shown to be inventing claims is the second: the fault is in the compiler, equal across the fleet, and nothing
+braintrust can do on its own clears it.
+
+### The four assertions
+
+| Assertion | Scope | Withdrawn if unrepaired |
+|---|---|---|
+| `the_model_cannot_fake_this_individual` | persona | `reasoning` |
+| `the_first_reply_carries_the_disclosure` | compiler | — |
+| `an_empty_answer_is_admitted_and_not_filled` | compiler | `reasoning` |
+| `a_persona_that_cannot_reach_the_record_says_so` | compiler | `reasoning` |
+
+**Three of the four are properties of the compiler rather than of the person**, so they run once per compiler
+version against one subject rather than once per Persona in the fleet — *whoever the base model knows best*,
+stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. Only *can the
+model fake this individual* is a fact about a person, and it runs per compile.
+
+**The schedule is compiler change plus a weekly sweep.** The version arm asks whether braintrust's own change
+broke something; the sweep exists because the synthesiser is a third party that moves with no version of
+braintrust's changing at all. The persona-scoped assertion has a **third trigger the other three do not: a
+rebuild** — it is judged against the claims braintrust holds for somebody, and a Compile changes those.
+
+**The judge is a model too**, and that is open — [#155](https://github.com/cgbarlow/braintrust/issues/155).
+One of the four needs no judge (the disclosure is a string comparison, never a regex), and the three that do
+state their rubric as a single yes/no about a reply that is kept on the record.
+
+### What a failure does, and does not do
+
+**A failing interrogation keeps the Persona serving unchanged.** One live call to a synthesiser that
+`temperature: 0` does not pin down is evidence rather than proof, and the fault is not this Persona's. So
+nothing is rebuilt, nothing is withdrawn, and **no warning appears in the payload** — that was rejected as a
+permanent piece of furniture bought for a transient condition, the same trade §6 already declined.
+
+**"Loudly" means a deduplicated issue on this repo.** braintrust is unattended but not unmaintained, and a
+fault only a code change clears has the maintainer as its audience — not an operator, not a dashboard, and
+not the reader. The fault row *is* the deduplication: a fault already open opens no second issue, however
+many runs re-observe it, and it clears on a **pass** rather than on the issue being closed.
+
+**A day is the outer limit**, measured in time rather than attempts because a job that stops running stops
+counting attempts. Past it, the affected layer goes **absent** from what is served — silently, exactly like a
+layer withheld for a rules change, because there is no second kind of silence — and a second issue opens. A
+passing interrogation restores it with no rebuild.
+
+**Nothing in this section writes to a Compile, a layer or a version.** That is what makes *keeps serving
+unchanged* checkable rather than merely intended: the interrogation has two tables of its own and touches
+nothing else.
+
+---
+
 ## Accepted costs
 
 | Cost | Where it comes from |
@@ -950,6 +1010,9 @@ embedding cost.
 | **Two duplicates each saying half of something are not combined into a better paragraph.** The merge selects the clearest wording rather than composing a new one, so the clearer half wins whole. That is the price of no step of a Compile rewording a Persona's own output. | §2 |
 | **Voice exemplars will never be short-form**, even for someone who is 95% short-form. Coverage states the population it was measured over, so the omission is named rather than hidden. | §2 |
 | **A genuinely intense week of real work grades `moderate`** until the person returns to the subject. The Position is served with its span visible rather than hidden. | §2 |
+| **braintrust knowingly serves a Persona it has judged to be inventing claims** until a human ships a compiler change. The alternative — withdrawing a working Persona on one non-reproducible model call — costs a reader who did nothing wrong. The one-day limit is what stops it being permanent. | §8 |
+| **A maintainer who closes the first issue without shipping a fix is never told again by the opening arm.** braintrust's ledger clears on a passing assertion, not on an issue being closed. Only the day-mark escalation speaks after that. | §8 |
+| **The assertion closest to what a reader hears is the one whose failure they never see.** A disclosure fault escalates to a second issue and nothing else, because the disclosure is the one sentence that must always ship and there is nothing to withdraw. | §8 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
 | **About a fifth of what the extractor proposes is thrown away**, measured at 291 of 1,093 on the first real corpus. 87 of those differ from the body only in punctuation and case and are dropped anyway; the rest quote words that are not there. Stated rather than engineered around: the alternative is a Persona citing a model. | §1 |
