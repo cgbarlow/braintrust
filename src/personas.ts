@@ -7,7 +7,7 @@
  */
 
 import { loadCurrent, personExists } from './compile/store.js';
-import { COMPILER_VERSION, withheldLayers } from './compile/version.js';
+import { COMPILER_VERSION, retiredLayers, withheldLayers } from './compile/version.js';
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
@@ -230,9 +230,14 @@ export type LoadedLayerPayload = {
  * What `braintrust_load_persona` returns: a Script, and the few scalars that cannot be
  * spoken.
  *
- * The four layers are **not** here. They are not deleted — `braintrust_explain_persona`
- * returns them whole and verbatim, one visible call away — but a client is no longer handed
+ * The layers are **not** here. They are not deleted — `braintrust_explain_persona` returns
+ * them whole and verbatim, one visible call away — but a client is no longer handed
  * materials and trusted to speak them well. See docs/design/mcp-surface.md §2.
+ *
+ * **And nothing that survives to this payload states a conclusion.** The Script is a voice,
+ * some authored argument habits and what braintrust has not read; the Receipts are scalars.
+ * A model handed this and asked what someone thinks has nothing to answer from and has to
+ * go and look. That is the whole of what retiring the Beliefs layer bought.
  */
 export type LoadedPersonaPayload = {
   subject: string;
@@ -302,13 +307,21 @@ async function currentOrFail(db: Db, slug: string) {
  * **The absence is silent in the Script and named in the receipts.** A Persona missing its
  * Reasoning reads exactly like one that never had it — no second kind of silence — and the
  * question *why* belongs where questions about braintrust's own workings belong.
+ *
+ * **A retired layer is dropped here too, and it is not the same thing.** Withholding waits
+ * for a rebuild; retirement does not wait for anything. Beliefs is the case that made the
+ * distinction load-bearing: it was a layer of conclusions a model could answer from without
+ * looking anything up, and a Persona compiled before it was retired still has the row. It
+ * never reaches a payload again from the moment this deploys, whatever that row says and
+ * whenever that Persona was last built. See ./compile/version.ts.
  */
 function layersOf(loaded: Awaited<ReturnType<typeof loadCurrent>> & {}): Record<string, LoadedLayerPayload> {
   const withheld = new Set(withheldLayers(loaded.compiler_version));
+  const retired = new Set(retiredLayers(loaded.layers.map((layer) => layer.layer)));
   const layers: Record<string, LoadedLayerPayload> = {};
 
   for (const layer of loaded.layers) {
-    if (withheld.has(layer.layer)) continue;
+    if (retired.has(layer.layer) || withheld.has(layer.layer)) continue;
     layers[layer.layer] = {
       basis: layer.basis,
       descriptive: layer.descriptive_md,

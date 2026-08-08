@@ -714,7 +714,7 @@ export type WritableRelation = {
 };
 
 export type WritableLayer = {
-  layer: 'voice' | 'reasoning' | 'beliefs' | 'coverage';
+  layer: 'voice' | 'reasoning' | 'coverage';
   basis: 'measured' | 'inferred';
   descriptive_md: string;
   generative_md?: string | undefined;

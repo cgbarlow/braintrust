@@ -13,7 +13,7 @@ independent of the evidence behind it and therefore cannot drift from it.
   compiler. There is deliberately nowhere to write one.
 - **`held_since` is recomputed every time**, which is the point — a backfill that finds older evidence moves
   it earlier rather than leaving a stale value behind.
-- **This only stays affordable while the compiled core stays bounded.** Voice, reasoning, beliefs and
+- **This only stays affordable while the compiled core stays bounded.** Voice, reasoning and
   coverage converge as the corpus grows; positions grow and are retrieved rather than compiled. If the core
   ever starts growing with the corpus, full regeneration stops being cheap and this decision has to be
   revisited rather than quietly strained.

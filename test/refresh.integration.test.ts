@@ -140,12 +140,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
 
       // And it is the persona a client would now be served, not a report about one.
       const persona = await explainPersona(db, NATE);
-      assert.deepEqual(Object.keys(persona.layers).sort(), [
-        'beliefs',
-        'coverage',
-        'reasoning',
-        'voice',
-      ]);
+      assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'reasoning', 'voice']);
     });
 
     it('rebuilds nothing when nothing has arrived that the persona has not read', async () => {

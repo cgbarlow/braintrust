@@ -174,7 +174,7 @@ describe('the run summary', () => {
           compiled: [],
           waiting: [],
           failed: [],
-          rejected: [{ person: 'nate-b-jones', reason: 'beliefs carried no prose' }],
+          rejected: [{ person: 'nate-b-jones', reason: 'reasoning carried no prose' }],
         },
       }),
     );

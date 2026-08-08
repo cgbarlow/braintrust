@@ -15,7 +15,6 @@
 import type {
   ChosenHabit,
   ClusteredPosition,
-  InferredKind,
   JudgedPair,
   MergeGroup,
   MergeStage,
@@ -25,7 +24,7 @@ import type {
 } from '../../src/compile/synthesis.js';
 
 export type FakeCall = {
-  kind: InferredKind | 'positions' | 'revisions' | 'habits';
+  kind: MergeStage | 'revisions' | 'habits';
   mode: SynthesisMode;
   digest: string;
 };
@@ -38,7 +37,7 @@ export type FakeOptions = {
   habits?: string;
   judge?: string;
   /** Replaces the default answer. Given the ids the digest actually carried. */
-  entriesFor?: (kind: InferredKind, items: string[]) => SynthesisedEntry[];
+  entriesFor?: (items: string[]) => SynthesisedEntry[];
   /** Replaces the default grouping. Given the claim refs the digest actually carried. */
   positionsFor?: (claims: string[]) => ClusteredPosition[];
   /** Replaces the default menu choice. Given the ids the digest actually carried. */
@@ -134,22 +133,25 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
       ];
     },
 
-    async synthesise(kind, digest): Promise<SynthesisedEntry[]> {
-      calls.push({ kind, mode: 'pass', digest });
+    async synthesise(digest): Promise<SynthesisedEntry[]> {
+      calls.push({ kind: 'through_lines', mode: 'pass', digest });
       if (options.throws) throw options.throws;
 
       const items = idsFromDigest(digest);
-      if (options.entriesFor) return options.entriesFor(kind, items);
+      if (options.entriesFor) return options.entriesFor(items);
 
+      // The same two convictions from every reading, which is what a person who holds
+      // something consistently looks like — so the survives-two-readings rule has something
+      // to keep. A test that wants an entry seen once asks for one.
       return [
         {
-          label: kind === 'reasoning' ? 'Names the constraint first' : 'The constraint is never speed',
-          body: `Two or three sentences about ${kind}, in braintrust's voice rather than a quote.`,
+          label: 'The constraint is never speed',
+          body: "Two or three sentences, in braintrust's voice rather than a quote.",
           items,
         },
         {
-          label: kind === 'reasoning' ? 'Argues from the counter-case' : 'Judgement is the scarce thing',
-          body: 'A second entry, so a layer is never one heading long.',
+          label: 'Judgement is the scarce thing',
+          body: 'A second entry, so an answer is never one conviction long.',
           items: items.slice(0, 1),
         },
       ];

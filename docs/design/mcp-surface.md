@@ -157,7 +157,7 @@ them whole and verbatim. See [What this map corrected](#what-this-map-corrected)
 
 #### What is in the Script
 
-Four sections, in this order. **`beliefs` is not among them.**
+Four sections, in this order. **Not one of them states a conclusion.**
 
 | Section | Rendered from |
 |---|---|
@@ -166,12 +166,19 @@ Four sections, in this order. **`beliefs` is not among them.**
 | How they argue | `reasoning` **entry labels** |
 | What braintrust has not read | `coverage.evidence.by_source` |
 
-**`beliefs` is excluded, and `reasoning` is not** ([#113](https://github.com/cgbarlow/braintrust/issues/113)).
-They are different kinds of thing. A Belief is a **claim** — which `find_positions` already returns dated and
-cited — so a standing uncited copy of it buys nothing retrieval does not buy better, and it drags every answer
-toward the one subject the Corpus covers. Reasoning is **disposition**: true of every sentence the way Voice
-is, applicable to a question no thesis covers, and the one thing a client cannot go and fetch, because it would
-have to already suspect the answer to know to ask.
+**`beliefs` was excluded from the Script, and `reasoning` was not**
+([#113](https://github.com/cgbarlow/braintrust/issues/113)). They are different kinds of thing. A conviction is
+a **claim** — which `find_positions` already returns dated and cited — so a standing uncited copy of it buys
+nothing retrieval does not buy better, and it drags every answer toward the one subject the Corpus covers.
+Reasoning is **disposition**: true of every sentence the way Voice is, applicable to a question no thesis
+covers, and the one thing a client cannot go and fetch, because it would have to already suspect the answer to
+know to ask.
+
+**And then the layer itself went** ([#169](https://github.com/cgbarlow/braintrust/issues/169)). Keeping it out
+of the Script left it in `explain_persona`, which is a payload — so the conclusions were still handed over
+before any question was asked, one call away. They are not compiled any more. What a Person holds is a
+**Through-line**, returned by `find_positions` beside claims that can be cited, and a Compile that finds none
+publishes normally.
 
 The consequence is a rule the Script relies on rather than merely states: **a Persona holds no standing
 Positions, so it cannot assert what someone thinks without retrieving it.** That is enforced by the shape of
@@ -830,7 +837,7 @@ it. **Whether a Persona should reach for recency unprompted is not decided here*
 
 **`(person, layer?)`**
 
-**Today's `load_persona` payload, verbatim.** All four layers, `descriptive` and `generative` and `evidence`,
+**Today's `load_persona` payload, verbatim.** Every compiled layer, `descriptive` and `generative` and `evidence`,
 `basis` on each, the measured Voice table with its patterns and exemplars, Item ids, the per-Source Coverage
 breakdown. **Nothing is reformatted for the occasion and nothing is summarised** — checkability is preserved by
 being *the same bytes*, one call away.

@@ -176,7 +176,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     return rows[0]?.id;
   }
 
-  it('builds all four core layers and promotes them', async () => {
+  it('builds every core layer and promotes them', async () => {
     const report = await compile();
 
     assert.deepEqual(report.compiled, ['nate']);
@@ -186,20 +186,19 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     const persona = await explainPersona(db, 'nate');
     assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
-    assert.deepEqual(Object.keys(persona.layers).sort(), ['beliefs', 'coverage', 'reasoning', 'voice']);
+    assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'reasoning', 'voice']);
     assert.equal(persona.layers.voice!.basis, 'measured');
     assert.equal(persona.layers.coverage!.basis, 'measured');
     assert.equal(persona.layers.reasoning!.basis, 'inferred');
-    assert.equal(persona.layers.beliefs!.basis, 'inferred');
     // The compile declares the generation it read, on the row.
     assert.equal(persona.extractor, GENERATION);
   });
 
-  it('serves the inferred layers with the marker in the prose, not only the basis field', async () => {
+  it('serves the inferred layer with the marker in the prose, not only the basis field', async () => {
     await compile();
     const persona = await explainPersona(db, 'nate');
 
-    for (const layer of ['reasoning', 'beliefs']) {
+    for (const layer of ['reasoning']) {
       // The field is lost the moment a client pastes the markdown into a system prompt.
       // The first line is not.
       assert.match(persona.layers[layer]!.descriptive, INFERRED_MARKER);
@@ -212,14 +211,14 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     await compile({ synthesiser });
 
-    // Three questions, one pass each: a rebuild costs a handful of calls over notes
-    // rather than a re-read of the corpus, which is the whole economics of a daily
-    // compile.
+    // **Not one call writes a layer of conclusions.** The habits are a selection off an
+    // authored menu and the positions carry their own citations — and the third question,
+    // through-lines, is not asked at all here: four items cannot be read twice, so this
+    // persona holds none and publishes anyway. A rebuild still costs a handful of calls
+    // over notes rather than a re-read of the corpus.
     assert.deepEqual(
       synthesiser.calls.map((call) => `${call.kind}:${call.mode}`),
-      // `habits` rather than `reasoning`: the argument-habits block is now chosen from an
-      // authored menu, so what the model is asked for is a selection and not a paragraph.
-      ['habits:pass', 'beliefs:pass', 'positions:pass'],
+      ['habits:pass', 'positions:pass'],
     );
 
     // Every item's note is in the core digests, and none of the item bodies are.
@@ -330,7 +329,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
   it('lets on delete cascade do all the cleanup, with no reconciliation step', async () => {
     await compile();
     const compileId = await currentCompileId();
-    assert.equal(await count('select count(*) from braintrust_persona_layers where compile_id = $1', [compileId!]), 4);
+    assert.equal(await count('select count(*) from braintrust_persona_layers where compile_id = $1', [compileId!]), 3);
 
     await db.query('delete from braintrust_compiles where id = $1', [compileId!]);
 
@@ -641,19 +640,60 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     const before = await currentCompileId();
 
     await addItem('post-new', body(9), '2025-09-01');
-    const report = await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
+    const report = await compile({ synthesiser: fakeSynthesiser({ habitsFor: () => [] }) });
 
     assert.deepEqual(report.compiled, []);
     assert.equal(report.rejected[0]!.person, 'nate');
-    // Beliefs alone: a synthesiser that returns nothing empties the layer it writes, and
-    // reasoning is no longer one of them — its lines come off the authored menu.
-    assert.match(report.rejected[0]!.reason, /beliefs carried nothing to serve/);
+    // Reasoning alone. It is the last core layer a model has a hand in, so it is the only
+    // one a synthesiser returning nothing can empty — beliefs used to be the other, and a
+    // compile is no longer refused for holding no convictions.
+    assert.match(report.rejected[0]!.reason, /reasoning carried nothing to serve/);
 
     // Not published, and not deleted either. The persona that was already there is
     // untouched and still the one a client is served.
     assert.equal(await currentCompileId(), before);
     const persona = await explainPersona(db, 'nate');
     assert.equal((persona.layers.voice!.evidence as { items_measured: number }).items_measured, ITEMS);
+  });
+
+  /**
+   * **The compiler seam this ticket has to be provable at.**
+   *
+   * The gate used to reject a compile whose beliefs layer carried nothing, and that rule
+   * dies with the layer: under *survives more than one separate reading* a great many
+   * people legitimately hold no through-lines, so a rule rejecting on emptiness would
+   * block good personas from ever shipping. Six items — enough to be read twice — and a
+   * synthesiser that finds nothing in either reading.
+   */
+  it('publishes a compile that holds no through-lines at all', async () => {
+    for (let index = ITEMS; index < 6; index += 1) {
+      await addItem(`post-${index}`, body(index), `2025-0${index + 1}-01`);
+    }
+
+    const synthesiser = fakeSynthesiser({ entriesFor: () => [] });
+    const report = await compile({ synthesiser });
+
+    assert.deepEqual(report.compiled, ['nate']);
+    assert.deepEqual(report.rejected, []);
+
+    // It was asked, and it answered nothing — not skipped for being too small.
+    assert.equal(
+      synthesiser.calls.filter((call) => call.kind === 'through_lines' && call.mode === 'pass').length,
+      2,
+    );
+    assert.equal(
+      await count(
+        `select count(*) from braintrust_through_lines t
+           join braintrust_compiles c on c.id = t.compile_id
+          where c.person_id = $1 and c.status = 'current'`,
+        [personId],
+      ),
+      0,
+    );
+
+    // And it is the persona a client is served, on `current`, with its three core layers.
+    const persona = await explainPersona(db, 'nate');
+    assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'reasoning', 'voice']);
   });
 
   /**
@@ -738,7 +778,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     }
 
     /**
-     * A synthesiser whose beliefs entries differ per reading, so the rule is observable.
+     * A synthesiser whose entries differ per reading, so the rule is observable.
      *
      * `sameThing` is what the merge would answer: true when the readings found one
      * conviction worded twice, false when they found two different ones. That judgement is
@@ -748,8 +788,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     function readings(perReading: string[][], sameThing = true) {
       let call = 0;
       return fakeSynthesiser({
-        entriesFor: (kind, items) => {
-          if (kind !== 'beliefs') return [];
+        entriesFor: (items) => {
           const labels = perReading[call++] ?? [];
           return labels.map((label) => ({ label, body: `About ${label}.`, items }));
         },
@@ -760,10 +799,8 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     it('publishes one that survived a second reading', async () => {
       await enoughToReadTwice();
-      // The beliefs layer is asked for first and consumes the first call; the two readings
-      // are the two after it.
       await compile({
-        synthesiser: readings([['Held once'], ['Judgement is scarce'], ['Judgement is scarce']]),
+        synthesiser: readings([['Judgement is scarce'], ['Judgement is scarce']]),
       });
 
       const { rows } = await db.query<{ slug: string; statement: string; readings: number }>(
@@ -783,7 +820,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       await enoughToReadTwice();
       await compile({
         synthesiser: readings(
-          [['Held once'], ['Only the first reading saw this'], ['Something else entirely']],
+          [['Only the first reading saw this'], ['Something else entirely']],
           false,
         ),
       });
@@ -815,7 +852,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
   });
 
   it('keeps a rejected compile rows and its reason, because that is what a diagnosis reads', async () => {
-    await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
+    await compile({ synthesiser: fakeSynthesiser({ habitsFor: () => [] }) });
 
     const { rows } = await db.query<{ id: string; status: string; rejected_reason: string }>(
       `select id, status, rejected_reason from braintrust_compiles
@@ -825,16 +862,16 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
     assert.equal(rows.length, 1);
     assert.match(rows[0]!.rejected_reason, /carried nothing to serve/);
-    // All four layers are still there to look at — the point of rejecting rather than
-    // failing is that the compiler's output survives.
+    // Every layer is still there to look at — the point of rejecting rather than failing
+    // is that the compiler's output survives.
     assert.equal(
       await count('select count(*) from braintrust_persona_layers where compile_id = $1', [rows[0]!.id]),
-      4,
+      3,
     );
   });
 
   it('lets the next run try again after a rejection, because a retry is cheap', async () => {
-    const rejected = await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
+    const rejected = await compile({ synthesiser: fakeSynthesiser({ habitsFor: () => [] }) });
     assert.equal(rejected.rejected.length, 1);
 
     // A gate rejection does not stop the schedule: the run that leaves nothing `running`

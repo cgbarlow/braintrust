@@ -2,11 +2,16 @@
  * The compiler: build a Persona under `running`, check it, then promote it in one
  * transaction.
  *
- * Four layers, two of which no model ever writes — Voice, counted over raw Item text, and
- * Coverage, counted over Item rows — and two of which a model does, and which say so in
- * their own first line. The measured pair are free at every Compile and stay correct while
- * the Note prompt is mid-upgrade; the inferred pair read Notes rather than the Corpus,
- * which is what makes a daily rebuild cost cents.
+ * Three layers, and **not one of them states a conclusion**. Voice is counted over raw Item
+ * text and Coverage over Item rows, so no model is in the path at all; Reasoning is chosen
+ * from an authored menu, so the words a reader gets were written in this repository. What
+ * someone broadly holds left the Core with the Beliefs layer: it is a
+ * [through-line](./throughlines.ts) now, and a persona has to retrieve it beside something
+ * quotable rather than recite it from a standing brief.
+ *
+ * The measured pair are free at every Compile and stay correct while the Note prompt is
+ * mid-upgrade; everything a model touches reads Notes rather than the Corpus, which is what
+ * makes a daily rebuild cost cents.
  *
  * Between building and promoting sits [the gate](./gate.ts). A rebuild deletes its
  * predecessor and there is no archive, so the only protection against a bad Compile is
@@ -22,7 +27,7 @@ import { vectorLiteral, type Embedder } from '../retrieval/embed.js';
 import { coverageLayer, withVoicePopulation } from './coverage.js';
 import { calibrateFit, notGradeable } from './fit.js';
 import { checkCompile } from './gate.js';
-import { compileHabits, inferLayer, INFERRED_LAYERS } from './infer.js';
+import { compileHabits } from './infer.js';
 import { compilePositions } from './positions.js';
 import { compileThroughLines } from './throughlines.js';
 import { compileRevisions } from './revisions.js';
@@ -61,7 +66,7 @@ export type CompileDeps = {
   db: TransactionalDb;
   /** Which Note generation this Compile declares it read. On the row, never inferred later. */
   extractor: string;
-  /** What writes Reasoning and Beliefs. It reads Notes; nothing here re-reads the Corpus. */
+  /** What chooses habits and infers through-lines. It reads Notes, never the Corpus. */
   synthesiser: Synthesiser;
   /**
    * What finds the similarity neighbourhoods revisions are judged inside. Absent means no
@@ -251,21 +256,9 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       evidence: habits.evidence,
     });
 
-    // The measured layers first, so a synthesis endpoint that goes away mid-Compile
-    // leaves rows that show exactly how far it got. They are the cheap ones anyway.
-    for (const kind of INFERRED_LAYERS) {
-      const inferred = await inferLayer(kind, notes, deps.synthesiser);
-      await writeLayer(deps.db, compileId, {
-        layer: kind,
-        basis: 'inferred',
-        descriptive_md: inferred.descriptive_md,
-        evidence: inferred.evidence,
-      });
-    }
-
-    // The growing layer, last, because it is the one that scales with the Corpus and the
+    // The growing layer, next, because it is the one that scales with the Corpus and the
     // one a Compile can most afford to lose: a synthesis endpoint that gives out here has
-    // left four complete Core layers in the rows, and the gate will still refuse to
+    // left three complete Core layers in the rows, and the gate will still refuse to
     // publish the Compile — but the failure is legible rather than a Persona missing a
     // limb for reasons nobody can reconstruct.
     const grouped = await compilePositions(notes, deps.synthesiser);

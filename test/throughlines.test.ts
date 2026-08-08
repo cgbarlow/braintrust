@@ -90,6 +90,12 @@ describe('dividing a corpus into readings', () => {
   });
 });
 
+const held = (label: string, items: string[]): SynthesisedEntry => ({
+  label,
+  body: `Two or three sentences about ${label}.`,
+  items,
+});
+
 describe('a through-line', () => {
   /** A synthesiser that returns exactly the entries it is told to, per reading. */
   function readingBy(perReading: SynthesisedEntry[][]): Synthesiser {
@@ -116,12 +122,6 @@ describe('a through-line', () => {
       },
     };
   }
-
-  const held = (label: string, items: string[]): SynthesisedEntry => ({
-    label,
-    body: `Two or three sentences about ${label}.`,
-    items,
-  });
 
   it('does not ship when it surfaced in only one reading', async () => {
     const found = await compileThroughLines(
@@ -189,6 +189,56 @@ describe('a through-line', () => {
 
     assert.deepEqual(found.through_lines, []);
     assert.equal(found.readings, 0);
+  });
+});
+
+/**
+ * The merge, which is now the only place it runs over entries — it came here with the
+ * Beliefs layer it used to fold, and these two properties came with it.
+ *
+ * They are what makes the survives-two-readings rule mean convictions rather than wordings:
+ * the threshold is applied *after* the merge, so the merge deciding that two differently
+ * worded entries say the same thing is the whole of the judgement in this file.
+ */
+describe('the merge under it', () => {
+  it('is never shown an item id, so it cannot return one braintrust does not hold', async () => {
+    const synthesiser = fakeSynthesiser();
+    await compileThroughLines(notes(8), synthesiser);
+
+    const merges = synthesiser.calls.filter((call) => call.mode === 'merge');
+    assert.ok(merges.length > 0, 'a corpus read twice is merged');
+
+    // Every marker in a merge digest is an index into the list it was handed. Not one of
+    // them is an item braintrust holds, which is why a merge cannot name one it does not.
+    for (const merge of merges) {
+      assert.doesNotMatch(merge.digest, /post-\d+/);
+      assert.match(merge.digest, /^\[1\] .+ — .+$/m, 'one line per entry: an index and the wording');
+    }
+  });
+
+  it('unions the item ids itself, and keeps the clearest entry\'s prose word for word', async () => {
+    const found = await compileThroughLines(
+      notes(6),
+      // A merge that groups the two readings and picks the second as clearest. braintrust
+      // takes the union of the items; the model only ever says which wording survives.
+      {
+        ...fakeSynthesiser(),
+        async synthesise(digest: string): Promise<SynthesisedEntry[]> {
+          const first = digest.includes('post-0');
+          return [held(first ? 'Put worse' : 'The clearest way of putting it', [
+            first ? 'post-0' : 'post-4',
+          ])];
+        },
+        async group(): Promise<{ members: number[]; clearest: number }[]> {
+          return [{ members: [1, 2], clearest: 2 }];
+        },
+      },
+    );
+
+    assert.equal(found.through_lines.length, 1);
+    const line = found.through_lines[0]!;
+    assert.equal(line.statement, 'The clearest way of putting it');
+    assert.deepEqual(line.items.sort(), ['post-0', 'post-4']);
   });
 });
 

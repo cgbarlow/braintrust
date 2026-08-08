@@ -914,7 +914,7 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     // morning has a persona this evening, without doing anything else.
     const persona = await explainPersona(db, 'nate-b-jones');
     assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
-    assert.deepEqual(Object.keys(persona.layers).sort(), ['beliefs', 'coverage', 'reasoning', 'voice']);
+    assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'reasoning', 'voice']);
 
     // Measured over everything the run retrieved, and nothing it did not.
     const voice = persona.layers.voice!.evidence as { items_measured: number };

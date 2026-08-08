@@ -83,7 +83,7 @@ describe('what a persona may still serve', () => {
   it('withholds the prose written by a part that has moved', () => {
     assert.deepEqual(
       withheldLayers('1.0.0+measured-5.core-9.positions-2.revisions-1', '1.0.0+measured-5.core-1.positions-2.revisions-1'),
-      ['reasoning', 'beliefs'],
+      ['reasoning'],
     );
   });
 
@@ -101,7 +101,7 @@ describe('what a persona may still serve', () => {
   });
 
   it('withholds every synthesised layer when it cannot tell which rules moved', () => {
-    assert.deepEqual(withheldLayers(null), ['reasoning', 'beliefs']);
+    assert.deepEqual(withheldLayers(null), ['reasoning']);
   });
 
   it('names each withheld layer once, however many parts moved', () => {

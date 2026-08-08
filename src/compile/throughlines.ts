@@ -191,7 +191,7 @@ export async function compileThroughLines(
 
   for (const [index, reading] of readings.entries()) {
     const digest = reading.map(noteDigest).join('\n\n');
-    for (const entry of await synthesiser.synthesise('beliefs', digest)) {
+    for (const entry of await synthesiser.synthesise(digest)) {
       found.push({ ...entry, readings: new Set([index]) });
     }
   }
@@ -207,7 +207,7 @@ export async function compileThroughLines(
       // right answer.
       readings: new Set(members.flatMap((member) => [...member.readings])),
     }),
-    group: (digest) => synthesiser.group('beliefs', digest),
+    group: (digest) => synthesiser.group('through_lines', digest),
     budget: DIGEST_BUDGET_CHARS,
   });
 

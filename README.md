@@ -139,7 +139,8 @@ Some things braintrust does to keep that honest rather than just say it:
 
 - **A persona is always named as one.** Every answer arrives as "braintrust model of X", so the disclosure travels with the content instead of sitting in a footnote.
 - **Paywalled content is never ingested**, and what was skipped is recorded — so a persona can name its own blind spots rather than silently having them.
-- **Anything a model synthesised is labelled.** Voice and coverage are counted from the source text and no model touches them; reasoning and beliefs are inferred, and say so in their own first line.
+- **Anything a model synthesised is labelled.** Voice and coverage are counted from the source text and no model touches them; reasoning is inferred, and says so in its own first line.
+- **Nothing a persona gets for free says what the person thinks.** It is handed a voice and some argument habits, and that is all — so what someone holds has to be looked up against what they actually published, rather than recited from a standing description of them.
 - **Evidence travels with the claim.** Every position is dated and quoted back to what was published, and a claim braintrust cannot quote is dropped rather than stored.
 - **Where someone changed their mind, both states survive.** The older position is kept and served flagged, never quietly dropped.
 - **Quotes are verbatim.** Much of what braintrust reads is auto-generated captions — a machine's transcript, not something the person wrote or approved. It hands you what was said rather than tidying it into prose nobody spoke.
