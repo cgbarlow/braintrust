@@ -190,12 +190,37 @@ export async function openFaults(db: Db): Promise<Fault[]> {
  *
  * Its own query rather than a filter over {@link openFaults}, because this one runs on every
  * `braintrust_load_persona` and the answer is almost always no rows.
+ *
+ * **It fails open, and that is the rule rather than a defensive habit.** The whole of this
+ * surface rests on one decision: *braintrust judging itself must never change what a Persona
+ * serves.* A ledger braintrust cannot read is the limit case of that — it is not evidence
+ * against any Persona, so the honest answer is *no fault is known* and the Persona serves as
+ * it did.
+ *
+ * **Found in production, on the first deploy of this file.** The table did not exist yet —
+ * `schema.sql` is pasted by hand and the code deploys on merge, so the read path referenced a
+ * table that had not been created, and every `braintrust_load_persona` failed. The order of
+ * those two steps is not something the read path can assume, and it should never have been
+ * the difference between a Persona serving and not.
+ *
+ * The absence is logged rather than swallowed. Failing open is the correct answer to a
+ * missing ledger; it is the wrong answer to nobody noticing the ledger is missing.
  */
-export async function escalatedFaults(db: Db): Promise<Fault[]> {
-  const { rows } = await db.query<FaultRow>(
-    `select * from braintrust_faults where escalated_at is not null order by first_failed_at asc`,
-  );
-  return rows.map(asFault);
+export async function escalatedFaults(db: Db, log = console.error): Promise<Fault[]> {
+  try {
+    const { rows } = await db.query<FaultRow>(
+      `select * from braintrust_faults where escalated_at is not null order by first_failed_at asc`,
+    );
+    return rows.map(asFault);
+  } catch (error) {
+    log(
+      'braintrust: could not read the fault ledger — ' +
+        `${error instanceof Error ? error.message : String(error)}. Serving as though no fault ` +
+        'is known, because braintrust judging itself may never be the reason a persona stops ' +
+        'answering. If this is "relation does not exist", schema.sql has not been run.',
+    );
+    return [];
+  }
 }
 
 type FaultRow = {
