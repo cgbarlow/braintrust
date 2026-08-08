@@ -281,6 +281,24 @@ export type FoundPosition = {
   more_citations?: number;
 };
 
+/**
+ * A claim braintrust inferred across this person's work, riding with an answer that already
+ * matched.
+ *
+ * **No date, no quote, no score, and no retrieval path of its own** — see
+ * ./compile/throughlines.ts for why each of those is absent rather than missing.
+ *
+ * `basis` travels because a maintainer needs to be able to tell an inferred claim from a
+ * quoted one. **A reader is not told which is which**: no hedge, no attribution, not even the
+ * non-apologetic *"across everything I've written on hiring…"* form. That is the decision, and
+ * it is affordable only because a through-line never arrives alone.
+ */
+export type ThroughLine = {
+  slug: string;
+  statement: string;
+  basis: 'inferred';
+};
+
 export type Passage = {
   item_title: string | null;
   url: string;
@@ -296,6 +314,15 @@ export type FindPayload = {
   /** Echoed back, because a filtered answer that does not say it was filtered reads as a whole one. */
   window?: { since?: string; until?: string };
   positions: FoundPosition[];
+  /**
+   * What this person broadly holds, where the answer already touches it.
+   *
+   * **Never the whole of an answer, and that is load-bearing.** A through-line is spoken
+   * flatly — no hedge, no attribution, no marker — and that is affordable only because
+   * something checkable is always beside it. So this is empty whenever `positions` is: the
+   * two stand or fall together. See ./compile/throughlines.ts.
+   */
+  through_lines: ThroughLine[];
   /** Filled only when the compiler formed no Position on this topic. Raw material, not a conclusion. */
   passages: Passage[];
   more_available?: { positions?: number; passages?: number };
@@ -513,6 +540,13 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
         }
       : {}),
     positions,
+    // **Riding, never retrieved.** Which through-lines travel is decided by the Items the
+    // answer's own Positions rest on, so a through-line is earned by a match that already
+    // happened rather than competing for the top of a list. An empty answer carries none:
+    // there is nothing checkable beside it, and a flat claim on its own is the whole thing
+    // this design refuses.
+    through_lines:
+      positions.length === 0 ? [] : await ridingThroughLines(deps.db, compile.id, shown),
     passages: [],
   };
 
@@ -876,6 +910,36 @@ function toCitation(row: {
     ...(row.posted_at !== null ? { posted_at: row.posted_at.toISOString() } : {}),
     quote: row.quote,
   };
+}
+
+/**
+ * The through-lines that ride with this answer: the ones traced to Items the answer's own
+ * Positions rest on.
+ *
+ * **This is the whole of "no retrieval path of its own".** Nothing here is ranked, scored or
+ * compared to the question — a through-line travels because a Position that cites the same
+ * Item matched, which is a fact about a lookup that already happened. It cannot crowd out the
+ * top of an answer because it has no place in the ordering at all.
+ */
+async function ridingThroughLines(
+  db: Db,
+  compileId: string,
+  shown: ScoredPosition[],
+): Promise<ThroughLine[]> {
+  if (shown.length === 0) return [];
+
+  const { rows } = await db.query<{ slug: string; statement: string }>(
+    `select distinct t.slug, t.statement
+       from braintrust_through_lines t
+       join braintrust_through_line_items ti on ti.through_line_id = t.id
+       join braintrust_position_citations pc on pc.item_id = ti.item_id
+      where t.compile_id = $1
+        and pc.position_id = any($2::uuid[])
+      order by t.slug`,
+    [compileId, shown.map((position) => position.id)],
+  );
+
+  return rows.map((row) => ({ slug: row.slug, statement: row.statement, basis: 'inferred' }));
 }
 
 /**

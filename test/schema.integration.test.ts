@@ -23,6 +23,8 @@ const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
 const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
 
 const TABLES = [
+  'braintrust_through_line_items',
+  'braintrust_through_lines',
   'braintrust_position_relations',
   'braintrust_position_embeddings',
   'braintrust_position_citations',

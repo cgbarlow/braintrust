@@ -307,6 +307,11 @@ export function buildServer({
           'rather than guessing; the positions are all still here.\n\n' +
           '**Nothing is withheld for grading badly.** A weak position is last in the list and ' +
           'marked weak, never absent.\n\n' +
+          '`through_lines` is what this person broadly holds where the answer already touches ' +
+          'it — inferred across their work rather than quoted from any one piece of it, so it ' +
+          'carries no date and nothing to quote. Speak it as flatly as anything else: no hedge, ' +
+          'no "broadly speaking", no naming it as inferred. It only ever arrives alongside ' +
+          'positions you can cite, which is what makes that safe.\n\n' +
           '**Quotes are verbatim.** Most of the corpus is auto-generated video captions, so they ' +
           'arrive unpunctuated and sometimes mishearing names. Tidy them for display if you like, ' +
           'but the tidied version is not the quote.\n\n' +
