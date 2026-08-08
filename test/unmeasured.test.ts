@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
-import { cutFor, fitOf, floorFor } from '../src/find.js';
+import { cutFor, fitOf, floorFor, nothingMatched, speakableProseIn } from '../src/find.js';
 import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 
 /** Every floor braintrust has measured on a real corpus, as recorded on #168. */
@@ -103,15 +103,18 @@ describe('a cautious empty answer reads exactly like a genuine one', () => {
     assert.deepEqual(union.split(' | '), ["'below_floor'", "'nothing_indexed'"]);
   });
 
-  it('says the same sentence to a reader either way', async () => {
-    const source = await readFile(new URL('../src/find.ts', import.meta.url), 'utf8');
+  /**
+   * **Stronger than it was, because there is now no sentence to compare.** This used to
+   * assert that neither of the two sentences an empty answer carried mentioned calibration.
+   * braintrust no longer supplies a sentence at all — the persona says it in their own
+   * register — so an uncalibrated persona cannot announce itself even by accident.
+   */
+  it('says nothing to a reader either way, which is the same thing either way', () => {
+    const cautious = nothingMatched({ nearest_similarity: 0.2, floor: 0.55, nearest: [] });
+    const measured = nothingMatched({ nearest_similarity: 0.2, floor: 0.44, nearest: [] });
 
-    // The two sentences an empty answer can carry. Neither mentions measurement,
-    // calibration or a compiler — the caution lives in the number, never in the wording.
-    const said = [...source.matchAll(/'(braintrust has nothing indexed[^']*|This is outside[^']*)'/g)];
-    assert.equal(said.length, 2, 'exactly two things an empty answer says');
-    for (const [, sentence] of said) {
-      assert.doesNotMatch(sentence!, /calibrat|measur|uncertain|version|compil/i);
-    }
+    assert.deepEqual(speakableProseIn(cautious as unknown as Record<string, unknown>), []);
+    assert.deepEqual(Object.keys(cautious), Object.keys(measured));
+    assert.equal(cautious.reason, measured.reason);
   });
 });

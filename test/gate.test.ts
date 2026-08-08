@@ -25,6 +25,7 @@ import {
 } from '../src/compile/gate.js';
 import { inferredMarker } from '../src/compile/infer.js';
 import { SPOKEN_DISCLOSURE } from '../src/disclosure.js';
+import { nothingMatched } from '../src/find.js';
 
 const ITEMS = {
   retrieved: 4,
@@ -78,8 +79,9 @@ function facts(overrides: Partial<GateFacts> = {}): GateFacts {
     positions: [],
     previous_positions: 0,
     superseded_positions: 0,
-    // Rendered the way the compiler renders it, so the fixture is a compile that would
-    // actually serve rather than one built to satisfy a check.
+    // Built by the same function the read path calls, which is what makes the check about
+    // the object a client receives rather than one written to be checked.
+    nothing_matched: nothingMatched({ nearest_similarity: null, floor: 0.55, nearest: [] }),
     speak: `${SPOKEN_DISCLOSURE}\n\nSay that line first, word for word…`,
     ...overrides,
   };
@@ -558,6 +560,65 @@ describe('the reason a rejection carries', () => {
  * The gate is a list, not a function with a clause per rule. Five more checks are coming
  * and none of them should have to restructure it first.
  */
+/**
+ * **An empty answer is facts. The sentence belongs to the persona.**
+ *
+ * `nothing_matched.say` shipped for two releases reading *"This is outside what braintrust has
+ * read of this person."* — third person, about braintrust, calling the person *this person*,
+ * against its own field comment promising the opposite. Measured across ~80 replies: no persona
+ * ever said it. A check rather than a convention because the field has already drifted once and
+ * the drift is invisible from the inside.
+ */
+describe('an empty answer', () => {
+  it('passes when it carries how close it came, why, and what is nearby', () => {
+    assert.equal(check(checkCompile(facts()), 'nothing_matched_carries_no_prose').passed, true);
+  });
+
+  it('fails when braintrust puts a sentence in it for a persona to recite', () => {
+    const verdict = checkCompile(
+      facts({
+        nothing_matched: {
+          ...facts().nothing_matched,
+          say: 'This is outside what braintrust has read of this person.',
+        },
+      }),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /nothing_matched_carries_no_prose: say/);
+    assert.match(verdict.reason!, /persona reciting braintrust is the generic voice/);
+  });
+
+  it('fails a reason that stopped being a code and became a sentence', () => {
+    // The likelier drift: not a new field, but an existing one quietly widened into prose.
+    const verdict = checkCompile(
+      facts({
+        nothing_matched: {
+          ...facts().nothing_matched,
+          reason: 'nothing came close enough to answer you',
+        },
+      }),
+    );
+
+    assert.equal(check(verdict, 'nothing_matched_carries_no_prose').passed, false);
+  });
+
+  it('allows the statements it offers, because those are read from the rows', () => {
+    // `nearest` carries the same sentences `positions[].statement` carries. Quoting the
+    // record is not composing prose about braintrust.
+    const verdict = checkCompile(
+      facts({
+        nothing_matched: {
+          ...facts().nothing_matched,
+          nearest: [{ slug: 'quests-beat-goals', statement: 'Quests work better than goals.' }],
+        },
+      }),
+    );
+
+    assert.equal(check(verdict, 'nothing_matched_carries_no_prose').passed, true);
+  });
+});
+
 describe('the gate as an enumerable list of checks', () => {
   it('can list every check by name without running any of them', () => {
     assert.deepEqual(gateCheckIds(), [
@@ -571,6 +632,7 @@ describe('the gate as an enumerable list of checks', () => {
       'habits_are_on_the_menu',
       'habits_rest_on_distinct_evidence',
       'speak_opens_with_disclosure',
+      'nothing_matched_carries_no_prose',
       'revisions_have_not_swept',
     ]);
   });

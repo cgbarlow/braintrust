@@ -268,6 +268,37 @@ describe('the script', () => {
     assert.match(speak, /never fill the gap from your own knowledge/i);
   });
 
+  /**
+   * **A dead end is handed back as a choice.** Nothing was broken about the honesty — a
+   * persona handed an empty answer admits it and does not fill, 24 of 24 across every arm and
+   * seed. What was wrong was the shape: *"I don't have a view on central bank interest rate
+   * policy."* and no next move, on the first question a reader asks.
+   */
+  it('tells the persona to offer what is nearby rather than stopping', () => {
+    const { speak } = renderScript(input());
+
+    assert.match(speak, /do not stop there/i);
+    assert.match(speak, /offer to go into them/i);
+    // In their words, not braintrust's — which is what keeps the never-generic rule at one
+    // exception. braintrust hands over the facts of an empty answer and never the sentence.
+    assert.match(speak, /The words are yours, not braintrust's/);
+  });
+
+  /**
+   * **The founding failure of this map, mitigated where it actually lives.** Withhold the
+   * search tool from the model while leaving it named in the persona tool's description —
+   * what a client with tool search hands over — and the persona invents: 0 of 3 lookups,
+   * three fluent answers in voice. What survives #138 is *"I don't have a view on quests
+   * versus goals"*: honest about the persona, false about the person.
+   */
+  it('tells the persona to say when it cannot reach the record at all', () => {
+    const { speak } = renderScript(input());
+
+    assert.match(speak, /no way to look anything up at all/i);
+    assert.match(speak, /not the same as having\s*\n?\s*no view/i);
+    assert.match(speak, /Do not answer as them from anywhere else/i);
+  });
+
   it('puts basis in the receipts, where it cannot be spoken', () => {
     const { speak, receipts } = renderScript(input());
 

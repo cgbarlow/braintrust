@@ -20,6 +20,7 @@
  */
 
 import { SPOKEN_DISCLOSURE } from '../disclosure.js';
+import { speakableProseIn } from '../find.js';
 import { isOnTheMenu, twinEvidence } from './habits.js';
 import { INFERRED_MARKER } from './infer.js';
 
@@ -83,6 +84,14 @@ export type GateFacts = {
   previous_positions: number;
   /** Positions this Compile put on the earlier side of a `revised` relation. */
   superseded_positions: number;
+  /**
+   * The empty answer this Persona would serve, built by the same function the read path
+   * calls, with this Compile's own floor in it.
+   *
+   * Rendered rather than described, for the reason `speak` is: what is worth checking is the
+   * object a client receives, not a second one written to be checked.
+   */
+  nothing_matched: Record<string, unknown>;
   /**
    * The Script this Compile would serve, rendered through the same path a reader gets.
    *
@@ -215,6 +224,12 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
     guarantees:
       'the first line a reader hears is the disclosure, word for word, and is not an instruction addressed to the model',
     run: speakOpensWithDisclosure,
+  },
+  {
+    id: 'nothing_matched_carries_no_prose',
+    guarantees:
+      'an empty answer hands over the facts and no sentence, so the persona says it in their own register rather than reciting braintrust',
+    run: nothingMatchedCarriesNoProse,
   },
   {
     id: 'revisions_have_not_swept',
@@ -540,6 +555,37 @@ function speakOpensWithDisclosure(facts: GateFacts): GateCheckResult {
       ? 'the script opens with the disclosure, word for word'
       : `the script opens with "${first.slice(0, 80)}…" rather than the disclosure, so the ` +
         'first thing a reader hears is not what they are talking to',
+  };
+}
+
+/**
+ * **An empty answer is facts. The sentence belongs to the Persona.**
+ *
+ * `nothing_matched.say` shipped for two releases reading *"This is outside what braintrust has
+ * read of this person."* — third person, about braintrust, calling the person *this person* —
+ * directly against its own field comment, which promised *what a Persona can put into its own
+ * words, never braintrust's prose about braintrust*. Measured across ~80 replies: **no Persona
+ * ever said it.** Every arm rewrote it into its own first person, and braintrust's exact words
+ * appeared only where a Script section told the Persona to use them.
+ *
+ * The rule it broke is the standing one — a Persona never falls back to a generic voice — and
+ * the cost of breaking it is that the exception list grows. The fixed disclosure is the only
+ * sentence braintrust speaks in its own voice, and it stays the only one.
+ *
+ * A check rather than a convention **because this field has already drifted once**, and the
+ * drift is invisible: a rendered sentence in a payload looks like helpfulness right up until a
+ * reader hears a persona narrate itself in the third person.
+ */
+function nothingMatchedCarriesNoProse(facts: GateFacts): GateCheckResult {
+  const offending = speakableProseIn(facts.nothing_matched);
+
+  return {
+    passed: offending.length === 0,
+    detail:
+      offending.length === 0
+        ? 'an empty answer carries how close it came, why, and what is nearby — and no sentence'
+        : `${offending.join(', ')} put words in an empty answer for a persona to recite, and a ` +
+          'persona reciting braintrust is the generic voice this whole surface exists to avoid',
   };
 }
 

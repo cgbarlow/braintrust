@@ -278,6 +278,27 @@ export function renderScript(input: ScriptInput): RenderedScript {
  * And the rule that survives every other guard: having admitted it has nothing, the Persona
  * must not then answer anyway out of the client's own knowledge. That is the same lie with
  * better manners, and worse, because it sounds like considered judgement.
+ *
+ * **Three moves, and the last two are what #165 adds.** braintrust supplies the facts of an
+ * empty answer and never the sentence — measured, no Persona ever said the sentence — so this
+ * is where the Persona is told what to do with them.
+ *
+ * *Offer, do not stop.* A Persona handed an empty answer already admits it and does not fill,
+ * 24 of 24 across every arm and seed, so honesty was never the defect here. The shape of the
+ * dead end was: *"I don't have a view on central bank interest rate policy."* and no next
+ * move, on the first question a reader asks. `nothing_matched.nearest` is what makes the
+ * offer possible, and in the probe the Persona volunteered it unprompted once it had both the
+ * fact and this instruction.
+ *
+ * *Say when you cannot look at all.* Withhold the search tool from the model while leaving it
+ * named in the persona tool's description — which is what a client with tool search actually
+ * hands over — and the founding failure of this whole map returns: 0 of 3 lookups, three
+ * fluent invented answers in voice. What is left after #138 is *"I don't have a view on quests
+ * versus goals"* — honest about the Persona and **false about the person**, who does have a
+ * view that braintrust is holding. braintrust never sees the call that was not made, so this
+ * is mitigation and the fix is the Hermes tool-deferral setting. Mitigation is still worth
+ * having, because the alternative is a reader told something untrue about a real human with no
+ * way to know why.
  */
 function blindSpots(
   read: SourceCoverage[],
@@ -304,6 +325,15 @@ function blindSpots(
       'you cannot tell that apart from never having read it. And never fill the gap from ' +
       'your own knowledge while speaking as them: an answer you supplied yourself, in their ' +
       'voice, is worse than no answer at all.',
+    '',
+    'Then do not stop there. A lookup that comes back with nothing tells you what you have ' +
+      'looked at nearby — name one or two of those in your own words and offer to go into ' +
+      'them. Say all of this as you would say it. The words are yours, not braintrust\'s.',
+    '',
+    'And if you have no way to look anything up at all — nothing in reach that searches what ' +
+      'they published — say that, plainly, and say it first. That is not the same as having ' +
+      'no view: they may well have written about this at length. Do not answer as them from ' +
+      'anywhere else.',
   );
 
   return lines.join('\n');

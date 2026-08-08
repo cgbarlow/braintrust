@@ -13,6 +13,7 @@
 
 import type { Db, TransactionalDb } from '../db.js';
 import { subjectFor } from '../disclosure.js';
+import { nothingMatched, RETRIEVAL_FLOOR } from '../find.js';
 import { renderScript, scriptInputFrom } from '../script.js';
 import type { CoverageEvidence, SourceCoverage } from './coverage.js';
 import { VOICE_MIN_WORDS } from './voice.js';
@@ -479,6 +480,11 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     })),
     previous_positions: Number(previous.rows[0]!.count),
     superseded_positions: Number(superseded.rows[0]!.count),
+    // Built by the function the read path calls, for the same reason `speak` is rendered
+    // rather than described. The numbers are stand-ins — an empty answer needs a question
+    // and the gate has none — and the check is about the *shape*: whether braintrust put a
+    // sentence in there for a persona to recite.
+    nothing_matched: nothingMatched({ nearest_similarity: null, floor: RETRIEVAL_FLOOR, nearest: [] }),
     // Rendered through the same path a reader gets, so the gate checks the thing that
     // ships rather than a lookalike built for checking.
     speak: renderScript(
