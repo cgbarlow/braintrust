@@ -24,6 +24,7 @@ import { calibrateFit, notGradeable } from './fit.js';
 import { checkCompile } from './gate.js';
 import { compileHabits, inferLayer, INFERRED_LAYERS } from './infer.js';
 import { compilePositions } from './positions.js';
+import { compileThroughLines } from './throughlines.js';
 import { compileRevisions } from './revisions.js';
 import { calibrateSelectivity, notMeasurable } from './selectivity.js';
 import {
@@ -42,6 +43,7 @@ import {
   writePositions,
   writeRelations,
   writeStatementVectors,
+  writeThroughLines,
   type CompilablePerson,
 } from './store.js';
 import type { Synthesiser } from './synthesis.js';
@@ -299,6 +301,25 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       );
     }
 
+    // What this person broadly holds, read twice. Beside the quoted claims rather than
+    // above them: a through-line rides with an answer that already matched, so it needs no
+    // embedding, no citations and no place in the gate — and it may never be the whole of
+    // an answer, which is the only reason it is allowed to be spoken flatly.
+    const inferred = await compileThroughLines(notes, deps.synthesiser);
+    const throughLines = await writeThroughLines(
+      deps.db,
+      compileId,
+      person.id,
+      inferred.through_lines,
+    );
+
+    log(
+      inferred.readings === 0
+        ? `braintrust: ${person.slug} has too little to read twice, so it holds no through-lines.`
+        : `braintrust: ${throughLines} through-line(s) of ${person.slug} survived more than one ` +
+          `of ${inferred.readings} readings; ${inferred.dropped_single_reading} appeared in only one.`,
+    );
+
     // The growth of a Corpus, visible before it becomes a failure. Positions are rows
     // rather than a prose layer, so this line is the only place an operator can watch a
     // Corpus approach the fold — and the only place a fold that gave up can be seen.
@@ -473,5 +494,6 @@ export * from './positions.js';
 export * from './revisions.js';
 export * from './store.js';
 export * from './synthesis.js';
+export * from './throughlines.js';
 export * from './version.js';
 export * from './voice.js';

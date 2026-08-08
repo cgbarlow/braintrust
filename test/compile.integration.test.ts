@@ -724,6 +724,96 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     );
   });
 
+  /**
+   * **Through-lines, at the compiler seam.** An entry surfacing in one reading does not ship;
+   * one surfacing in two does. The rule is the whole reason a through-line may be spoken
+   * flatly, and it is structural — the merge already sees which readings an entry came from.
+   */
+  describe('through-lines', () => {
+    /** Six notes, which is the fewest that can be read twice. */
+    async function enoughToReadTwice(): Promise<void> {
+      for (let index = ITEMS; index < 6; index += 1) {
+        await addItem(`post-${index}`, body(index), `2025-0${index + 1}-01`);
+      }
+    }
+
+    /**
+     * A synthesiser whose beliefs entries differ per reading, so the rule is observable.
+     *
+     * `sameThing` is what the merge would answer: true when the readings found one
+     * conviction worded twice, false when they found two different ones. That judgement is
+     * the only thing here a model is for, and the compiler counts readings after it rather
+     * than before — two wordings of one conviction are one through-line seen twice.
+     */
+    function readings(perReading: string[][], sameThing = true) {
+      let call = 0;
+      return fakeSynthesiser({
+        entriesFor: (kind, items) => {
+          if (kind !== 'beliefs') return [];
+          const labels = perReading[call++] ?? [];
+          return labels.map((label) => ({ label, body: `About ${label}.`, items }));
+        },
+        groupsFor: (indices) =>
+          sameThing && indices.length > 1 ? [{ members: indices, clearest: indices[0]! }] : [],
+      });
+    }
+
+    it('publishes one that survived a second reading', async () => {
+      await enoughToReadTwice();
+      // The beliefs layer is asked for first and consumes the first call; the two readings
+      // are the two after it.
+      await compile({
+        synthesiser: readings([['Held once'], ['Judgement is scarce'], ['Judgement is scarce']]),
+      });
+
+      const { rows } = await db.query<{ slug: string; statement: string; readings: number }>(
+        `select t.slug, t.statement, t.readings from braintrust_through_lines t
+           join braintrust_compiles c on c.id = t.compile_id
+          where c.status = 'current'`,
+      );
+
+      assert.deepEqual(
+        rows.map((row) => row.statement),
+        ['Judgement is scarce'],
+      );
+      assert.equal(rows[0]!.readings, 2);
+    });
+
+    it('does not publish one that surfaced in a single reading', async () => {
+      await enoughToReadTwice();
+      await compile({
+        synthesiser: readings(
+          [['Held once'], ['Only the first reading saw this'], ['Something else entirely']],
+          false,
+        ),
+      });
+
+      assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
+    });
+
+    it('publishes a compile that found none, because an empty answer is a real one', async () => {
+      // Four items is under the floor: this person cannot be read twice, so they hold no
+      // through-lines and the persona ships anyway.
+      const report = await compile();
+
+      assert.deepEqual(report.compiled, ['nate']);
+      assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
+    });
+
+    it('is dropped with the compile it belongs to, like every other tier 3 row', async () => {
+      await enoughToReadTwice();
+      await compile({
+        synthesiser: readings([['Held once'], ['Judgement is scarce'], ['Judgement is scarce']]),
+      });
+      assert.ok((await count('select count(*) from braintrust_through_lines')) > 0);
+
+      await db.query('delete from braintrust_compiles where person_id = $1', [personId]);
+
+      assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
+      assert.equal(await count('select count(*) from braintrust_through_line_items'), 0);
+    });
+  });
+
   it('keeps a rejected compile rows and its reason, because that is what a diagnosis reads', async () => {
     await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
 

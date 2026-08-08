@@ -19,6 +19,7 @@ import type { CoverageEvidence, SourceCoverage } from './coverage.js';
 import { VOICE_MIN_WORDS } from './voice.js';
 import type { GateFacts, GateLayer, ItemCounts } from './gate.js';
 import type { BuiltPosition } from './positions.js';
+import type { ThroughLine } from './throughlines.js';
 import type { MeasuredItem } from './voice.js';
 
 export type CompilablePerson = {
@@ -602,6 +603,56 @@ export async function writeStatementVectors(
   });
 
   return vectors.length;
+}
+
+/**
+ * The through-lines, and the Items each was traced to.
+ *
+ * **Not citations.** A through-line has nothing quotable under it by design; these rows say
+ * which Items a reading was looking at when it surfaced the claim, which is what decides
+ * whether it rides with a given answer. An Item named in an entry but not held by braintrust
+ * was already dropped upstream, the same rule the inferred layers have.
+ *
+ * One transaction, like the Positions: a through-line whose Items half-landed would ride
+ * with the wrong answers rather than fail visibly.
+ */
+export async function writeThroughLines(
+  db: TransactionalDb,
+  compileId: string,
+  personId: string,
+  throughLines: ThroughLine[],
+): Promise<number> {
+  if (throughLines.length === 0) return 0;
+
+  let written = 0;
+
+  await db.transaction(async (tx) => {
+    for (const line of throughLines) {
+      const { rows } = await tx.query<{ id: string }>(
+        `insert into braintrust_through_lines (compile_id, slug, statement, readings)
+         values ($1, $2, $3, $4)
+         on conflict (compile_id, slug) do nothing
+         returning id`,
+        [compileId, line.slug, line.statement, line.readings],
+      );
+
+      const id = rows[0]?.id;
+      if (!id) continue;
+      written += 1;
+
+      await tx.query(
+        `insert into braintrust_through_line_items (through_line_id, item_id)
+         select $1, i.id
+           from braintrust_items i
+           join braintrust_sources s on s.id = i.source_id
+          where s.person_id = $2 and i.external_id = any($3::text[])
+         on conflict do nothing`,
+        [id, personId, line.items],
+      );
+    }
+  });
+
+  return written;
 }
 
 /**

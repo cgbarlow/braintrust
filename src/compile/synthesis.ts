@@ -31,7 +31,7 @@ import { isEventStream, joinStream } from '../net/stream.js';
  * tools. Unlike the extractor generation, bumping this is cheap: it re-synthesises from
  * Notes that already exist rather than re-reading the Corpus.
  */
-export const SYNTHESIS_VERSION = 'core-1';
+export const SYNTHESIS_VERSION = 'core-2';
 
 /**
  * Versioned apart from the Core's prompts, because it answers a different question and

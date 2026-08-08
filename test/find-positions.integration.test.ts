@@ -511,6 +511,60 @@ describe('finding positions, against real Postgres', { skip }, () => {
     );
   });
 
+  /**
+   * **A through-line rides with an answer that already matched, and never arrives alone.**
+   *
+   * Speaking one flatly — no hedge, no attribution, no marker — is affordable only because
+   * something checkable is always beside it. The two stand or fall together, which is why an
+   * empty answer carries none however much braintrust has inferred.
+   */
+  it('never returns a through-line as the whole of an answer', async () => {
+    await gradedButStrict();
+
+    const empty = await find({ query: OFF_CORPUS });
+    assert.deepEqual(empty.positions, []);
+    assert.deepEqual(empty.through_lines, [], 'nothing checkable beside it means it does not go out');
+  });
+
+  it('rides a through-line with the answer whose positions rest on the same items', async () => {
+    await graded();
+
+    // A through-line traced to the item behind one topic, written the way a compile writes
+    // one: no date, no citations, nothing to quote.
+    const { rows } = await db.query<{ id: string }>(
+      `insert into braintrust_through_lines (compile_id, slug, statement, readings)
+       select c.id, 'the-eval-is-the-unit', 'The eval is the unit of progress.', 2
+         from braintrust_compiles c where c.status = 'current' returning id`,
+    );
+    await db.query(
+      `insert into braintrust_through_line_items (through_line_id, item_id)
+       select $1, i.id from braintrust_items i where i.external_id = 'evals'`,
+      [rows[0]!.id],
+    );
+
+    const onTopic = await find({ query: await chunkTextOf('evals'), limit: 50 });
+    assert.deepEqual(
+      onTopic.through_lines,
+      [
+        {
+          slug: 'the-eval-is-the-unit',
+          statement: 'The eval is the unit of progress.',
+          basis: 'inferred',
+        },
+      ],
+      'the answer rests on the item it was traced to, so it travels',
+    );
+
+    // It has no retrieval path of its own: it cannot reach an answer whose positions rest on
+    // other items, however well its own words match the question.
+    const elsewhere = await find({ query: await chunkTextOf('context'), limit: 1 });
+    assert.ok(elsewhere.positions.length > 0);
+    assert.deepEqual(
+      elsewhere.through_lines.map((one) => one.slug),
+      [],
+    );
+  });
+
   it('says the window itself was empty, which reads differently again', async () => {
     await compile();
 

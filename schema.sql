@@ -332,6 +332,41 @@ comment on table braintrust_position_embeddings is
 create index if not exists braintrust_position_embeddings_hnsw_idx
   on braintrust_position_embeddings using hnsw (embedding vector_cosine_ops);
 
+-- What someone broadly holds, inferred across their work rather than quoted
+-- from any one piece of it.
+--
+-- No date, because the only date available is the oldest item in whichever
+-- readings surfaced it — a property of braintrust's reading schedule and not of
+-- the person's life. No quote, because an illustrative one and a supporting one
+-- are indistinguishable once printed. No embedding, because a through-line has
+-- no retrieval path of its own: it rides with an answer that already matched.
+--
+-- `readings` is why it exists at all — an entry that surfaced in only one
+-- separate reading of the corpus is not published.
+create table if not exists braintrust_through_lines (
+  id          uuid primary key default gen_random_uuid(),
+  compile_id  uuid not null references braintrust_compiles(id) on delete cascade,
+  slug        text not null,
+  statement   text not null,
+  readings    int not null,
+  basis       text not null default 'inferred' check (basis = 'inferred'),
+  unique (compile_id, slug)
+);
+
+comment on table braintrust_through_lines is
+  'A claim braintrust inferred, never one it can quote. It may never be the whole of '
+  'an answer: speaking it flatly is affordable only because something checkable is '
+  'always beside it.';
+
+-- Which items a through-line was traced to. Not citations — nothing here is
+-- quotable — but what decides which answers it rides with: a through-line
+-- travels with an answer whose positions rest on the same items.
+create table if not exists braintrust_through_line_items (
+  through_line_id uuid not null references braintrust_through_lines(id) on delete cascade,
+  item_id         uuid not null references braintrust_items(id) on delete cascade,
+  primary key (through_line_id, item_id)
+);
+
 create table if not exists braintrust_position_relations (
   id                uuid primary key default gen_random_uuid(),
   compile_id        uuid not null references braintrust_compiles(id) on delete cascade,
@@ -373,7 +408,9 @@ begin
     'braintrust_positions',
     'braintrust_position_citations',
     'braintrust_position_embeddings',
-    'braintrust_position_relations'
+    'braintrust_position_relations',
+    'braintrust_through_lines',
+    'braintrust_through_line_items'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);

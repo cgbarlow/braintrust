@@ -546,6 +546,44 @@ part moved, for the same reason the floor falls back upward.
 
 ---
 
+### Through-lines: what someone broadly holds — [#167](https://github.com/cgbarlow/braintrust/issues/167)
+
+A through-line is a claim braintrust inferred across a Person's work, retrievable beside the quoted ones
+rather than recited from a standing brief. It is a **demotion, not a promotion**: the question was never how a
+through-line qualifies as a Position, it is what survives once one has to be earned at retrieval time. Almost
+none of the Position apparatus does.
+
+- **No date**, so it also cannot be `revised`, `unsettled` or `drifting` — all three are dated relations. The
+  only date available is the oldest Item in whichever readings surfaced it, which is a fact about braintrust's
+  reading schedule and not about the person's life.
+- **No verbatim, ever.** An illustrative quote and a supporting one are indistinguishable once printed.
+- **No retrieval path of its own.** It rides with an answer whose Positions rest on Items it was traced to, so
+  it is earned by a lookup that already happened and cannot compete for the top of a list.
+- **Never the whole of an answer.** The load-bearing one: it is spoken flatly, with no hedge and no
+  attribution, and that is affordable only because something checkable is always beside it.
+- **A Compile with no through-lines publishes.** They are not in the gate at all.
+
+#### What a reading is — [#160](https://github.com/cgbarlow/braintrust/issues/160)
+
+A through-line exists only if it survives **more than one separate reading**, and nothing said what a reading
+was. It is the one hole the spec could not close, and it decides who gets through-lines at all.
+
+**A reading is one budget-sized pass over the Notes** — the division the compiler already builds: contiguous,
+in publication order, disjoint. Split **by count rather than by date**, because a date split produces an empty
+division after a quiet six months and then means something different for every person in the fleet.
+**Contiguous rather than interleaved**, because the artefact this guard exists to exclude is a pattern produced
+by what was read side by side: contiguous divisions maximise clustering *within* a division, so surviving two
+of them means the entry crossed a topical era. **Never overlapping**, for the same reason.
+
+**At least two, always.** Most Personas are one pass, so the rule would otherwise be unsatisfiable for the
+whole fleet — a Corpus under the budget is halved and pays one extra synthesis call. **A reading holds at least
+three Notes**, so a Corpus under six gets none: that number keeps #144's priced cost (*Chris on five Items gets
+none*) true rather than quietly repricing it.
+
+**[reasoned], not [measured]**, and the direction of each failure is on
+[#160](https://github.com/cgbarlow/braintrust/issues/160). Changing it is a version bump and a rebuild rather
+than a migration — the division is compile-time and stores no artefact.
+
 ## 4. Revisions: show the tension, never assert it
 
 [#7](https://github.com/cgbarlow/braintrust/issues/7),
