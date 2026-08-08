@@ -31,6 +31,7 @@ import {
   type LastRun,
 } from '../src/interrogate/index.js';
 import { escalationIssue, faultIssue, loggingIssueFiler, type Issue } from '../src/interrogate/issues.js';
+import { escalatedFaults } from '../src/interrogate/store.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 
 const NOW = Date.parse('2026-08-08T09:00:00.000Z');
@@ -698,6 +699,52 @@ describe('the issue a fault opens', () => {
 
   it('says it will not repeat itself, and why closing it is not the same as fixing it', () => {
     assert.match(faultIssue(input).body, /clears it when the assertion passes, not when this issue is closed/);
+  });
+});
+
+describe('a fault ledger braintrust cannot read', () => {
+  /** The database as it is between a merge and somebody pasting schema.sql. */
+  const withoutTheTables: Db = {
+    async query<Row>(text: string): Promise<QueryResult<Row>> {
+      if (text.includes('braintrust_faults')) {
+        throw new Error('relation "braintrust_faults" does not exist');
+      }
+      if (text.includes('braintrust_persona_layers')) {
+        return {
+          rows: [
+            {
+              display_name: 'Nate B. Jones',
+              compiled_at: new Date('2026-08-01T00:00:00.000Z'),
+              compiler_version: COMPILER_VERSION,
+              extractor: 'stub@notes-1',
+              corpus_stats: {},
+              layer: 'reasoning',
+              basis: 'inferred',
+              descriptive_md: '**Inferred across 34 items — no single item asserts this.**\n\nTraced.',
+              generative_md: null,
+              evidence: { entries: [{ label: 'opens-on-the-mistaken-instinct', items: ['a'] }] },
+            },
+          ] as Row[],
+        };
+      }
+      return { rows: [] };
+    },
+  };
+
+  it('serves the persona anyway, and says so in the log', async () => {
+    const said: string[] = [];
+    const faults = await escalatedFaults(withoutTheTables, (line: string) => said.push(line));
+
+    // braintrust judging itself may never be the reason a persona stops answering, and a
+    // ledger it cannot read is the limit case: it is not evidence against anybody.
+    assert.deepEqual(faults, []);
+    assert.match(said[0]!, /schema\.sql has not been run/);
+
+    // Found in production on the first deploy of this file: the code deploys on merge and
+    // schema.sql is pasted by hand, so the read path referenced a table that did not exist
+    // yet and every load failed.
+    const payload = await loadPersona(withoutTheTables, 'nate-b-jones');
+    assert.ok(payload.speak.includes('HOW THEY ARGUE'));
   });
 });
 
