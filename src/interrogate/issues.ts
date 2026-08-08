@@ -1,0 +1,186 @@
+/**
+ * Where a fault braintrust cannot repair goes.
+ *
+ * The split that decides this is **a fault braintrust can repair versus a fault only a
+ * person can**. A Persona behind the compiler is the first kind: braintrust rebuilds it and
+ * nobody needs telling. A Persona that has just been shown to invent claims is the second —
+ * the fault is in the compiler, it is equal across the fleet, and nothing braintrust can do
+ * on its own clears it.
+ *
+ * So the audience is the **maintainer**, not an operator and not the reader. braintrust is
+ * unattended but it is not unmaintained, and the place a maintainer already looks is this
+ * repo's issues. A dashboard would need somebody watching it; a payload warning was rejected
+ * as a permanent piece of furniture bought for a transient condition.
+ *
+ * See https://github.com/cgbarlow/braintrust/issues/153.
+ */
+
+import type { Fetcher } from '../net/fetch.js';
+
+export type Issue = { title: string; body: string };
+
+export type IssueFiler = {
+  /** Where issues go, for a log line at startup. */
+  where: string;
+  /**
+   * Files it, returning the issue's URL — or **null when it could not be filed**, which the
+   * caller must treat as *nobody has been told*, not as *told*.
+   */
+  file(issue: Issue): Promise<string | null>;
+};
+
+export type IssuesConfig = {
+  /** `owner/repo`. */
+  repo: string;
+  token: string;
+  /** Defaults to github.com's API. Present so a fake can stand in without a network. */
+  baseUrl?: string | undefined;
+};
+
+const GITHUB_API = 'https://api.github.com';
+
+export function createIssueFiler(config: IssuesConfig, fetcher: Fetcher): IssueFiler {
+  const base = (config.baseUrl ?? GITHUB_API).replace(/\/+$/, '');
+  const url = `${base}/repos/${config.repo}/issues`;
+
+  return {
+    where: `${config.repo} issues`,
+
+    async file(issue) {
+      try {
+        const response = await fetcher(url, {
+          json: { title: issue.title, body: issue.body },
+          headers: {
+            authorization: `Bearer ${config.token}`,
+            accept: 'application/vnd.github+json',
+            'x-github-api-version': '2022-11-28',
+          },
+        });
+
+        if (!response.ok) return null;
+        const created = JSON.parse(await response.text()) as { html_url?: unknown };
+        return typeof created.html_url === 'string' ? created.html_url : null;
+      } catch {
+        // A tracker that is unreachable is not a reason to fail the job — the fault is
+        // recorded either way, and the next run tries again because nothing was marked
+        // reported.
+        return null;
+      }
+    },
+  };
+}
+
+/**
+ * What braintrust does when nobody told it where to file.
+ *
+ * **It prints the whole issue and returns null, every run, forever.** Returning null is the
+ * load-bearing half: the fault is never marked reported, so the noise does not stop until
+ * either a tracker is configured or the assertion passes. A quieter fallback — recording it
+ * as reported once and going silent — would mean a misconfigured deployment announces the
+ * most serious fault braintrust can detect exactly once, into a log nobody reads.
+ */
+export function loggingIssueFiler(log: (line: string) => void): IssueFiler {
+  return {
+    where: 'the job log — no issue tracker is configured, so nothing is filed anywhere',
+    async file(issue) {
+      log(
+        `braintrust: NOBODY WAS TOLD. Set BRAINTRUST_ISSUES_REPO and BRAINTRUST_ISSUES_TOKEN ` +
+          `so this reaches a maintainer.\n--- ${issue.title} ---\n${issue.body}\n---`,
+      );
+      return null;
+    },
+  };
+}
+
+export type FaultIssueInput = {
+  assertion: string;
+  guarantees: string;
+  person: string | null;
+  subject: string;
+  detail: string;
+  compilerVersion: string;
+  interrogator: string;
+  firstFailedAt: string;
+  withdraws: string[];
+};
+
+/**
+ * The issue a first failure opens.
+ *
+ * Written for somebody arriving cold at 3am: what braintrust guarantees, what it observed,
+ * what it did *not* do about it, and what happens if nobody acts. The last two matter most —
+ * the natural assumption on reading "braintrust is inventing claims" is that it has stopped
+ * serving, and it has not.
+ */
+export function faultIssue(input: FaultIssueInput): Issue {
+  return {
+    title: `Interrogation failed: ${input.assertion}${input.person ? ` (${input.person})` : ''}`,
+    body: [
+      `braintrust interrogated itself and failed an assertion it makes about every persona it serves.`,
+      '',
+      `**What passing guarantees.** ${input.guarantees}`,
+      '',
+      `**What was observed.** ${input.detail}`,
+      '',
+      details(input),
+      '',
+      `**What braintrust did about it: nothing.** ${
+        input.person ? `${input.person}'s persona` : 'Every persona'
+      } is still serving, unchanged, and no warning appears in any payload. One live call to a ` +
+        'synthesiser that is not reproducible is evidence rather than proof, and the fault is the ' +
+        "compiler's rather than this persona's — so withdrawing a working persona on the strength " +
+        'of it would cost a reader who did nothing wrong.',
+      '',
+      `**What happens if nobody acts.** ${
+        input.withdraws.length > 0
+          ? `A day after the first failure, ${input.withdraws.join(' and ')} goes absent from what ` +
+            'is served — silently, the way a layer withheld for a rules change is — and a second ' +
+            'issue opens here. Until then this is invisible to a reader.'
+          : 'A second issue opens here a day after the first failure. Nothing a reader receives ' +
+            'changes at any point: this assertion governs no layer that could be withdrawn, ' +
+            'because the disclosure is the one sentence that must always ship. It is an ' +
+            'accepted cost that the assertion closest to what a reader hears is the one whose ' +
+            'failure they never see.'
+      }`,
+      '',
+      `**This issue is not repeated.** A fault that is re-observed on every run opens no further ` +
+        'issues. braintrust clears it when the assertion passes, not when this issue is closed — ' +
+        'so closing it without shipping a fix silences the opening arm, and only the escalation ' +
+        'above will speak again.',
+    ].join('\n'),
+  };
+}
+
+/** The issue the day mark opens. Deliberately shorter: the first one holds the reasoning. */
+export function escalationIssue(input: FaultIssueInput): Issue {
+  return {
+    title: `Still failing after a day: ${input.assertion}${input.person ? ` (${input.person})` : ''}`,
+    body: [
+      `\`${input.assertion}\` has been failing since ${input.firstFailedAt} and a day is the outer ` +
+        'limit.',
+      '',
+      `**What was observed.** ${input.detail}`,
+      '',
+      details(input),
+      '',
+      input.withdraws.length > 0
+        ? `**What changed for readers.** ${input.withdraws.join(' and ')} is now absent from ${
+            input.person ? `${input.person}'s persona` : 'every persona'
+          }. It is absent rather than flagged — a persona missing a part reads exactly like one ` +
+          'that never had it, and there is no second kind of silence. A passing interrogation ' +
+          'restores it with no rebuild.'
+        : '**Nothing changed for readers**, and that was chosen: this assertion governs no ' +
+          'withdrawable part. This issue is the whole of the escalation.',
+    ].join('\n'),
+  };
+}
+
+function details(input: FaultIssueInput): string {
+  return [
+    `- assertion: \`${input.assertion}\``,
+    `- asked against: \`${input.subject}\``,
+    `- compiler version: \`${input.compilerVersion}\``,
+    `- interrogator: \`${input.interrogator}\``,
+    `- first failed: ${input.firstFailedAt}`,
+  ].join('\n');
+}

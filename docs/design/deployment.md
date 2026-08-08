@@ -74,8 +74,17 @@ braintrust is configured by environment, and **nothing here has a default that c
 | **MCP shared secret** | Guards the read path only — see §4. |
 | **Embeddings endpoint** | Base URL, model name, optional key. **No default, ever** — see below. |
 | **Note-extractor model** | Base URL, model id, optional key, for the one genuinely expensive job. **No default**, and required. |
+| **Issue tracker** | Repo and token, for the faults braintrust finds in itself and cannot repair. **Optional, and its absence is loud** — see below. |
 
 Exact variable names are a build detail.
+
+**The issue tracker is optional because braintrust runs unattended, and noisy because it runs unmaintained
+otherwise.** braintrust interrogates itself weekly and on every compiler change (compiler.md §8); a failure
+opens one deduplicated issue addressed to a maintainer, since a fault in the compiler is one only a code
+change clears. Requiring the setting would stop a deployment from starting over a channel it may never need.
+What it must not do is fail quietly — so an unconfigured deployment prints the whole issue to the job log on
+**every** run until either a tracker is configured or the assertion passes. Going silent after one
+announcement would retire the loudest thing braintrust can say after nobody heard it.
 
 **The extractor is required for a different reason than the embeddings endpoint.** A defaulted embeddings
 endpoint would ship a corpus to a third party on the first run; nothing is shipped by accident here, because

@@ -144,6 +144,7 @@ Some things braintrust does to keep that honest rather than just say it:
 - **Evidence travels with the claim.** Every position is dated and quoted back to what was published, and a claim braintrust cannot quote is dropped rather than stored.
 - **Where someone changed their mind, both states survive.** The older position is kept and served flagged, never quietly dropped.
 - **Quotes are verbatim.** Much of what braintrust reads is auto-generated captions — a machine's transcript, not something the person wrote or approved. It hands you what was said rather than tidying it into prose nobody spoke.
+- **braintrust checks the above on itself, weekly, and files the bug when it fails.** The one that matters most cannot be proved by reading code: that a persona with nothing looked up cannot produce that person's distinctive claims. So braintrust asks a model holding a persona and no way to search, and when it catches itself failing it opens an issue on this repo — because nobody is watching, and a fault only a code change can fix has a maintainer as its audience rather than you.
 
 ## What braintrust refuses to do
 

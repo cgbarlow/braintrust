@@ -398,6 +398,64 @@ comment on table braintrust_position_relations is
   'does to the earlier. Both states are rows — a superseded position is retained.';
 
 -- ---------------------------------------------------------------------------
+-- braintrust checking itself
+--
+-- Tier 3 in cost but not in meaning: these two are the only tables that record
+-- what braintrust concluded about *itself*, and a compile never touches them.
+-- That separation is the point. A failing interrogation must not be able to
+-- change what a persona serves, so it writes here and nowhere else.
+--
+-- Neither table has a foreign key to braintrust_people. A compiler fault is
+-- about braintrust and outlives any particular person, and a fault about
+-- somebody who has since been unfollowed is still a fault worth reading.
+-- ---------------------------------------------------------------------------
+
+create table if not exists braintrust_interrogations (
+  id                uuid primary key default gen_random_uuid(),
+  assertion         text not null,
+  person_slug       text,             -- null for an assertion about the compiler
+  subject_slug      text not null,    -- whose persona it was actually asked against
+  compiler_version  text not null,
+  interrogator      text not null,    -- model@interrogation-version
+  passed            boolean not null,
+  detail            text not null,
+  ran_at            timestamptz not null default now()
+);
+
+comment on table braintrust_interrogations is
+  'Every verdict, kept. A failure opens an issue addressed to a human, and the '
+  'reply that produced it has to be readable afterwards — the judge is a model too.';
+
+comment on column braintrust_interrogations.person_slug is
+  'Null means the assertion is a property of the compiler rather than of a person, '
+  'so it runs once per compiler version rather than once per persona.';
+
+create index if not exists braintrust_interrogations_recent_idx
+  on braintrust_interrogations (assertion, person_slug, ran_at desc);
+
+create table if not exists braintrust_faults (
+  fault_key        text primary key,  -- assertion plus subject; the deduplication itself
+  assertion        text not null,
+  person_slug      text,
+  detail           text not null,
+  first_failed_at  timestamptz not null default now(),
+  last_failed_at   timestamptz not null default now(),
+  reported_at      timestamptz,
+  reported_issue   text,
+  escalated_at     timestamptz,
+  escalated_issue  text
+);
+
+comment on table braintrust_faults is
+  'One row per live fault. The row is the deduplication: a fault already open '
+  'opens no second issue, however many runs re-observe it. Deleted when the '
+  'assertion passes — cleared by a pass, never by an issue being closed.';
+
+comment on column braintrust_faults.first_failed_at is
+  'Never moved once set. It is the clock the one-day limit runs on, and a fault '
+  'that reset it every run would never escalate.';
+
+-- ---------------------------------------------------------------------------
 -- House style
 --
 -- braintrust itself uses none of this: it connects to Postgres directly over
@@ -426,7 +484,9 @@ begin
     'braintrust_position_embeddings',
     'braintrust_position_relations',
     'braintrust_through_lines',
-    'braintrust_through_line_items'
+    'braintrust_through_line_items',
+    'braintrust_interrogations',
+    'braintrust_faults'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
