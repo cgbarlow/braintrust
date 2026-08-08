@@ -655,6 +655,7 @@ the way the compiler fails:
 | `habits_are_on_the_menu` | every line describing how someone argues is text braintrust authored |
 | `habits_rest_on_distinct_evidence` | no two lines in the argument-habits block rest on the identical set of Items |
 | `speak_opens_with_disclosure` | the first line a reader hears is the disclosure, word for word, and not an instruction addressed to the model |
+| `nothing_matched_carries_no_prose` | an empty answer hands over the facts and no sentence, so the persona says it in their own register |
 | `revisions_have_not_swept` | no more than half the Positions were superseded on this rebuild |
 
 **The gate is a list, not a function with a clause per rule.** Every check is a named entry carrying the

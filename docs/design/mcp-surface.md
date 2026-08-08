@@ -603,7 +603,47 @@ embeddings model like any other.
 
 **`nothing_matched` keeps its shape and gains two things**: which failure it was — *nothing came close* and
 *everything came equally close* are different facts about the Corpus — and one plain sentence of fact the
-Script can put into its own words.
+Script can put into its own words. **The sentence was subsequently removed and is now the Persona's** — see
+[The empty answer is facts, and the sentence is theirs](#the-empty-answer-is-facts-and-the-sentence-is-theirs).
+
+#### The empty answer is facts, and the sentence is theirs
+
+**[measured]** — [A persona with nothing to recite answers anyway](https://github.com/cgbarlow/braintrust/issues/146)
+
+`nothing_matched.say` shipped for two releases reading *"This is outside what braintrust has read of this
+person."* — third person, about braintrust, calling the person *this person* — against a field comment that
+promised *what a Persona can put into its own words, never braintrust's prose about braintrust*. Measured
+across ~80 replies: **no Persona ever said it.** Every arm rewrote it into its own first person, and
+braintrust's exact words came out only where a Script section told the Persona to use them.
+
+So braintrust supplies **the fact and never the sentence**: how close the question came, which kind of empty
+it was, and what is nearby. This is what keeps *never fall back to a generic voice* at **one** exception —
+the fixed disclosure, which is braintrust speaking as itself. It is a publication-blocking check rather than
+a convention, because the field has already drifted once and a rendered sentence in a payload looks like
+helpfulness right up until a reader hears a Persona narrate itself in the third person.
+
+**An empty answer offers rather than stops.** Nothing was broken about the honesty — a Persona handed an empty
+answer admits it and does not fill, **24 of 24**, every arm and every seed. What was wrong was the shape of a
+dead end: *"I don't have a view on central bank interest rate policy."* and no next move, on the first question
+a reader asks. `nothing_matched.nearest` carries the Positions whose statements come nearest the question, with
+the floor deliberately not applied — they did not answer it, and naming them while saying so is a different act
+from serving them as an answer. Handed the fact and told to offer, the Persona volunteered it unprompted.
+
+**No retrieval gate, and this was built before it was rejected.** Withholding the Persona until a retrieval
+happens does produce the lookup, and is the worst of the six arms measured: the first reply narrates in the
+third person — *"Chris Barlow has said that…"*, 3 of 3 — and it answers **"Hi!"** with *"I don't have any
+positions to share at the moment."* Retrieval is already effectively non-optional wherever the tool is
+reachable: **21 of 21**, five payload shapes, both system prompts, including the pre-#138 Script with its crib
+still in it. And 0 of 12 on a greeting — the model's own judgement about which turn needs a lookup was right
+every time, unprompted.
+
+**A Persona that cannot reach the record says so.** The case the above leaves is the client that hides the
+tool while leaving it named in the persona tool's description — which is what tool search actually does — and
+there the founding failure of this map returns exactly as written: 0 of 3 lookups, three fluent invented
+answers in voice. What survives [#138](https://github.com/cgbarlow/braintrust/issues/138) is *"I don't have a
+view on quests versus goals"*: honest about the Persona and **false about the person**, who does have a view
+that braintrust is holding. braintrust never sees the call that was not made, so the Script gains words for it
+and the fix is the Hermes tool-deferral setting. Mitigation, recorded as mitigation.
 
 #### Positions carry two grades, not one
 
@@ -769,6 +809,12 @@ spots. A *latest* list is exactly where that matters:
 So they appear in date order carrying `not_read`, which holds both the machine reason and a `say` line the
 Persona can speak — the same shape [#115](https://github.com/cgbarlow/braintrust/issues/115) gave
 `nothing_matched`, and for the same reason: braintrust's own vocabulary is not speakable.
+
+**The precedent it copied has since been overturned, and this surface has not followed yet.**
+[#146](https://github.com/cgbarlow/braintrust/issues/146) measured that no Persona ever said `nothing_matched`'s
+rendered sentence, and removed it in favour of the facts. `not_read` carries fragments rather than a sentence
+shaped to be recited whole, so it is the weaker instance of the same shape — but it is the same shape, and it is
+recorded here as a known one rather than fixed on a ticket that did not scope it.
 
 **`note` and `not_read` are mutually exclusive**, never both and never neither. An empty Note would read as
 *there was not much in it* rather than *nobody read it*.

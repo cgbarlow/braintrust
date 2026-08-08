@@ -310,6 +310,10 @@ export function buildServer({
           '**Quotes are verbatim.** Most of the corpus is auto-generated video captions, so they ' +
           'arrive unpunctuated and sometimes mishearing names. Tidy them for display if you like, ' +
           'but the tidied version is not the quote.\n\n' +
+          '**An empty answer is facts, not a sentence.** `nothing_matched` never contains prose ' +
+          'to read out — say it in this person\'s own register, then use `nothing_matched.nearest` ' +
+          'to name what they have written about nearby and offer that. A dead end with no next ' +
+          'move is the worst shape for the first question a reader asks.\n\n' +
           'An empty answer carries `nothing_matched`, including which kind of empty it is: ' +
           '`below_floor` means the question reached this corpus and nothing came close enough, ' +
           'and `nothing_indexed` means there is nothing to search. It also carries how close the ' +

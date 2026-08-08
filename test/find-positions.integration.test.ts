@@ -29,6 +29,8 @@ import {
   findPositions,
   MATCH_FLOOR,
   MATCH_ITEMS,
+  NEAREST_ON_EMPTY,
+  speakableProseIn,
 } from '../src/find.js';
 import {
   chunkItem,
@@ -305,6 +307,26 @@ describe('finding positions, against real Postgres', { skip }, () => {
   }
 
   /**
+   * A graded persona that still refuses an off-corpus question.
+   *
+   * A calibrated floor on this fixture lands near zero — the bag of words separates cleanly,
+   * so the gate sits just above nothing — and at that setting a stray hash collision is enough
+   * to return a passage. Dropping the measured floor leaves the conservative one in force,
+   * which is a real state (a persona whose gate could not be measured and whose statements
+   * were embedded anyway) and the only one where an *empty* answer can be looked at.
+   */
+  async function gradedButStrict(positionsFor?: FakeOptions['positionsFor']): Promise<void> {
+    await graded(positionsFor);
+    await db.query(
+      `update braintrust_compiles set corpus_stats = corpus_stats - 'selectivity'
+        where status = 'current'`,
+    );
+  }
+
+  /** Words nobody in this corpus wrote, and no question a reader would ask of it. */
+  const OFF_CORPUS = 'bathymetry of a fjord during the krill migration';
+
+  /**
    * One position per item, oldest last — the shape the revision tests need, because a
    * revision is between two things said at different times and the default grouping puts
    * every claim in its own position.
@@ -408,11 +430,85 @@ describe('finding positions, against real Postgres', { skip }, () => {
     assert.deepEqual(uncalibrated.positions, []);
     assert.deepEqual(uncalibrated.passages, []);
     assert.equal(uncalibrated.nothing_matched!.reason, calibrated.nothing_matched!.reason);
-    assert.equal(uncalibrated.nothing_matched!.say, calibrated.nothing_matched!.say);
+    assert.deepEqual(uncalibrated.nothing_matched!.nearest, calibrated.nothing_matched!.nearest);
     assert.deepEqual(Object.keys(uncalibrated.nothing_matched!).sort(), Object.keys(calibrated.nothing_matched!).sort());
 
     // …and the caution is real: the floor it used is the unmeasured one, above the range.
     assert.equal(uncalibrated.nothing_matched!.floor, UNMEASURED_RETRIEVAL_FLOOR);
+  });
+
+  /**
+   * **An empty answer carries the facts and no sentence.**
+   *
+   * `say` shipped here for two releases reading *"This is outside what braintrust has read of
+   * this person."* — third person, about braintrust, calling the person *this person*. Measured
+   * across ~80 replies: no persona ever said it. Every arm rewrote it into its own first
+   * person, so the sentence is the persona's and braintrust supplies only what it knows.
+   */
+  it('hands an empty answer the facts, with nothing shaped to be recited', async () => {
+    await gradedButStrict();
+
+    const answer = await find({ query: OFF_CORPUS });
+    const empty = answer.nothing_matched!;
+
+    assert.deepEqual(Object.keys(empty).sort(), ['floor', 'nearest', 'nearest_similarity', 'reason']);
+    assert.deepEqual(speakableProseIn(empty as unknown as Record<string, unknown>), []);
+
+    // Mechanically: every value braintrust authored here is a number, a null, or one of two
+    // codes. A code is a fact about which silence this is; a sentence would be a script.
+    assert.equal(empty.reason, 'below_floor');
+    for (const [key, value] of Object.entries(empty)) {
+      if (key === 'nearest' || key === 'reason') continue;
+      assert.notEqual(typeof value, 'string', `${key} must not be prose`);
+    }
+  });
+
+  /**
+   * **A dead end is handed back as a choice.** Nothing was broken about the honesty — a persona
+   * handed an empty answer admits it and does not fill, 24 of 24. What was wrong was the shape:
+   * *"I don't have a view on that."* and no next move.
+   */
+  it('offers the nearest thing braintrust does hold rather than stopping', async () => {
+    await gradedButStrict();
+
+    const answer = await find({ query: OFF_CORPUS });
+    const nearest = answer.nothing_matched!.nearest;
+
+    assert.ok(nearest.length > 0, 'a persona that holds positions always has something to offer');
+    assert.ok(nearest.length <= NEAREST_ON_EMPTY);
+
+    // Sentences a persona can say out loud, and the same ones the rows carry — read from the
+    // record rather than composed for this path.
+    const statements = await db.query<{ statement: string }>('select statement from braintrust_positions');
+    for (const one of nearest) {
+      assert.ok(one.statement.length > 0);
+      assert.ok(statements.rows.some((row) => row.statement === one.statement));
+    }
+
+    // And they are offered as adjacent, never as the answer: the answer itself is still empty.
+    assert.deepEqual(answer.positions, []);
+    assert.deepEqual(answer.passages, []);
+  });
+
+  /**
+   * **The two silences are different facts and a client can tell them apart.** *Nothing came
+   * close* is a persona with nothing to say on a subject. *braintrust cannot reach the record*
+   * is a persona that must not report the person has no view — they may have written about it
+   * at length.
+   */
+  it('distinguishes finding nothing from being unable to look', async () => {
+    await gradedButStrict();
+
+    const foundNothing = await find({ query: OFF_CORPUS });
+    assert.ok(foundNothing.nothing_matched, 'an answer came back, and it was empty');
+
+    // The record out of reach is not an empty answer at all. It refuses, and says why — a
+    // reader is never told the person has no view on something braintrust simply cannot read.
+    const unreachable = createQueryGate(db, 'a-model-with-no-vectors-here');
+    await assert.rejects(
+      findPositions({ person: 'nate', query: 'evals' }, { db, embedder, retrieval: unreachable }),
+      /re-embedded under the configured model/,
+    );
   });
 
   it('says the window itself was empty, which reads differently again', async () => {
@@ -887,6 +983,7 @@ describe('finding positions, against real Postgres', { skip }, () => {
     // adjacent material, on its single best passage against the lecture's single best.
     assert.equal(answer.positions[0]!.citations[0]!.url, `https://example.test/${SHARP}`);
   });
+
 
 
   it('refuses for a person who has never been compiled rather than serving passages', async () => {

@@ -305,20 +305,119 @@ export type FindPayload = {
    * configured model turns every question into an empty list, and an empty list on its own
    * is indistinguishable from an honest one.
    */
-  nothing_matched?: {
-    nearest_similarity: number | null;
-    /** The gate in force for this Persona — measured on its last Compile unless overridden. */
-    floor: number;
-    /**
-     * *Nothing came close* and *everything came equally close* are different facts about a
-     * Corpus and an operator reads them differently: the first is an honest empty answer,
-     * the second is a question that never selected this Corpus at all.
-     */
-     reason: 'below_floor' | 'nothing_indexed';
-    /** What a Persona can put into its own words. Never braintrust's prose about braintrust. */
-    say: string;
-  };
+  nothing_matched?: NothingMatched;
 };
+
+/**
+ * An empty answer, as **facts and no sentence**.
+ *
+ * **`say` used to ship here and no Persona ever said it.** It read *"This is outside what
+ * braintrust has read of this person."* — third person, about braintrust, calling the person
+ * *this person* — against its own field comment promising the opposite. Measured across ~80
+ * replies: every arm rewrote it into its own first person, and braintrust's exact words came
+ * out only when a Script section told the Persona to use them. So the sentence is the
+ * Persona's and braintrust supplies only what it knows. That is what keeps *never fall back
+ * to a generic voice* at **one** exception — the fixed disclosure, which is braintrust
+ * speaking as itself.
+ *
+ * **And an empty answer offers rather than stops.** Nothing was broken about the honesty: a
+ * Persona handed an empty answer admits it and does not fill, 24 of 24, every arm and every
+ * seed. What was wrong was the shape of a dead end — *"I don't have a view on central bank
+ * interest rate policy."* and no next move, on the first question a reader asks. Handed the
+ * nearest thing braintrust does hold, the Persona offered it unprompted.
+ */
+export type NothingMatched = {
+  nearest_similarity: number | null;
+  /** The gate in force for this Persona — measured on its last Compile unless overridden. */
+  floor: number;
+  /**
+   * *Nothing came close* and *everything came equally close* are different facts about a
+   * Corpus and an operator reads them differently: the first is an honest empty answer,
+   * the second is a question that never selected this Corpus at all.
+   */
+  reason: 'below_floor' | 'nothing_indexed';
+  /**
+   * The nearest things braintrust **does** hold, so the Persona has something to offer
+   * instead of stopping. Positions, nearest first, with the floor ignored — which is the
+   * whole point: these did not answer the question, and saying so while naming them is a
+   * different act from serving them as an answer.
+   *
+   * Statements rather than slugs, because a Persona cannot offer `quests-beat-goals` out
+   * loud. They are the same sentences `positions[].statement` carries, read from the rows
+   * rather than composed here.
+   */
+  nearest: { slug: string; statement: string }[];
+};
+
+/** How many adjacent Positions an empty answer offers. Enough to be a choice, not a list. */
+export const NEAREST_ON_EMPTY = 3;
+
+/**
+ * An empty answer, assembled in one place.
+ *
+ * **Exported so the publish gate checks the thing that ships** rather than a lookalike built
+ * for checking — the same rule that makes the gate render the real Script to look at its first
+ * line. `reason` is derived here rather than passed, because *nothing came close* and *nothing
+ * is indexed* is a reading of one number and not a second fact a caller could get wrong.
+ */
+export function nothingMatched(facts: {
+  nearest_similarity: number | null;
+  floor: number;
+  nearest: { slug: string; statement: string }[];
+}): NothingMatched {
+  return {
+    nearest_similarity: facts.nearest_similarity,
+    floor: facts.floor,
+    // Two reasons, not three. `did_not_select` named the discredited margin test and has
+    // nothing left to mean: a question either reaches this Corpus or it does not.
+    reason: facts.nearest_similarity === null ? 'nothing_indexed' : 'below_floor',
+    nearest: facts.nearest,
+  };
+}
+
+/**
+ * The keys `nothing_matched` may carry, and the only string values braintrust authors in it.
+ *
+ * **This field has drifted once already**, which is why the shape is enumerated here and
+ * checked before a Compile may publish. See ./compile/gate.ts.
+ */
+export const NOTHING_MATCHED_KEYS = [
+  'nearest_similarity',
+  'floor',
+  'reason',
+  'nearest',
+] as const;
+
+export const NOTHING_MATCHED_REASONS = ['below_floor', 'nothing_indexed'] as const;
+
+/**
+ * Anything in an empty answer that a Persona could recite as it stands, by field name. Empty
+ * is the passing state.
+ *
+ * **Structural, and deliberately not a readability judgement.** It does not ask whether a
+ * string reads like prose; it asks whether braintrust put a string there at all. Numbers, a
+ * null, and one of two reason codes are facts. `nearest` is exempt because its sentences are
+ * `braintrust_positions.statement`, read from the rows and already served verbatim beside
+ * every Position — quoting the record is not composing prose about braintrust.
+ */
+export function speakableProseIn(payload: Record<string, unknown>): string[] {
+  const offending: string[] = [];
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (!(NOTHING_MATCHED_KEYS as readonly string[]).includes(key)) {
+      offending.push(key);
+      continue;
+    }
+    if (key === 'nearest') continue;
+    if (value === null || typeof value === 'number') continue;
+    if (key === 'reason' && (NOTHING_MATCHED_REASONS as readonly string[]).includes(String(value))) {
+      continue;
+    }
+    offending.push(key);
+  }
+
+  return offending;
+}
 
 type CurrentCompile = {
   id: string;
@@ -438,19 +537,16 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // a floor that does not suit the endpoint.
   if (payload.positions.length === 0 && payload.passages.length === 0) {
     const nearest = await nearestSimilarity(deps.db, vectorLiteral(vector), search);
-    // Two reasons, not three. `did_not_select` named the discredited margin test and has
-    // nothing left to mean: a question either reaches this Corpus or it does not.
-    const reason = nearest === null ? 'nothing_indexed' : 'below_floor';
 
-    payload.nothing_matched = {
+    payload.nothing_matched = nothingMatched({
       nearest_similarity: nearest,
       floor,
-      reason,
-      say:
-        reason === 'nothing_indexed'
-          ? 'braintrust has nothing indexed for this person in that window.'
-          : 'This is outside what braintrust has read of this person.',
-    };
+      // **The next move, rather than a full stop.** The floor is deliberately not applied
+      // here: these Positions did not answer the question and are not offered as though they
+      // did — they are what this Persona has looked at nearby, so a dead end can be handed
+      // back as a choice. Nothing to offer is a real answer too, and it is an empty list.
+      nearest: await nearestPositions(deps.db, compile.id, literal, search.model),
+    });
   }
 
   return payload;
@@ -780,6 +876,37 @@ function toCitation(row: {
     ...(row.posted_at !== null ? { posted_at: row.posted_at.toISOString() } : {}),
     quote: row.quote,
   };
+}
+
+/**
+ * The Positions whose statements come nearest the question, with no floor applied.
+ *
+ * **Graded on the same statements `fit` grades on**, through the same query, so the thing
+ * offered on an empty answer is the thing that would have ranked first had anything cleared
+ * the gate. A Persona with no statement vectors offers nothing rather than an arbitrary
+ * three — the honest answer when braintrust cannot tell which of its Positions is nearest.
+ *
+ * The window is not applied either. A reader who asked about last quarter and got nothing is
+ * being offered *what this Persona has*, not a second empty list in a narrower slice.
+ */
+async function nearestPositions(
+  db: Db,
+  compileId: string,
+  vector: string,
+  model: string,
+): Promise<{ slug: string; statement: string }[]> {
+  const { rows } = await db.query<{ slug: string; statement: string }>(
+    `select p.slug, p.statement
+       from braintrust_positions p
+       join braintrust_position_embeddings pe on pe.position_id = p.id
+      where p.compile_id = $1
+        and pe.model = $3
+      order by pe.embedding <=> $2::vector
+      limit ${NEAREST_ON_EMPTY}`,
+    [compileId, vector, model],
+  );
+
+  return rows;
 }
 
 /**
