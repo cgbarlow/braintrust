@@ -58,8 +58,8 @@ export const EXEMPLAR_MAX_CHARS = 140;
  * Corpus measured is 492, so 300 separates the two populations with roughly 1.6×
  * clearance on each side — above every Ghost event announcement, below every blog post.
  *
- * **Short-form is excluded from Voice alone.** It still feeds Beliefs, Reasoning,
- * Positions and Coverage. *Short-form tells you what someone thinks; long-form tells you
+ * **Short-form is excluded from Voice alone.** It still feeds Reasoning, Positions,
+ * Through-lines and Coverage. *Short-form tells you what someone thinks; long-form tells you
  * how they argue* — and the moves counted here are argumentative moves.
  *
  * See docs/design/compiler.md §2.
@@ -402,8 +402,8 @@ function describe(evidence: VoiceEvidence): string {
           `${over.median_words} words. ` +
           (over.items_excluded > 0
             ? `${over.items_excluded} shorter item${over.items_excluded === 1 ? ' was' : 's were'} ` +
-              'read for what they say rather than for how they say it — they feed beliefs, ' +
-              'reasoning and positions, and a thirty-word post cannot answer how someone argues.'
+              'read for what they say rather than for how they say it — they feed reasoning, ' +
+              'positions and through-lines, and a thirty-word post cannot answer how someone argues.'
             : 'Nothing was excluded.'),
   );
 

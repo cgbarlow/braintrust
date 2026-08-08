@@ -66,13 +66,6 @@ function facts(overrides: Partial<GateFacts> = {}): GateFacts {
           ],
         },
       },
-      {
-        layer: 'beliefs',
-        basis: 'inferred',
-        descriptive_md: `${inferredMarker(4)}\n\nHolds that judgement is the scarce thing.`,
-        generative_md: null,
-        evidence: { entries: [{ label: 'Judgement is scarce', items: ['a1'], items_traced: 1 }] },
-      },
     ],
     coverage_evidence: { ...ITEMS },
     items: { ...ITEMS },
@@ -140,10 +133,10 @@ describe('the four core layers', () => {
     // layer, it produces a marker and a sentence explaining itself. Prose is not the
     // test; entries are.
     const emptied = facts().layers.map((one) =>
-      one.layer === 'beliefs'
+      one.layer === 'reasoning'
         ? {
             ...one,
-            descriptive_md: `${inferredMarker(4)}\n\nbraintrust could not synthesise anything here.`,
+            descriptive_md: `${inferredMarker(4)}\n\nbraintrust could not recognise how this person argues.`,
             evidence: { entries: [] },
           }
         : one,
@@ -152,7 +145,7 @@ describe('the four core layers', () => {
     const verdict = checkCompile(facts({ layers: emptied }));
 
     assert.equal(verdict.passed, false);
-    assert.match(check(verdict, 'core_layers_present').detail, /beliefs carried nothing to serve/);
+    assert.match(check(verdict, 'core_layers_present').detail, /reasoning carried nothing to serve/);
   });
 
   it('is satisfied by a measured layer with no entries, which is not how they are shaped', () => {
@@ -204,7 +197,7 @@ describe('the inferred marker', () => {
     const verdict = checkCompile(
       facts({
         layers: facts().layers.map((one) =>
-          one.layer === 'beliefs'
+          one.layer === 'reasoning'
             ? { ...one, descriptive_md: `Some prose first.\n\n${inferredMarker(4)}` }
             : one,
         ),
@@ -517,12 +510,12 @@ describe('the reason a rejection carries', () => {
   it('collects every failure, because a compiler is rarely wrong in one way', () => {
     const verdict = checkCompile(
       facts({
-        layers: facts().layers.filter((one) => one.layer !== 'beliefs'),
+        layers: facts().layers.filter((one) => one.layer !== 'reasoning'),
         coverage_evidence: { ...ITEMS, failed: 7 },
       }),
     );
 
-    assert.match(verdict.reason!, /beliefs missing/);
+    assert.match(verdict.reason!, /reasoning missing/);
     assert.match(verdict.reason!, /failed is 7/);
   });
 
@@ -534,7 +527,7 @@ describe('the reason a rejection carries', () => {
   it('names which check failed, not only what went wrong', () => {
     const verdict = checkCompile(
       facts({
-        layers: facts().layers.filter((one) => one.layer !== 'beliefs'),
+        layers: facts().layers.filter((one) => one.layer !== 'reasoning'),
         coverage_evidence: { ...ITEMS, failed: 7 },
       }),
     );

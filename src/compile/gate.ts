@@ -23,8 +23,25 @@ import { SPOKEN_DISCLOSURE } from '../disclosure.js';
 import { speakableProseIn } from '../find.js';
 import { isOnTheMenu, twinEvidence } from './habits.js';
 import { INFERRED_MARKER } from './infer.js';
+import { SERVED_LAYERS } from './version.js';
 
-export const CORE_LAYERS = ['beliefs', 'coverage', 'reasoning', 'voice'] as const;
+/**
+ * The layers a Compile must have — the same list as the layers braintrust serves, so a
+ * layer cannot be half-retired: removed from one and left in the other.
+ *
+ * **Beliefs left this list rather than being exempted from it**, and the difference matters:
+ * the rule that rejected a Compile whose beliefs layer carried nothing is gone because
+ * there is no such layer, not because emptiness became acceptable in one place.
+ *
+ * Nothing replaced it for through-lines. Under the survives-two-readings bar a great many
+ * people legitimately have none — anyone whose work fits in a single reading, by
+ * construction — so a floor here would refuse to publish good Personas for having a small
+ * Corpus. **This is the collapse floor that was recommended and declined**, and the cost is
+ * known: a Compile that came back empty because the synthesiser had a bad afternoon looks
+ * exactly like one that came back empty because there was nothing to find, and it replaces
+ * a Persona that had through-lines yesterday.
+ */
+export const CORE_LAYERS = SERVED_LAYERS;
 
 /**
  * How far the Position count may fall against the previous Compile before it reads as a
@@ -169,7 +186,7 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
   {
     id: 'core_layers_present',
     guarantees:
-      'all four core layers exist on this compile and each carries something a client could serve',
+      'every core layer exists on this compile and each carries something a client could serve',
     run: coreLayersPresent,
   },
   {
@@ -245,11 +262,15 @@ export function gateCheckIds(): string[] {
 }
 
 /**
- * All four, and none of them empty. Emptiness is the check that earns its place: the
+ * All of them, and none of them empty. Emptiness is the check that earns its place: the
  * likeliest way for this gate to fire in practice is a synthesis that came back with
  * nothing usable, and the layer that produces is not blank — it is a marker, a sentence
  * saying so, and no entries. So an inferred layer is empty when it lists nothing,
  * whatever prose surrounds the fact.
+ *
+ * **It applies to Reasoning and to nothing else now.** A Persona that cannot say how
+ * someone argues is missing a layer it is supposed to have; a Persona holding no
+ * through-lines is holding a normal amount of nothing. See {@link CORE_LAYERS}.
  */
 function coreLayersPresent(facts: GateFacts): GateCheckResult {
   const missing: string[] = [];
@@ -305,8 +326,23 @@ function voiceHasBothForms(facts: GateFacts): GateCheckResult {
 }
 
 /**
- * The marker rule, mechanically. `basis` is the structural fact — a layer a model wrote —
- * and this is where "then it must say so in its prose" is enforced rather than trusted.
+ * The marker rule, mechanically. `basis` is the structural fact — a layer a model had a
+ * hand in — and this is where "then it must say so in its prose" is enforced rather than
+ * trusted.
+ *
+ * **Reviewed when Beliefs stopped being a layer, and kept.** The marker was written for a
+ * client pasting a layer's markdown straight into a system prompt, where a `basis` field is
+ * lost and a first line survives. The obvious reading after the fold is that nothing ships
+ * whole any more — the Script selects menu instructions rather than carrying Reasoning's
+ * prose — and on that reading this check guards nothing. It is wrong:
+ * `braintrust_explain_persona` returns every layer **whole and verbatim**, which is the
+ * pasting case exactly, and Reasoning is still `inferred` there. So the marker is still the
+ * only thing that travels with the prose when the envelope is thrown away.
+ *
+ * What it no longer guards is a layer of conclusions, because there is not one. A reader
+ * who pastes Reasoning is pasting braintrust's own authored sentences about how someone
+ * argues, so the worst the marker now prevents is a delivery style read as a measurement —
+ * a smaller harm than the one it was built for, and still a real one.
  */
 function inferredLayersMarked(facts: GateFacts): GateCheckResult {
   const unmarked = facts.layers

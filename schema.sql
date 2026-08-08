@@ -244,6 +244,22 @@ create table if not exists braintrust_persona_layers (
   unique (compile_id, layer)
 );
 
+-- 'beliefs' is retired. It was a layer of conclusions that shipped in every
+-- persona payload, which let a model answer what somebody thinks without
+-- looking anything up. What a person broadly holds is a through-line now
+-- (see braintrust_through_lines below): retrieved beside something quotable,
+-- never handed over unasked.
+--
+-- The rows go first and then the constraint, because the constraint cannot be
+-- narrowed while a row still uses it. Deleting them is safe: layers are tier 3,
+-- rebuilt from notes that already exist, and the read path stopped serving this
+-- one before this file was ever run. Running it twice changes nothing.
+delete from braintrust_persona_layers where layer = 'beliefs';
+
+alter table braintrust_persona_layers drop constraint if exists braintrust_persona_layers_layer_check;
+alter table braintrust_persona_layers add constraint braintrust_persona_layers_layer_check
+  check (layer in ('voice', 'reasoning', 'coverage'));
+
 comment on column braintrust_persona_layers.generative_md is
   'Same row as descriptive_md on purpose: written by one compile step from one set '
   'of measurements, so the instruction and its evidence cannot disagree.';

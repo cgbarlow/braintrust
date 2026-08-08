@@ -178,14 +178,21 @@ number and becomes something a human can read.
 |---|---|---|---|---|
 | **Voice** | measured | frequency, spread and exemplars counted directly over the raw text of Items long enough to argue in | **no** | converges |
 | **Coverage** | measured | counts over `braintrust_items`, their `retrieval` status and their form | **no** | fixed size |
-| **Reasoning** | inferred | LLM synthesis across Notes | yes | converges |
-| **Beliefs** | inferred | LLM synthesis across Notes | yes | converges |
+| **Reasoning** | inferred | chosen from an authored menu against Notes | yes | converges |
 | **Positions** | measured, cited, dated | clustered from Note `claims`; every Position keeps its citations | yes | **grows** |
+| **Through-lines** | inferred | LLM synthesis across separate readings of the Notes | yes | **grows** |
 | **Relations** | measured / inferred | pairwise judgement over candidate claim pairs | yes | **grows** |
 
-**The first four are the Core** — roughly constant in size at any Corpus scale, and what a client loads to
-sound like someone. **The last two grow** and are
+**The first three are the Core** — roughly constant in size at any Corpus scale, and what a client loads to
+sound like someone. **The last three grow** and are
 [queried rather than loaded whole](./mcp-surface.md#3-braintrust_find_positions).
+
+**Nothing in the Core states a conclusion** ([#169](https://github.com/cgbarlow/braintrust/issues/169)).
+Beliefs was a fourth Core layer of durable commitments, and it shipped in every payload — so a model asked what
+somebody thinks today could answer from the standing brief alone and sound specific and sourced, because
+braintrust handed it conclusions before any question was asked. It is gone. What someone holds is a
+**Through-line** now: it has to be retrieved, it arrives beside claims that can be cited, and it may never be
+the whole of an answer.
 
 **Two layers never touch a model, and that is what makes `basis` honest.** A `measured` layer is one no model
 ever wrote — the line is structural rather than declarative, and it gives the marker rule in §3 a mechanical
@@ -204,10 +211,12 @@ transcripts — the dominant feature of a spoken voice that is 96% of the Corpus
 there was rejected for exactly this reason; the disclosure
 [travels in the subject string instead](./mcp-surface.md#three-rules-that-hold-across-the-whole-surface).
 
-**Beliefs cannot be extracted per Item.** Belief-marker mining was tested and does not work: of 30
+**A conviction cannot be extracted per Item.** Belief-marker mining was tested and does not work: of 30
 belief-shaped statements found by phrase matching, most explained a mechanism rather than stated a conviction.
-Beliefs are never asserted in one place, so the layer requires a cross-item synthesis pass — which is why a
-Note carries the argument and the assumptions, not just the claims.
+A conviction is never asserted in one place, so a Through-line requires a cross-item synthesis pass — which is
+why a Note carries the argument and the assumptions, not just the claims. That finding outlived the layer it
+was made for: it is now why a Through-line is read across whole divisions of the Corpus rather than mined from
+any one Item.
 
 **Coverage `evidence` has a fixed shape**, because it is returned as structured counts rather than prose:
 `window`, `retrieved`, every `skipped_*` state, `pending`, `failed`, `words_retrieved`, `by_source` and
@@ -299,7 +308,7 @@ become the person. Item-spread was always the right statistic; it only ever need
 it has them.
 
 **Short-form is read, not ignored — it is excluded from Voice alone.** Skeets, event announcements and Shorts
-still feed Beliefs, Reasoning, Positions and Coverage. The line: **short-form tells you what someone thinks;
+still feed Reasoning, Positions, Through-lines and Coverage. The line: **short-form tells you what someone thinks;
 long-form tells you how they argue.** The moves Voice counts — hedging, direct address, concession — are
 argumentative moves, and the extractor is already licensed to answer *"no argument"* for a day of posts.
 Measuring argumentative moves over writing that contains no arguments was never going to produce an
@@ -452,9 +461,9 @@ marker further down the layer is not a label a client pasting the opening paragr
 ### What the build settled about the inferred half
 
 **An inferred entry braintrust cannot attribute to Items it holds is dropped** — the same rule as a claim it
-cannot quote, applied to the layer that has no quotes. Each entry in Reasoning and Beliefs names the Items it
-was traced to; ids that were not in the Notes handed to the synthesiser are removed, and an entry left holding
-none is not published. The prose is a model's, and what it rests on is not allowed to be.
+cannot quote, applied to what has no quotes. Each Reasoning habit and each Through-line names the Items it was
+traced to; ids that were not in the Notes handed to the synthesiser are removed, and an entry left holding none
+is not published. The judgement is a model's, and what it rests on is not allowed to be.
 
 **Traced, not counted.** A Corpus too large for one pass is folded — synthesised in passes and merged — and an
 entry found in one pass carries only that pass's Items. So `23 of 412` in an inferred layer is a **floor**: the
@@ -463,11 +472,12 @@ deliberately says *traced to*, because the two numbers are not the same kind of 
 both would quietly claim the stronger one.
 
 **`entries: []` and a missing `entries` are different failures.** An empty list is a legitimate answer — the
-prompt asks for a short list that is really there over a long one partly hoped for — and it produces a layer
-the gate refuses. A *missing* `entries` key means the endpoint answered a different question, and it fails the
-Compile with that as the reason. Collapsing the two was tried and rejected in the live run: a model answering
-in the extractor's shape reached the gate as *"beliefs carried nothing to serve"*, which sends whoever reads it
-looking at the Corpus instead of at the endpoint.
+prompt asks for a short list that is really there over a long one partly hoped for — and a Compile that finds
+no Through-lines **publishes normally**. A *missing* `entries` key means the endpoint answered a different
+question, and it fails the Compile with that as the reason. Collapsing the two was tried and rejected in the
+live run, and the distinction matters more now than it did then: **no gate check counts Through-lines**, so an
+endpoint answering in the extractor's shape would publish a Persona holding none and look exactly like a Corpus
+that genuinely had none. This throw is the only thing left that keeps the two apart.
 
 ### Reasoning is chosen from a menu, not written — [#163](https://github.com/cgbarlow/braintrust/issues/163)
 
@@ -930,7 +940,8 @@ embedding cost.
 |---|---|
 | **You can sit on a stale Persona without knowing.** The gate records why it rejected; nothing in v1 reads it. | §5 |
 | **Passages read like unpunctuated speech**, because that is what they are. | §6 |
-| **Beliefs are uncitable.** No single Item asserts one, so provenance comes from the label rather than from pretending otherwise. | §2 |
+| **A Through-line is uncitable.** No single Item asserts one, so it carries the Items it was traced to and nothing quotable. It is spoken flatly and unhedged, which is affordable only because it never arrives without cited Positions beside it. | §2 |
+| **No floor protects the Through-lines.** A collapse floor was recommended and declined: under *survives more than one separate reading* a great many people legitimately hold none, so a rule rejecting on emptiness would block good Personas from shipping. The cost is that a synthesiser having a bad afternoon quietly replaces a Persona that had Through-lines yesterday with one that has none, and nothing notices. | §5 |
 | **Voice can only find moves someone thought to look for.** A Corpus whose most distinctive habit is not in the pattern list is measured as ordinary, and nothing in the layer can notice the omission. | §2 |
 | **An inferred entry's item count is a floor, not a tally.** A folded Corpus attributes each entry to the pass that found it, so a move genuinely present throughout can be traced to a fraction of the Items. The prose says *traced to* rather than *measured in*; it cannot say how much it missed. | §3 |
 | **A Compile that fails the gate spends the synthesis anyway.** The model calls happen before the check, because most of what the gate checks does not exist until they have. A persistently rejected compiler pays full price every day for a Persona nobody receives. | §5 |

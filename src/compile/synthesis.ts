@@ -1,13 +1,19 @@
 /**
- * The model call behind the inferred half of the Core.
+ * The model call behind everything a Compile does not measure.
  *
  * **Nothing here reads an Item.** The extractor read each Item once and wrote down what
  * it said; this reads those Notes. That is the whole economics of a daily rebuild — a
  * Compile costs a handful of calls over notes rather than a re-read of 1.17M words — and
- * it is also why Reasoning and Beliefs can exist at all. Beliefs cannot be extracted per
+ * it is also why a through-line can exist at all. A conviction cannot be extracted per
  * Item: belief-marker mining was tested and most of what it found explained a mechanism
  * rather than stated a conviction. A conviction is what has to be true for many claims to
  * make sense, so the only place it can be seen is across them.
+ *
+ * **No prompt here writes a layer any more.** The one that used to write Beliefs now
+ * produces [through-lines](./throughlines.ts) — claims that have to be retrieved rather
+ * than a standing brief a persona recites — and Reasoning is chosen from
+ * [an authored menu](./habits.ts) rather than written at all. What is left is four
+ * questions about a Corpus, none of whose answers reach a reader unasked.
  *
  * **The prompts are a starting point, not a finding**, exactly as the extractor's is, and
  * they are versioned for the same reason: changing one changes what a Persona says, so
@@ -31,7 +37,7 @@ import { isEventStream, joinStream } from '../net/stream.js';
  * tools. Unlike the extractor generation, bumping this is cheap: it re-synthesises from
  * Notes that already exist rather than re-reading the Corpus.
  */
-export const SYNTHESIS_VERSION = 'core-2';
+export const SYNTHESIS_VERSION = 'core-3';
 
 /**
  * Versioned apart from the Core's prompts, because it answers a different question and
@@ -81,9 +87,7 @@ export const HABITS_VERSION = 'habits-1';
  */
 export const SYNTHESIS_TIMEOUT_MS = 900_000;
 
-export type InferredKind = 'reasoning' | 'beliefs';
-
-/** One inferred move or conviction, and the Items it was traced to. */
+/** One inferred conviction, and the Items it was traced to. */
 export type SynthesisedEntry = {
   label: string;
   body: string;
@@ -131,7 +135,7 @@ export type MergeGroup = {
 };
 
 /** Which stage a merge belongs to. Only the job label a run reports depends on it. */
-export type MergeStage = InferredKind | 'positions';
+export type MergeStage = 'through_lines' | 'positions';
 
 export type Synthesiser = {
   /** `model@prompt-version`. Half of `compiler_version`; the other half is the measurement. */
@@ -144,11 +148,19 @@ export type Synthesiser = {
   judge: string;
   model: string;
   url: string;
-  synthesise(kind: InferredKind, digest: string): Promise<SynthesisedEntry[]>;
-  /** The growing layer. Same endpoint, a third question: which claims are one position? */
+  /**
+   * What this person broadly holds, read across one division of the Corpus.
+   *
+   * **No kind any more.** This used to be keyed by which layer it was writing, and both
+   * layers have gone: Reasoning is chosen from the menu, and Beliefs stopped being a layer
+   * at all. What survives is the one question whose answer has to be earned at retrieval
+   * time. See ./throughlines.ts.
+   */
+  synthesise(digest: string): Promise<SynthesisedEntry[]>;
+  /** The growing layer. Same endpoint, a second question: which claims are one position? */
   cluster(digest: string): Promise<ClusteredPosition[]>;
   /**
-   * The merge, for all three synthesised layers.
+   * The merge, for both of the questions above.
    *
    * **Its own call rather than a mode of the two above**, because it now returns groups
    * where they return entries: keeping it a mode would give both of them a mode-dependent
@@ -202,47 +214,39 @@ const SHARED = [
 ].join('\n');
 
 /**
- * Two prompts because they are two questions. Reasoning is *how they get there*; Beliefs
- * is *what they take as true on the way*. A Note carries the argument and the assumptions
- * precisely so that the first question has something to read — a list of conclusions has
- * already thrown away the moves that make someone recognisable.
+ * One prompt, where there were two.
+ *
+ * **The Reasoning prompt is gone with the free description it wrote.** *How they get there*
+ * is now chosen from [an authored menu](./habits.ts), so there is nothing left here to ask
+ * a model about it — and the Note still carries the argument and the assumptions, because
+ * that is what the menu is chosen against.
+ *
+ * What is left is *what they take as true on the way*, asked once per reading of the Corpus
+ * rather than once per Compile. The wording is unchanged from the prompt that wrote the
+ * Beliefs layer: the question was never the problem. What changed is where the answer goes
+ * — a through-line has to be retrieved beside something quotable rather than pre-loaded
+ * into a Script — so nothing here reaches a reader who did not ask.
  */
-export const PROMPTS: Record<InferredKind, string> = {
-  reasoning: [
-    "You are reading braintrust's own notes on many published items by one author — for each",
-    'item, how the argument runs and what it assumes. No single item states how this person',
-    'thinks. Inferring that across all of them is the job.',
-    '',
-    SHARED,
-    '',
-    'Each entry is one move this person makes when they reason: what they take as given, how',
-    'they get from a premise to a conclusion, what kind of evidence moves them, where they stop.',
-    '  label: the move in a few words. Name the move, not the topic.',
-    '  body: two or three sentences on how they reason — not what they concluded, and not',
-    '    whether they were right.',
-  ].join('\n'),
-
-  beliefs: [
-    "You are reading braintrust's own notes on many published items by one author — the claims",
-    'each item makes and what each argument assumes. No single item asserts a belief; a belief',
-    'is what has to be true for many claims to make sense. Inferring those is the job.',
-    '',
-    SHARED,
-    '',
-    'Each entry is one conviction this person holds and argues from, rather than a topic they',
-    'cover.',
-    '  label: the conviction in one short sentence, as they would put it.',
-    '  body: two or three sentences — what they hold, and what they do with it.',
-    '',
-    'A claim is made in one item. Prefer convictions that show up across items in different',
-    '  words to ones stated loudly once.',
-    'Stay inside the published work. Do not infer anything about this person\'s private life,',
-    '  their politics or their character from work that is about something else.',
-  ].join('\n'),
-};
+export const THROUGH_LINE_PROMPT = [
+  "You are reading braintrust's own notes on many published items by one author — the claims",
+  'each item makes and what each argument assumes. No single item asserts a conviction; a',
+  'conviction is what has to be true for many claims to make sense. Inferring those is the job.',
+  '',
+  SHARED,
+  '',
+  'Each entry is one conviction this person holds and argues from, rather than a topic they',
+  'cover.',
+  '  label: the conviction in one short sentence, as they would put it.',
+  '  body: two or three sentences — what they hold, and what they do with it.',
+  '',
+  'A claim is made in one item. Prefer convictions that show up across items in different',
+  '  words to ones stated loudly once.',
+  'Stay inside the published work. Do not infer anything about this person\'s private life,',
+  '  their politics or their character from work that is about something else.',
+].join('\n');
 
 /**
- * The merge prompt, and the only one shared by all three synthesised layers.
+ * The merge prompt, and the only one shared by both synthesised questions.
  *
  * **It asks for judgement and nothing else.** Deciding that two differently-worded entries
  * say the same thing is the one part of a merge that has no right answer in code; the union
@@ -471,8 +475,11 @@ export function createSynthesiser(
     model: config.model,
     url,
 
-    async synthesise(kind, digest): Promise<SynthesisedEntry[]> {
-      return readEntryContent(await ask(PROMPTS[kind], digest, labelled(kind, 'pass')), url);
+    async synthesise(digest): Promise<SynthesisedEntry[]> {
+      return readEntryContent(
+        await ask(THROUGH_LINE_PROMPT, digest, labelled('through_lines', 'pass')),
+        url,
+      );
     },
 
     async cluster(digest): Promise<ClusteredPosition[]> {
@@ -570,10 +577,11 @@ export function readEntryContent(content: string, url: string): SynthesisedEntry
   const parsed = readObject(content, url);
 
   // An empty `entries` is a legitimate answer — the prompt asks for a short list that is
-  // really there rather than a long one that is partly hoped for. A *missing* `entries`
-  // is not: it means the model answered a different question, and letting it through as
-  // an empty layer would reach the gate as "beliefs carried nothing to serve", which
-  // sends whoever reads it looking at the corpus instead of at the endpoint. Found live.
+  // really there rather than a long one that is partly hoped for, and a Persona holding no
+  // through-lines publishes normally. A *missing* `entries` is not: it means the model
+  // answered a different question, and letting it through would be indistinguishable from
+  // a reading that genuinely found nothing. Throwing here is what keeps the two apart, and
+  // it is the only thing that does now that no gate check counts them. Found live.
   if (!Array.isArray(parsed.entries)) {
     throw new BraintrustError(
       `The synthesiser at ${url} returned JSON with no entries array: ` +

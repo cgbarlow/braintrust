@@ -73,6 +73,28 @@ export const MEASUREMENT_VERSION = 'measured-6';
  */
 export const REVISION_SKIPPED = 'revisions-none';
 
+/**
+ * The layers braintrust compiles, and therefore the only ones it serves.
+ *
+ * **A layer braintrust has retired is not withheld — it is gone.** The two look alike from
+ * the outside and are not the same fact. Withholding is a transient state a rebuild ends
+ * (see {@link withheldLayers}); retirement is permanent, and if it were left to the rebuild
+ * to enforce, every Persona compiled before the change would keep serving the retired layer
+ * until its subject next published something.
+ *
+ * That is not hypothetical. Beliefs was a layer of conclusions sitting in a payload with
+ * nothing to cite, and *it stops shipping when the fleet gets round to rebuilding* would have
+ * left the whole point of retiring it waiting on a schedule. The read path filters on this
+ * list instead, so the guarantee holds for a Persona compiled a year ago. The rows are
+ * deleted by the rebuild that replaces them; nothing reads them in the meantime.
+ */
+export const SERVED_LAYERS = ['coverage', 'reasoning', 'voice'] as const;
+
+/** Stored layers braintrust no longer compiles. Never served, whatever the row says. */
+export function retiredLayers(stored: string[]): string[] {
+  return stored.filter((layer) => !(SERVED_LAYERS as readonly string[]).includes(layer));
+}
+
 /** The four halves of the compiler that move independently, plus the code they run in. */
 export type CompilerPart = 'code' | 'measurement' | 'synthesis' | 'positions' | 'revisions';
 
@@ -144,11 +166,16 @@ export function movedParts(theirs: string | null, ours: string = COMPILER_VERSIO
  * from them, not a model's paragraphs, and their conservative direction is a value rather
  * than an absence. `positions` and `revisions` govern rows that never travel without the
  * citations under them, which is what makes them checkable rather than merely stale.
+ *
+ * **This list shortens as prose leaves the Core, and shortening it is not a relaxation.**
+ * Beliefs left when it stopped being a layer, so there is nothing left to withhold: a
+ * through-line is a row rather than a paragraph, and it is retrieved rather than served.
+ * Only a layer this map still serves whole can appear here. See {@link retiredLayers}.
  */
 export const SYNTHESISED_LAYERS: Record<CompilerPart, string[]> = {
   code: [],
   measurement: [],
-  synthesis: ['reasoning', 'beliefs'],
+  synthesis: ['reasoning'],
   positions: [],
   revisions: [],
 };

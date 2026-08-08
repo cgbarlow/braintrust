@@ -300,7 +300,7 @@ than politely avoided.
 create table braintrust_persona_layers (
   id              uuid primary key default gen_random_uuid(),
   compile_id      uuid not null references braintrust_compiles(id) on delete cascade,
-  layer           text not null check (layer in ('voice', 'reasoning', 'beliefs', 'coverage')),
+  layer           text not null check (layer in ('voice', 'reasoning', 'coverage')),
   basis           text not null check (basis in ('measured', 'inferred')),
   descriptive_md  text not null,
   generative_md   text,             -- voice only
@@ -309,8 +309,14 @@ create table braintrust_persona_layers (
 );
 ```
 
-The four core layers. `basis` is `measured` for voice and coverage, `inferred` for reasoning and beliefs,
-and it has to survive to the MCP boundary — a persona must never present a synthesis as a finding.
+The three core layers. `basis` is `measured` for voice and coverage, `inferred` for reasoning, and it has to
+survive to the MCP boundary — a persona must never present a synthesis as a finding.
+
+**`beliefs` was a fourth, and it is retired**
+([#169](https://github.com/cgbarlow/braintrust/issues/169)). It was a layer of conclusions that shipped in
+every payload, which let a model answer what somebody thinks without looking anything up. What a person holds
+lives in `braintrust_through_lines` now, and is retrieved rather than served. The read path filters on the
+layers braintrust still compiles, so a persona compiled before the change never serves the stored row either.
 
 **`generative_md` sits in the same row as `descriptive_md` on purpose.** They are written by one compile
 step from one set of measurements, so there is no path by which the instruction and the evidence for it can
@@ -526,8 +532,8 @@ Four properties worth naming:
   writes a marker and a sentence saying so, and a check on prose would pass it.
 - **`on delete cascade` does all the cleanup.** Deleting the old compile row removes its layers, positions,
   citations and relations. There is no reconciliation step and nothing to leak.
-- **Regeneration is affordable only while the core stays bounded.** Voice, reasoning, beliefs and coverage
-  converge as the corpus grows; positions grow. If the core ever grows with the corpus, full regeneration
+- **Regeneration is affordable only while the core stays bounded.** Voice, reasoning and coverage converge as
+  the corpus grows; positions and through-lines grow. If the core ever grows with the corpus, full regeneration
   stops being cheap and the no-drift guarantee goes with it.
 
 ## The backlog needs no table

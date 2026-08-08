@@ -246,18 +246,22 @@ export function buildServer({
     {
       title: 'Explain how braintrust knows a persona',
       description:
-        "How braintrust knows what it claims about someone. Returns the persona's four " +
-        'compiled layers whole and verbatim — nothing summarised, nothing reformatted.\n\n' +
+        "How braintrust knows what it claims about someone. Returns the persona's compiled " +
+        'layers whole and verbatim — nothing summarised, nothing reformatted.\n\n' +
         'Call this when someone asks how a persona knows something, how much of a person ' +
         'braintrust has actually read, or whether something was measured or guessed. Never ' +
         'answer those from the persona itself.\n\n' +
+        '**No layer states a conclusion.** Nothing here says what this person thinks, and ' +
+        'that is deliberate: what they hold has to be looked up with ' +
+        'braintrust_find_positions, against their actual published work, rather than read ' +
+        'off a standing description of them.\n\n' +
         'Every layer says whether it was `measured` or `inferred`. `voice` and `coverage` are ' +
         'measured — counted over what the person published, with no model in the path — and ' +
         'voice comes back in two forms, so the instruction can be checked rather than trusted. ' +
-        '`reasoning` and `beliefs` are inferred, synthesised across everything braintrust read, ' +
-        'because no single thing a person publishes states how they argue or what they take as ' +
-        'true. Their evidence names the items each point was traced to, which is a **floor ' +
-        'rather than a tally** — where the point is visible, not how often it holds.\n\n' +
+        '`reasoning` is inferred: braintrust chooses it from its own authored list of argument ' +
+        'habits, because no single thing a person publishes states how they argue. Its ' +
+        'evidence names the items each point was traced to, which is a **floor rather than a ' +
+        'tally** — where the point is visible, not how often it holds.\n\n' +
         '`coverage` is where a persona names its own blind spots: what was paywalled and never ' +
         'fetched, what failed, what has not been read yet, and any source that has stopped ' +
         'serving braintrust — which is the source refusing braintrust, never the user choosing ' +

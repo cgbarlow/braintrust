@@ -95,8 +95,9 @@ replaces it whole rather than editing it.
 _Avoid_: sync, refresh, update, run
 
 **Core**:
-The four layers of a Persona that stay roughly constant however large the Corpus grows — Voice, Reasoning,
-Beliefs, Coverage. What a Script is rendered from.
+The three layers of a Persona that stay roughly constant however large the Corpus grows — Voice, Reasoning,
+Coverage. What a Script is rendered from. **Nothing in the Core states a conclusion**: what a Person holds is
+retrieved, never carried.
 _Avoid_: page, summary, profile
 
 **Script**:
@@ -118,12 +119,17 @@ _Avoid_: style, tone
 How a Person gets to a conclusion, as distinct from what they conclude.
 _Avoid_: method, approach
 
-**Beliefs**:
-Durable commitments underneath the Positions. Always Inferred — no single Item asserts one. Compiled and
-retrievable, but never spoken from: a Belief is a *claim*, and a claim is what a Position already carries with
-its dates and citations. Reasoning is spoken from because a disposition is true of every sentence; a Belief is
-only true of some.
-_Avoid_: values, principles, worldview
+**Through-line**:
+What a Person broadly holds, inferred across their work rather than quoted from any one piece of it. It has to
+survive more than one separate reading of the Corpus to exist at all, and it is retrieved rather than carried:
+it rides with an answer that already matched, and may never be the whole of one. Carries no date and nothing
+to quote — the only date available would be a fact about braintrust's reading schedule, and an illustrative
+quote is indistinguishable from a supporting one once printed.
+
+**Replaces Beliefs**, which was a Core layer of durable commitments and shipped in every payload. That let a
+model answer what somebody thinks without looking anything up, which is the thing braintrust exists not to do.
+The word is retired: a conviction braintrust has not retrieved is not a thing a Persona has.
+_Avoid_: belief, values, principles, worldview, conviction
 
 **Coverage**:
 What braintrust has and has not read of a Person's output, as measured counts including Skipped Items.

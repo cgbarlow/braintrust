@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BraintrustError } from '../src/errors.js';
+import { MENU } from '../src/compile/habits.js';
 import { COMPILER_VERSION } from '../src/compile/version.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 import { fakeDb } from './support/fake-db.js';
@@ -164,7 +165,7 @@ describe('a persona whose rules have moved under it', () => {
 
     assert.deepEqual(
       payload.withheld?.map((one) => one.layer),
-      ['reasoning', 'beliefs'],
+      ['reasoning'],
     );
     assert.match(payload.withheld![0]!.reason, /rebuild restores it/);
   });
@@ -200,6 +201,83 @@ describe('a persona whose rules have moved under it', () => {
 
     assert.ok('reasoning' in payload.layers);
     assert.equal(payload.withheld, undefined, 'an empty field would read as a fact rather than none');
+  });
+});
+
+/**
+ * **The persona seam this ticket has to be provable at.**
+ *
+ * Nothing conclusion-shaped ships for free. A model handed either payload and asked what
+ * this person thinks has nothing to answer from and has to go and look — which is the whole
+ * of what retiring the Beliefs layer bought, and the only reason a through-line can be
+ * spoken flatly beside a citation.
+ */
+describe('what a persona is handed for free', () => {
+  /**
+   * The layer as it was compiled, on a persona that has not been rebuilt since. Its
+   * `compiler_version` is current, so nothing here is withheld — the row is dropped
+   * because braintrust no longer compiles that layer, not because its rules moved.
+   */
+  const BELIEFS = {
+    ...VOICE,
+    layer: 'beliefs',
+    basis: 'inferred',
+    descriptive_md:
+      '**Inferred across 34 items — no single item asserts this.**\n\n' +
+      '### Judgement about what to build is the scarce input\n\nHe holds that the constraint was ' +
+      'never speed.',
+    generative_md: null,
+    evidence: { entries: [{ label: 'Judgement is the scarce thing', items: ['a1'] }] },
+  };
+
+  it('states no conclusion in the script', async () => {
+    const { speak } = await loadPersona(compiledDb([VOICE, REASONING, COVERAGE]), 'nate-b-jones');
+
+    // What a script is made of: who you are talking to, how they write, how they argue, and
+    // what braintrust has not read. There is no section left for what they conclude.
+    const headings = speak.split('\n').filter((line) => /^[A-Z][A-Z ]+$/.test(line.trim()));
+    assert.deepEqual(headings.map((line) => line.trim()), [
+      'HOW THEY WRITE',
+      'HOW THEY ARGUE',
+      'WHAT YOU HAVE NOT READ',
+    ]);
+
+    // And the one section a model *could* mistake for a conclusion is not one: every line
+    // under it is text authored in this repository, so nothing a model concluded about this
+    // person can reach a reader through it.
+    const argues = speak.split('HOW THEY ARGUE')[1]!.split('WHAT YOU HAVE NOT READ')[0]!;
+    const authored = new Set(MENU.map((habit) => habit.instruction));
+    const lines = argues.split('\n').filter((line) => line.startsWith('- '));
+
+    assert.ok(lines.length > 0, 'this persona says something about how it argues');
+    for (const line of lines) assert.ok(authored.has(line.slice(2)), `${line} is not on the menu`);
+  });
+
+  it('never serves a retired layer, whenever the persona was last compiled', async () => {
+    // The row is there and the version is current, so nothing about staleness explains
+    // this: the layer is simply not one braintrust compiles any more.
+    const stored = compiledDb([VOICE, REASONING, COVERAGE, BELIEFS]);
+
+    const explained = await explainPersona(stored, 'nate-b-jones');
+    assert.deepEqual(Object.keys(explained.layers).sort(), ['coverage', 'reasoning', 'voice']);
+
+    // Not withheld either. Withholding is a transient state a rebuild ends and says so;
+    // this is permanent, and saying so would describe a layer that no longer exists.
+    assert.equal(explained.withheld, undefined);
+  });
+
+  it('carries nothing a model could answer someone views from, in either payload', async () => {
+    const stored = compiledDb([VOICE, REASONING, COVERAGE, BELIEFS]);
+    const loaded = JSON.stringify(await loadPersona(stored, 'nate-b-jones'));
+    const explained = JSON.stringify(await explainPersona(stored, 'nate-b-jones'));
+
+    // The claim the retired layer carried, in the words it carried it in. If either
+    // payload can be searched for it, a model can answer from it.
+    for (const payload of [loaded, explained]) {
+      assert.doesNotMatch(payload, /Judgement is the scarce thing/);
+      assert.doesNotMatch(payload, /the constraint was never speed/);
+      assert.doesNotMatch(payload, /beliefs/i);
+    }
   });
 });
 
