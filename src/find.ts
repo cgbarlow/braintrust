@@ -468,7 +468,7 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
 
   if (query === '') {
     throw new BraintrustError(
-      'braintrust_find_positions needs a question or a topic. It searches what this person ' +
+      'The position-lookup tool needs a question or a topic. It searches what this person ' +
         'actually published; it cannot list everything they hold.',
     );
   }
@@ -479,7 +479,7 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   const compile = await currentCompile(deps.db, slug);
   if (!compile) {
     throw new BraintrustError(
-      `braintrust has no persona for "${slug}" yet. braintrust_list_personas says who exists and ` +
+      `braintrust has no persona for "${slug}" yet. The persona-listing tool says who exists and ` +
         'who has been compiled; nothing is compiled on demand.',
     );
   }

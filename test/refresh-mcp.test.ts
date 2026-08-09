@@ -122,7 +122,7 @@ describe('the maintenance half of the surface', () => {
     const description = tools.find((tool) => tool.name === 'braintrust_unfollow_person')!.description!;
 
     assert.match(description, /not a takedown and it deletes nothing/);
-    assert.match(description, /keeps answering/);
+    assert.match(description, /keeps answers to both/);
     assert.match(description, /full two-call handshake/);
     // The distinction most likely to be got wrong, drawn where the model reads it.
     assert.match(description, /braintrust has no tool that is/);
@@ -156,7 +156,7 @@ describe('the maintenance half of the surface', () => {
     })) as ToolResult;
 
     assert.equal(result.isError, true);
-    assert.match(result.content[0]!.text, /braintrust_list_personas/);
+    assert.match(result.content[0]!.text, /persona-listing tool/);
     await client.close();
   });
 });

@@ -61,7 +61,7 @@ export async function unfollowPerson(
   if (!person) {
     throw new BraintrustError(
       `braintrust does not follow anyone with the slug "${slug}", so there is nothing to stop. ` +
-        'braintrust_list_personas has the slugs.',
+        'The persona-listing tool has the slugs.',
     );
   }
 
@@ -95,10 +95,10 @@ export async function unfollowPerson(
     deleted: 'nothing',
     next:
       `The daily job will skip ${person.display_name} from its next run. Nothing was deleted and ` +
-      'nothing is scheduled to be: their persona still answers braintrust_load_persona and ' +
-      'braintrust_find_positions, frozen at the compile above, and braintrust_list_personas ' +
+      'nothing is scheduled to be: their persona still answers the persona-loading tool and ' +
+      'the position-lookup tool, frozen at the compile above, and the persona-listing tool ' +
       'shows the pause so an answer of theirs is never quietly out of date. ' +
-      'braintrust_refresh_persona will refuse while they are paused. To start again, follow ' +
+      'The persona-refresh tool will refuse while they are paused. To start again, follow ' +
       'them — the full two-call handshake, because resuming does mean fetching their work again.',
   };
 }

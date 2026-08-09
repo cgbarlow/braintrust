@@ -76,15 +76,46 @@ bt-nate-b-jones chat
 The first reply should open with a line like *"I'm a braintrust model of Nate B. Jones — not the person."*
 and then answer in voice, without repeating that line again for the rest of the session. If a source is
 largely unread — a paywalled newsletter beside a public channel — the line names that scope too. If the
-opening line never appears, check that `braintrust_load_persona` appears in the profile's tool list — and
-read [Why `tool_search` is off](#why-tool_search-is-off), which is the usual reason it doesn't.
+opening line never appears, check that `mcp__braintrust__braintrust_load_persona` appears in the profile's
+tool list — and read [Why `tool_search` is off](#why-tool_search-is-off), which is the usual reason it
+doesn't.
 
 **If it opens every reply with that line**, the profile's `SOUL.md` predates this template. `SOUL.md` is
 copied, not linked, so a profile created earlier keeps whatever the template said on the day it was copied —
 including an older non-negotiable that read as a per-reply instruction and outranked everything telling it to
 speak once. Re-copy the template and replace the two placeholders again.
 
+**If the session dies mid-answer with a parse error**, the profile's `SOUL.md` also predates this template —
+see [Why `SOUL.md` names no tools](#why-soulmd-names-no-tools). Same fix: re-copy it.
+
 **5. Repeat per Person.** A council of six is six profiles pointing at one braintrust.
+
+## Why `SOUL.md` names no tools
+
+`SOUL.md` says *the persona-loading tool*, never `braintrust_load_persona`. **Do not write the literal names
+back in.** Hermes registers braintrust's tools as `mcp__braintrust__braintrust_load_persona`, and other MCP
+clients each rename them their own way, so a name written into the soul is a name that exists nowhere the
+persona actually runs.
+
+A large model notices the mismatch and calls the tool that is really there. `gpt-oss-20b` copies the name it
+was told, the endpoint cannot match it to any offered tool, and llama.cpp returns a 500 rather than
+recovering:
+
+```
+Failed to parse input at pos 170: <|channel|>commentary to=functions.braintrust_load_persona …
+```
+
+Hermes retries against the same cached prompt, gets the same failure three times, and the session dies with
+no answer — the loop-and-die symptom below, from a different cause. Measured on `gpt-oss-20b`, one greeting,
+40 sessions per arm:
+
+| `SOUL.md` says | sessions that answered | sessions killed |
+| --- | --- | --- |
+| `braintrust_load_persona` | 36 / 40 | **4 / 40** |
+| *the persona-loading tool* | 40 / 40 | 0 |
+
+Both arms called the right tool every time they got that far, so the naming costs nothing in accuracy — it
+only stops the model reaching for a name that is not on the list.
 
 ## Why `tool_search` is off
 

@@ -165,14 +165,14 @@ export function buildServer({
         'braintrust read, and what it did not read.\n\n' +
         '`speak` is the whole instruction. It is not material to summarise, quote or narrate — ' +
         'use it and answer as the person. Say the opening line once and do not repeat it.\n\n' +
-        'Use braintrust_find_positions for *what did they say about X*, and ' +
-        'braintrust_explain_persona for *how does braintrust know any of this*. A persona ' +
+        'Use the position-lookup tool for *what did they say about X*, and ' +
+        'the persona-provenance tool for *how does braintrust know any of this*. A persona ' +
         'braintrust has never compiled returns an error rather than being built on demand.',
       inputSchema: {
         person: z
           .string()
           .min(1)
-          .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+          .describe('The slug from the persona-listing tool, e.g. "nate-b-jones".'),
       },
       annotations: { readOnlyHint: true },
     },
@@ -185,7 +185,7 @@ export function buildServer({
         if (error instanceof BraintrustError) return failure(error.message);
         console.error('braintrust: braintrust_load_persona failed', error);
         return failure(
-          'braintrust_load_persona failed for a reason braintrust did not expect. The server log ' +
+          'The persona-loading tool failed for a reason braintrust did not expect. The server log ' +
             'has the detail.',
         );
       }
@@ -200,7 +200,7 @@ export function buildServer({
         'What this person published, newest first, with the note braintrust wrote when it read ' +
         'each one.\n\n' +
         'This is the tool for *what is new*, *what have they written lately*, and **any ' +
-        'question about their latest anything** — braintrust_find_positions cannot answer ' +
+        'question about their latest anything** — the position-lookup tool cannot answer ' +
         'those. It matches on meaning and ranks by similarity, so a question whose whole ' +
         'content is *recent* gives it nothing to rank by, and it returns the same central ' +
         'positions it returns for everything else, dated across years.\n\n' +
@@ -213,9 +213,9 @@ export function buildServer({
         'in it.\n\n' +
         'Reach for it before answering anything time-shaped, and check `compiled_at` against ' +
         'the newest date here: if someone is asking what is new and the newest item is old, ' +
-        'braintrust_refresh_persona pulls whatever has arrived since.',
+        'the persona-refresh tool pulls whatever has arrived since.',
       inputSchema: {
-        person: z.string().min(1).describe('The slug from braintrust_list_personas.'),
+        person: z.string().min(1).describe('The slug from the persona-listing tool.'),
         limit: z
           .number()
           .int()
@@ -234,7 +234,7 @@ export function buildServer({
         if (error instanceof BraintrustError) return failure(error.message);
         console.error('braintrust: braintrust_recent_items failed', error);
         return failure(
-          'braintrust_recent_items failed for a reason braintrust did not expect. The server ' +
+          'The recent-items tool failed for a reason braintrust did not expect. The server ' +
             'log has the detail.',
         );
       }
@@ -253,7 +253,7 @@ export function buildServer({
         'answer those from the persona itself.\n\n' +
         '**No layer states a conclusion.** Nothing here says what this person thinks, and ' +
         'that is deliberate: what they hold has to be looked up with ' +
-        'braintrust_find_positions, against their actual published work, rather than read ' +
+        'the position-lookup tool, against their actual published work, rather than read ' +
         'off a standing description of them.\n\n' +
         'Every layer says whether it was `measured` or `inferred`. `voice` and `coverage` are ' +
         'measured — counted over what the person published, with no model in the path — and ' +
@@ -270,7 +270,7 @@ export function buildServer({
         person: z
           .string()
           .min(1)
-          .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+          .describe('The slug from the persona-listing tool, e.g. "nate-b-jones".'),
       },
       annotations: { readOnlyHint: true },
     },
@@ -283,7 +283,7 @@ export function buildServer({
         if (error instanceof BraintrustError) return failure(error.message);
         console.error('braintrust: braintrust_explain_persona failed', error);
         return failure(
-          'braintrust_explain_persona failed for a reason braintrust did not expect. The server ' +
+          'The persona-provenance tool failed for a reason braintrust did not expect. The server ' +
             'log has the detail.',
         );
       }
@@ -299,7 +299,7 @@ export function buildServer({
         title: 'Find what someone has said about something',
         description:
           'What a person has said about a topic, with dates and citations. This is the tool for ' +
-          '*what have they said about X*; braintrust_load_persona is the tool for answering **as** ' +
+          '*what have they said about X*; the persona-loading tool is how you answer **as** ' +
           'them.\n\n' +
           'Each position carries two grades and they mean different things. `confidence` is how ' +
           'well braintrust knows the position. `fit` is how well it answers the question you ' +
@@ -332,7 +332,7 @@ export function buildServer({
           'paywalled post braintrust never fetched. Rephrasing in the words the person would use ' +
           'is worth one retry.',
         inputSchema: {
-          person: z.string().min(1).describe('The slug from braintrust_list_personas.'),
+          person: z.string().min(1).describe('The slug from the persona-listing tool.'),
           query: z
             .string()
             .min(1)
@@ -360,7 +360,7 @@ export function buildServer({
           if (error instanceof BraintrustError) return failure(error.message);
           console.error('braintrust: braintrust_find_positions failed', error);
           return failure(
-            'braintrust_find_positions failed for a reason braintrust did not expect. The server ' +
+            'The position-lookup tool failed for a reason braintrust did not expect. The server ' +
               'log has the detail.',
           );
         }
@@ -429,7 +429,7 @@ export function buildServer({
         if (error instanceof BraintrustError) return failure(error.message);
         console.error('braintrust: braintrust_follow_person failed', error);
         return failure(
-          'braintrust_follow_person failed for a reason braintrust did not expect. Nothing was ' +
+          'The follow tool failed for a reason braintrust did not expect. Nothing was ' +
             'ingested. The server log has the detail.',
         );
       }
@@ -448,7 +448,7 @@ export function buildServer({
           'following this person — was already made by one, nothing new is introduced, and a ' +
           'persona that keeps up with what someone is publishing is the entire point of ' +
           'braintrust over a written-once prompt. Reach for it when an answer needs to reflect ' +
-          'something recent, or when braintrust_list_personas shows a compile date older than ' +
+          'something recent, or when the persona-listing tool shows a compile date older than ' +
           'the question deserves.\n\n' +
           '**New content is what triggers a rebuild, not the asking.** If nothing has arrived ' +
           'that the persona has not already read, `rebuilt` comes back false with `not_rebuilt` ' +
@@ -462,12 +462,12 @@ export function buildServer({
           'because one rebuild per person at a time is enforced by the database. That is why ' +
           'calling this is safe: two clients seconds apart cannot produce two rebuilds.\n\n' +
           'A paused person is refused. Refreshing them would start downloading their work ' +
-          'again, and that decision belongs to the handshake in braintrust_follow_person.',
+          'again, and that decision belongs to the handshake in the follow tool.',
         inputSchema: {
           person: z
             .string()
             .min(1)
-            .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+            .describe('The slug from the persona-listing tool, e.g. "nate-b-jones".'),
         },
         annotations: {
           readOnlyHint: false,
@@ -483,7 +483,7 @@ export function buildServer({
           if (error instanceof BraintrustError) return failure(error.message);
           console.error('braintrust: braintrust_refresh_persona failed', error);
           return failure(
-            'braintrust_refresh_persona failed for a reason braintrust did not expect. Whatever ' +
+            'The persona-refresh tool failed for a reason braintrust did not expect. Whatever ' +
               'it had already written is kept and the previous persona is still answering. The ' +
               'server log has the detail.',
           );
@@ -501,8 +501,8 @@ export function buildServer({
         'One timestamp is set. The daily job skips them from its next run, so no more of their ' +
         'work is fetched and no more money is spent on them. Everything braintrust already ' +
         'holds stays: their items, the text, the notes, and the compiled persona, which keeps ' +
-        'answering braintrust_load_persona and braintrust_find_positions frozen at its last ' +
-        'compile. braintrust_list_personas shows the pause, so nobody reads a stale answer ' +
+        'answers to both the persona-loading and position-lookup tools frozen at its last ' +
+        'compile. The persona-listing tool shows the pause, so nobody reads a stale answer ' +
         'thinking it is current.\n\n' +
         'Fully reversible: following them again clears the pause. That does go through the ' +
         'full two-call handshake with a human, because resuming means fetching their work ' +
@@ -514,7 +514,7 @@ export function buildServer({
         person: z
           .string()
           .min(1)
-          .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+          .describe('The slug from the persona-listing tool, e.g. "nate-b-jones".'),
       },
       annotations: {
         readOnlyHint: false,
@@ -533,7 +533,7 @@ export function buildServer({
         if (error instanceof BraintrustError) return failure(error.message);
         console.error('braintrust: braintrust_unfollow_person failed', error);
         return failure(
-          'braintrust_unfollow_person failed for a reason braintrust did not expect. Nothing was ' +
+          'The unfollow tool failed for a reason braintrust did not expect. Nothing was ' +
             'deleted — this tool never deletes — and the daily job may still be following them. ' +
             'The server log has the detail.',
         );

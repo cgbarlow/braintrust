@@ -67,7 +67,7 @@ async function propose(args: FollowArgs, deps: FollowDeps): Promise<PlanResponse
   const links = args.links ?? [];
   if (links.length === 0) {
     throw new BraintrustError(
-      'braintrust_follow_person needs `links` — whatever you already have for this person: ' +
+      'The follow tool needs `links` — whatever you already have for this person: ' +
         'a Substack post URL or hostname, a YouTube channel page, an @handle, a link to one ' +
         'video, or the address of any blog. braintrust cannot look someone up by name.',
     );
@@ -101,7 +101,7 @@ async function propose(args: FollowArgs, deps: FollowDeps): Promise<PlanResponse
       'Nothing has been fetched: no posts, no captions, no rows. Show this plan to the person ' +
       'you are working for and let them read it — check `resolved_from` on each source is ' +
       'really them, and `will_skip_paywalled` for how much of the corpus braintrust will not ' +
-      'read. If they say yes, call braintrust_follow_person again with `confirm_token` and the ' +
+      'read. If they say yes, call the follow tool again with `confirm_token` and the ' +
       '`display_name` they confirmed (change it if the proposal is wrong — it becomes ' +
       `"braintrust model of X" everywhere). The token is single-use and expires in ` +
       `${Math.round(TOKEN_TTL_MS / 60_000)} minutes.`,
@@ -142,7 +142,7 @@ async function confirm(args: FollowArgs, deps: FollowDeps): Promise<FollowedResp
       'separate initial-load mode, so the first run after following someone is the backfill ' +
       `(about ${pending.plan.estimated_duration_min} minutes at the spacing each source is ` +
       'read at, unattended). ' +
-      'braintrust_list_personas will show this person immediately, with `compiled: false` until ' +
+      'The persona-listing tool will show this person immediately, with `compiled: false` until ' +
       'that first run finishes.',
   };
 }

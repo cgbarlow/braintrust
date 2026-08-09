@@ -299,7 +299,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       await assert.rejects(refresh(), (error: unknown) => {
         assert.ok(error instanceof BraintrustError);
         assert.match(error.message, /paused/);
-        assert.match(error.message, /braintrust_follow_person/);
+        assert.match(error.message, /follow tool/);
         return true;
       });
 
@@ -309,7 +309,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
     it('says who it does not follow rather than inventing them', async () => {
       await assert.rejects(refresh({ person: 'nobody' }), (error: unknown) => {
         assert.ok(error instanceof BraintrustError);
-        assert.match(error.message, /braintrust_list_personas/);
+        assert.match(error.message, /persona-listing tool/);
         return true;
       });
     });

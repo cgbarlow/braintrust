@@ -116,8 +116,8 @@ export async function refreshPersona(
 
   if (!person) {
     throw new BraintrustError(
-      `braintrust does not follow anyone with the slug "${slug}". braintrust_list_personas ` +
-        'has the slugs; braintrust_follow_person is how somebody new is added, and only a ' +
+      `braintrust does not follow anyone with the slug "${slug}". The persona-listing tool ` +
+        'has the slugs; the follow tool is how somebody new is added, and only a ' +
         'human can complete it.',
     );
   }
@@ -129,7 +129,7 @@ export async function refreshPersona(
     throw new BraintrustError(
       `${person.display_name} is paused — the user unfollowed them at ${person.paused_at}, and ` +
         'nothing has been fetched for them since. A refresh would start downloading their work ' +
-        'again, which is the decision braintrust_follow_person exists to put in front of a ' +
+        'again, which is the decision the follow tool exists to put in front of a ' +
         'human, so refresh will not make it. Their persona is still queryable, frozen at its ' +
         'last compile. To resume, follow them again — the full two-call handshake, with the ' +
         'plan shown to a person.',
@@ -261,7 +261,7 @@ function nextStep(report: CycleReport, owed: number): string {
   }
 
   if (report.compile?.compiled.length) {
-    return 'The persona was rebuilt and is now the one answering. braintrust_load_persona has it.';
+    return 'The persona was rebuilt and is now the one answering. The persona-loading tool has it.';
   }
 
   return (
