@@ -170,7 +170,7 @@ describe('the MCP surface', () => {
     assert.equal(result.isError, true);
     const content = result.content as { type: string; text: string }[];
     assert.match(content[0]!.text, /does not follow anyone called "nobody"/);
-    assert.match(content[0]!.text, /braintrust_list_personas/);
+    assert.match(content[0]!.text, /persona-listing tool/);
     await client.close();
   });
 
@@ -183,7 +183,7 @@ describe('the MCP surface', () => {
     // A description answers the choosing question. The ~400-word essay on basis and
     // evidence floors described a payload that no longer exists.
     assert.match(load, /ready to speak/);
-    assert.match(load, /braintrust_explain_persona/);
+    assert.match(load, /persona-provenance tool/);
     assert.match(load, /never compiled/i);
     assert.doesNotMatch(load, /measured or inferred/);
 

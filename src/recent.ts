@@ -122,7 +122,7 @@ export async function recentItems(args: RecentArgs, db: Db): Promise<RecentPaylo
   const person = people[0];
   if (!person) {
     throw new BraintrustError(
-      `braintrust does not follow anyone called "${slug}". braintrust_list_personas has the ones ` +
+      `braintrust does not follow anyone called "${slug}". The persona-listing tool has the ones ` +
         'it does.',
     );
   }

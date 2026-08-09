@@ -117,7 +117,7 @@ describe('recent items', () => {
     const db = fakeDb(() => []);
     await assert.rejects(
       () => recentItems({ person: 'nobody' }, db),
-      /does not follow anyone called "nobody".*braintrust_list_personas/s,
+      /does not follow anyone called "nobody".*persona-listing tool/s,
     );
   });
 });

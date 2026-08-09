@@ -92,7 +92,7 @@ export function createConfirmTokenStore({
         throw new BraintrustError(
           'That confirm_token is not one braintrust is holding. A token is single-use and ' +
             `expires after ${Math.round(TOKEN_TTL_MS / 60_000)} minutes, and it is lost if the ` +
-            'server restarts. Nothing has been ingested — call braintrust_follow_person again ' +
+            'server restarts. Nothing has been ingested — call the follow tool again ' +
             'with the links to get a fresh plan.',
         );
       }

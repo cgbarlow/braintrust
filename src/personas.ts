@@ -291,8 +291,8 @@ async function currentOrFail(db: Db, slug: string) {
     );
   }
   throw new BraintrustError(
-    `braintrust does not follow anyone called "${slug}". braintrust_list_personas has the ones ` +
-      'it does, and braintrust_follow_person adds someone new — which only a human can complete.',
+    `braintrust does not follow anyone called "${slug}". The persona-listing tool has the ones ` +
+      'it does, and the follow tool adds someone new — which only a human can complete.',
   );
 }
 
