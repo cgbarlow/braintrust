@@ -532,12 +532,22 @@ so it takes [the unmeasured value](./mcp-surface.md#an-unmeasured-quantity-takes
 — and prose written by a part that moved is withheld. **So the staleness window is zero for anyone actually
 reading.** Nobody is ever served a Persona built under rules braintrust has since changed.
 
-**The rebuild is queued behind them, never in front.** It starts after the answer has been handed over and
-nothing awaits it: a read call must never have the most expensive action in the product sitting behind it. A
-reader who triggers a rebuild pays nothing for it and does not see it. **At most one rebuild is in flight per
-Persona**, so a burst of readers on a behind-version Persona cannot stampede the compiler — a process-local
-guard, and the database's own `unique … where status = 'running'` as the real one, which is what makes it hold
-across the two deployments that share the database.
+**The rebuild never starts from a read.** An earlier version of this queued a rebuild behind the reader —
+started after the answer was handed over, in the same process that was serving the read. That process is also
+the one an unrelated deploy replaces mid-flight: on the first full run the rebuild of the largest Persona in
+the fleet started at 03:12:24 on the web service and was killed five minutes later when an unrelated fix
+deployed over it, and the Persona it was rebuilding served on retired rules for 11h48m before the daily sweep
+caught it — a merge, the one event guaranteed to recur while a build queue is shipping. **So the read-triggered
+rebuild is gone.** The only path that starts a Compile for `stale_compiler` *with nobody asking* is the daily
+job, which runs on the cron deployment — a process the platform schedules and a deploy does not land on
+mid-run. (`braintrust_refresh_persona` can still compile a Persona for `stale_compiler` alone, same as the
+job — but only on an explicit, human-authorised call, never as a side effect of a read.) See
+docs/design/deployment.md §2.
+
+**Accepted cost, stated plainly: a Persona serves behind the compiler for up to a day after a rules change, by
+design.** That is the trade for a rebuild a deploy cannot kill. Five Personas do not need an ordering
+advantage and a whole-Persona rebuild is 13–15 minutes regardless of Corpus size, so nothing here is batched —
+a day of merges landing on the compiler already coalesces into at most one rebuild per Persona.
 
 **And a daily sweep rebuilds the Personas nobody asked for**, so staleness is not only fixed for popular
 people. Every cycle then asks a **scheduled check** — *is any serving Persona carrying a version behind the
@@ -545,6 +555,11 @@ compiler's?* — after the run rather than before it, and reports the answer in 
 anyone is looking. It is a post-condition rather than a trigger: what rebuilds a Persona is `stale_compiler`;
 what this asserts is that the run left nobody behind. A paused Person is not counted — a pause is the user
 freezing their Persona.
+
+**At most one Compile is in flight per Persona**, enforced by the database's own
+`unique … where status = 'running'` rather than by anything in a process — the guarantee has to hold across
+whichever deployment asks, cron included, and a partial unique index is the only thing that holds regardless
+of which process reaches it first.
 
 **Prose governed by a part that has moved is absent, not stale.** A number has a conservative direction and
 takes it; a paragraph a model already wrote does not, so the only honest options are to serve it or not to —

@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
+import { COMPILER_VERSION } from '../src/compile/version.js';
 import { cutFor, fitOf, floorFor, nothingMatched, speakableProseIn } from '../src/find.js';
 import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 
@@ -48,6 +49,43 @@ describe('the floor a persona uses when it has measured none', () => {
 
     assert.match(source, /export const UNMEASURED_RETRIEVAL_FLOOR = [\d.]+;/);
     assert.doesNotMatch(source, /\bimport\b/, 'nothing to derive it from is the strongest form of this');
+  });
+});
+
+/**
+ * The other half of the same rule, on the read rather than on a clock: a floor measured
+ * under rules that have since moved is not a measurement any more, so it takes the
+ * unmeasured value too. This is what makes the staleness window zero for a reader — no
+ * rebuild has to finish for it to take effect.
+ */
+describe('the floor a persona uses once its measurement rules have moved', () => {
+  const BEHIND = '0.9.0+measured-4.core-1.positions-2.revisions-1';
+
+  it('discards a floor measured under rules that have since moved', () => {
+    assert.equal(floorFor(0.46, BEHIND), UNMEASURED_RETRIEVAL_FLOOR);
+    assert.ok(UNMEASURED_RETRIEVAL_FLOOR > 0.46, 'tightened, never loosened');
+  });
+
+  it('keeps a floor measured under the rules still in force', () => {
+    assert.equal(floorFor(0.46, COMPILER_VERSION), 0.46);
+  });
+
+  it('tightens for a version it cannot read, and for one that was never recorded', () => {
+    assert.equal(floorFor(0.46, null), UNMEASURED_RETRIEVAL_FLOOR);
+    assert.equal(floorFor(0.46, 'written-by-an-older-braintrust'), UNMEASURED_RETRIEVAL_FLOOR);
+  });
+
+  /**
+   * Only the measurement part governs the gate. A synthesis prompt bump withholds prose —
+   * that is the other half of the rule — but it says nothing about where the floor sits,
+   * and tightening on it would be caution braintrust cannot justify.
+   */
+  it('does not tighten because a part that governs no measurement moved', () => {
+    const [code, rest] = COMPILER_VERSION.split('+');
+    const [measurement, , positions, revisions] = rest!.split('.');
+    const synthesisMoved = `${code}+${measurement}.core-99.${positions}.${revisions}`;
+
+    assert.equal(floorFor(0.46, synthesisMoved), 0.46);
   });
 });
 

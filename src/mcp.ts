@@ -20,7 +20,6 @@ import type { Fetcher } from './net/fetch.js';
 import type { Extractor } from './notes/index.js';
 import { explainPersona, listPersonas, loadPersona } from './personas.js';
 import { recentItems, MAX_RECENT, type RecentArgs } from './recent.js';
-import { createRebuildQueue } from './rebuild.js';
 import { refreshPersona, type RefreshArgs } from './refresh.js';
 import type { Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
@@ -51,15 +50,6 @@ export type ServerDeps = {
   extractor?: Extractor | undefined;
   synthesiser?: Synthesiser | undefined;
 };
-
-/**
- * The rebuild a read may set going, behind whoever asked for it.
- *
- * Built here rather than passed in, because it needs exactly what a refresh needs and a
- * deployment configured for one is configured for the other. Absent when the deployment
- * cannot compile — a server with no extractor serves cores and does not rebuild them, and
- * a reader still gets the tightened gate either way.
- */
 
 /**
  * The one setting that is not a setting is enforced by its absence: there is no
@@ -115,29 +105,6 @@ export function buildServer({
     { instructions: DISCLOSURE },
   );
 
-  const rebuilds =
-    extractor && synthesiser
-      ? createRebuildQueue({
-          db,
-          extractor: extractor.generation,
-          synthesiser,
-          ...(embedder ? { embedder } : {}),
-        })
-      : undefined;
-
-  /**
-   * **Queued behind the reader, never in front.** The payload has already been built when
-   * this runs and nothing awaits the rebuild — a read call must never have the most
-   * expensive action in the product sitting behind it. What the reader actually gets from
-   * the version comparison happened inside the load: a tightened gate, and no prose from a
-   * part that moved.
-   */
-  function rebuildIfBehind(payload: { subject: string; compiler_version: string }, person: string): void {
-    void rebuilds?.requestIfBehind(person.trim(), payload.compiler_version).catch(() => {
-      // Deciding whether to rebuild must never fail a read. The daily sweep asks again.
-    });
-  }
-
   server.registerTool(
     'braintrust_list_personas',
     {
@@ -179,7 +146,6 @@ export function buildServer({
     async ({ person }: { person: string }) => {
       try {
         const payload = await loadPersona(db, person);
-        rebuildIfBehind(payload, person);
         return text(payload);
       } catch (error) {
         if (error instanceof BraintrustError) return failure(error.message);
@@ -277,7 +243,6 @@ export function buildServer({
     async ({ person }: { person: string }) => {
       try {
         const payload = await explainPersona(db, person);
-        rebuildIfBehind(payload, person);
         return text(payload);
       } catch (error) {
         if (error instanceof BraintrustError) return failure(error.message);

@@ -50,9 +50,29 @@ They share a database and nothing else. No queue, no IPC, no shared memory.
 3. **Being killed mid-run costs nothing.** The Backlog is rows, so a deploy, a restart or a platform timeout
    during the backfill loses time and no data.
 
+**No Compile starts unprompted from the web service; only the scheduled job does that.** An earlier design
+started a rebuild from a read — queued behind `braintrust_load_persona`, running in the same process that
+answers questions, with nobody asking for it. That process is exactly the one an unrelated deploy replaces
+mid-flight, and on the first full run it did: a rebuild started at 03:12:24 on the web service, an unrelated
+fix deployed over it five minutes later, and the Persona it was rebuilding served on retired rules for 11h48m
+before the daily sweep caught it — triggered by a merge, the one event guaranteed to recur while a build queue
+is shipping. **That path is gone.** The web service still runs `braintrust_refresh_persona`, which can compile
+a Persona too — including for `stale_compiler` alone, with nothing new to ingest — but only on an explicit,
+human-authorised call, never as a side effect of a read. The rebuild a rules change triggers **on its own**,
+with nobody asking, now runs only where a deploy does not land mid-run: the cron deployment. See
+[`compiler.md` §3](./compiler.md#reasoning-is-chosen-from-a-menu-not-written--163).
+
+**Accepted cost, stated plainly: a Persona serves behind the compiler for up to a day after a rules change.**
+Cadence stays daily rather than tightening to catch this faster — five Personas do not need an ordering
+advantage, a whole-Persona rebuild is 13–15 minutes regardless of Corpus size, and a second trigger path is a
+second thing to keep honest. A day of merges landing on the compiler already coalesces into at most one
+rebuild per Persona, so no batching mechanism is needed either.
+
 **Concurrency needs nothing from the deployment.** One rebuild per Person is enforced by a partial unique
-index in the database, so braintrust does not need a guarantee of exactly one instance to stay correct. The
-deployment is free to restart, overlap, or run two web instances.
+index in the database, so braintrust does not need a guarantee of exactly one instance to stay correct — that
+guarantee is what lets the same `stale_compiler` check run from cron without risking a double-compile against
+whatever the web service's `braintrust_refresh_persona` is doing. The deployment is free to restart, overlap,
+or run two web instances.
 
 **Cost:** two deploys of one image instead of one. The job bills only while awake — ~26 minutes once, then
 seconds a day.
@@ -248,6 +268,7 @@ registration has to work against an empty database.
 | **The shared secret lives in client config files and shell history**, and rotating it means re-registering every client. | §4 |
 | **braintrust leaves OB1's data-access path.** Direct Postgres rather than PostgREST and the service-role key. | §5 |
 | **Nothing is monitored.** A persistently failing compiler is silent, and this deployment does not change that. | §2 |
+| **A Persona serves behind the compiler for up to a day after a rules change.** The rebuild that a rules change triggers on its own runs only on the daily cron, by design — the trade for a rebuild a deploy cannot kill. | §2 |
 
 ## Deliberately not decided
 
