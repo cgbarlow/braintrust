@@ -400,12 +400,12 @@ comment on table braintrust_position_relations is
 -- ---------------------------------------------------------------------------
 -- braintrust checking itself
 --
--- Tier 3 in cost but not in meaning: these two are the only tables that record
+-- Tier 3 in cost but not in meaning: these three are the only tables that record
 -- what braintrust concluded about *itself*, and a compile never touches them.
 -- That separation is the point. A failing interrogation must not be able to
 -- change what a persona serves, so it writes here and nowhere else.
 --
--- Neither table has a foreign key to braintrust_people. A compiler fault is
+-- No table here has a foreign key to braintrust_people. A compiler fault is
 -- about braintrust and outlives any particular person, and a fault about
 -- somebody who has since been unfollowed is still a fault worth reading.
 -- ---------------------------------------------------------------------------
@@ -455,6 +455,37 @@ comment on column braintrust_faults.first_failed_at is
   'Never moved once set. It is the clock the one-day limit runs on, and a fault '
   'that reset it every run would never escalate.';
 
+create table if not exists braintrust_silences (
+  silence_key      text primary key,  -- assertion plus subject, same shape as a fault key
+  assertion        text not null,
+  person_slug      text,
+  detail           text not null,     -- the latest reason; the only place a dead
+                                      -- endpoint and a broken judge differ
+  attempts         int not null default 1,
+  first_failed_at  timestamptz not null default now(),
+  last_failed_at   timestamptz not null default now(),
+  reported_at      timestamptz,
+  reported_issue   text
+);
+
+comment on table braintrust_silences is
+  'An assertion that could not be ASKED — a third status beside passed and failed, '
+  'and never a persona''s fault. Deliberately a separate table from '
+  'braintrust_faults and joined to it nowhere: a silence is somebody else''s '
+  'outage, it is evidence against nobody, and it must not be able to withdraw a '
+  'layer or put a person''s name in front of a maintainer. Rows are deleted the '
+  'moment an assertion gets an answer, pass or fail.';
+
+comment on column braintrust_silences.attempts is
+  'Consecutive failed attempts to ask. A stuck assertion stays due and is retried '
+  'every run, so this counts days rather than staleness — and a job that stops '
+  'running stops the clock rather than hiding behind it.';
+
+comment on column braintrust_silences.reported_at is
+  'Set on every row of one outage at once, because one outage files one issue '
+  'listing every assertion that went unchecked. A single reported row silences the '
+  'whole arm: braintrust files once and never re-files while the ledger stays open.';
+
 -- ---------------------------------------------------------------------------
 -- House style
 --
@@ -486,7 +517,8 @@ begin
     'braintrust_through_lines',
     'braintrust_through_line_items',
     'braintrust_interrogations',
-    'braintrust_faults'
+    'braintrust_faults',
+    'braintrust_silences'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);

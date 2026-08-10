@@ -2,9 +2,10 @@
  * When the interrogation runs, when a fault is worth telling anyone about, and when an
  * unrepaired one stops being invisible to a reader.
  *
- * **Everything here is a pure function of rows and a clock**, which is the point: the three
- * things this ticket has to be able to prove — the schedule, the deduplication and the
- * one-day escalation — are all decided here, and none of them needs a model to run.
+ * **Everything here is a pure function of rows and a clock**, which is the point: the four
+ * things this ticket has to be able to prove — the schedule, the deduplication, the one-day
+ * escalation and the one-day silence — are all decided here, and none of them needs a model
+ * to run.
  *
  * See docs/design/compiler.md §7.
  */
@@ -180,6 +181,92 @@ export function faultsToFile(faults: Fault[], now: number): FaultFiling[] {
 
 export function hasOutlivedTheLimit(fault: Fault, now: number): boolean {
   return now - Date.parse(fault.first_failed_at) >= ESCALATES_AFTER_MS;
+}
+
+// ---------------------------------------------------------------------------
+// Silence: the third status
+// ---------------------------------------------------------------------------
+
+/**
+ * How long braintrust will fail to *ask* before somebody is told, measured in **consecutive
+ * failed attempts rather than staleness**.
+ *
+ * **The same day as {@link ESCALATES_AFTER_MS}, deliberately.** A staleness clock would have
+ * to be a multiple of the weekly sweep to mean anything, and the first figure this was worked
+ * out as — two weeks — reached a maintainer fourteen times slower for nothing. Attempts are
+ * the honest unit here for the reason they were the wrong unit there: an assertion that could
+ * not be asked **stays due**, so it is retried on every run whatever the sweep interval says,
+ * and a job that stops running stops the silence rather than hiding it.
+ *
+ * **Worst case is a little over the day**, and that is the design: if nothing is due while the
+ * endpoint is down, the check comes due at the sweep, fails, and files a day after that.
+ */
+export const SILENCE_REPORTS_AFTER_MS = ESCALATES_AFTER_MS;
+
+/**
+ * An assertion that could not be asked, carried between runs.
+ *
+ * **A Silence is never a Fault and the two ledgers never meet.** Treating an unaskable
+ * assertion as a failure would open faults against five people on the strength of somebody
+ * else's outage — so nothing here is keyed to a Compile, nothing here withdraws a layer, and
+ * {@link withdrawnLayers} does not read it. What it is instead is the durable, counted record
+ * that a guarantee went unverified, which is the whole of what was missing.
+ *
+ * `attempts` is kept because *how many times* is the question a maintainer asks first and a
+ * log line in a job nobody watches cannot answer.
+ */
+export type Silence = {
+  key: string;
+  assertion: string;
+  person: string | null;
+  /** The most recent reason. A dead endpoint and a broken judge are told apart only here. */
+  detail: string;
+  attempts: number;
+  first_failed_at: string;
+  last_failed_at: string;
+  reported_at: string | null;
+  reported_issue: string | null;
+};
+
+/**
+ * Assertion plus subject, the same shape a fault key has and a different table.
+ *
+ * Not {@link faultKey} reused: the one thing this ticket must not be able to do is put a
+ * Person in front of a maintainer for an outage that was never theirs, and two functions that
+ * cannot be confused for one another is the cheapest way to keep the ledgers apart.
+ */
+export function silenceKey(assertion: string, person: string | null): string {
+  return `${assertion}:${person ?? '*'}`;
+}
+
+/**
+ * The silences owing an issue — **all of them or none of them**.
+ *
+ * **One issue per outage, not per check.** Six of eight assertions failing on one endpoint for
+ * one reason is one thing that is broken; six issues would be one endpoint triaged six times
+ * and would read as six faults where there is one. So the day mark is reached by the *oldest*
+ * silence and the issue lists every assertion currently going unasked, including ones that
+ * joined the outage this morning — they went unchecked too.
+ *
+ * **One filing, ever, while it stays open.** A single already-reported row silences the whole
+ * arm: the ledger is the record, it clears only on an attempt that gets an answer, and a
+ * monthly re-file was offered and declined as nagging rather than news.
+ *
+ * **Two accepted costs, recorded where the clock lives.** A lone check stuck for its own
+ * reason while the rest of the fleet is fine is reported inside a general outage rather than
+ * on its own — it joins the open filing and gets no issue of its own. And a maintainer who
+ * closes the issue without shipping a fix is never told again, because braintrust never
+ * reopens it and clears the ledger only on a successful ask.
+ */
+export function silencesToFile(silences: Silence[], now: number): Silence[] {
+  if (silences.length === 0) return [];
+  if (silences.some((silence) => silence.reported_at !== null)) return [];
+
+  const outage = silences.some(
+    (silence) => now - Date.parse(silence.first_failed_at) >= SILENCE_REPORTS_AFTER_MS,
+  );
+
+  return outage ? [...silences] : [];
 }
 
 /**

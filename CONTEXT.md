@@ -193,3 +193,10 @@ A live failure braintrust has found in itself and **cannot repair** — one that
 That is what distinguishes it from staleness, which braintrust fixes by rebuilding and tells nobody about. A
 Fault's audience is the maintainer, so it becomes one deduplicated issue on the repo.
 _Avoid_: error, alert, incident, warning
+
+**Silence**:
+An Assertion that could not be **asked** — the third status beside passed and failed, and **never a
+Persona's fault**. A judge that answers without a usable verdict is a Silence too: every way of not getting
+an answer is one bucket. It concludes nothing, opens no Fault and withdraws nothing, but it is counted and
+dated, because *never verified* is a thing somebody has to be told about and *0 failed* does not say it.
+_Avoid_: skipped, errored, unknown, degraded

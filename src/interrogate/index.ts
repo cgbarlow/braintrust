@@ -29,17 +29,21 @@ import {
   type InterrogationSubject,
   type Interrogator,
 } from './assertions.js';
-import { escalationIssue, faultIssue, type IssueFiler } from './issues.js';
-import { dueAssertions, faultsToFile, type Due } from './schedule.js';
+import { escalationIssue, faultIssue, silenceIssue, type IssueFiler } from './issues.js';
+import { dueAssertions, faultsToFile, silencesToFile, type Due } from './schedule.js';
 import {
   claimsHeldFor,
   clearFault,
+  clearSilence,
   lastInterrogations,
   markEscalated,
   markReported,
+  markSilencesReported,
   openFault,
   openFaults,
+  openSilences,
   recordInterrogation,
+  recordSilence,
   servingFleet,
 } from './store.js';
 
@@ -57,6 +61,7 @@ export {
   escalationIssue,
   faultIssue,
   loggingIssueFiler,
+  silenceIssue,
   type IssueFiler,
   type Issue,
 } from './issues.js';
@@ -65,14 +70,18 @@ export {
   ESCALATES_AFTER_MS,
   faultKey,
   faultsToFile,
+  silenceKey,
+  SILENCE_REPORTS_AFTER_MS,
+  silencesToFile,
   SWEEP_INTERVAL_MS,
   withdrawnLayers,
   type Due,
   type Fault,
   type FleetSubject,
   type LastRun,
+  type Silence,
 } from './schedule.js';
-export { escalatedFaults, openFaults, servingFleet } from './store.js';
+export { escalatedFaults, openFaults, openSilences, servingFleet } from './store.js';
 
 export type InterrogationDeps = {
   db: Db;
@@ -104,6 +113,10 @@ export type InterrogationReport = {
   cleared: string[];
   /** Issues filed this run, by fault key and kind. */
   filed: { fault: string; kind: 'opened' | 'escalated'; issue: string | null }[];
+  /** Silences counted this run: assertions that could not be asked at all. */
+  silenced: string[];
+  /** The one issue a day-long outage files, if this run is the one that filed it. */
+  outage: { assertions: string[]; issue: string | null } | null;
 };
 
 /**
@@ -136,13 +149,28 @@ export async function runInterrogation(deps: InterrogationDeps): Promise<Interro
     failing: [],
     cleared: [],
     filed: [],
+    silenced: [],
+    outage: null,
   };
 
   for (const item of due) {
     const outcome = await ask(deps, item, compilerVersion, log);
     report.asked.push(outcome);
 
-    if (outcome.passed === null) continue;
+    if (outcome.passed === null) {
+      // **Counted, not merely logged.** The clock starts here and runs on consecutive failed
+      // attempts; the row is the durable record that a guarantee went unverified.
+      await recordSilence(deps.db, {
+        assertion: item.assertion.id,
+        person: item.person,
+        detail: outcome.detail,
+      });
+      report.silenced.push(item.assertion.id);
+      continue;
+    }
+
+    // An answer arrived, so this assertion is not going unchecked — whichever way it went.
+    await clearSilence(deps.db, item.assertion.id, item.person);
 
     if (outcome.passed) {
       await clearFault(deps.db, item.assertion.id, item.person);
@@ -158,6 +186,7 @@ export async function runInterrogation(deps: InterrogationDeps): Promise<Interro
   }
 
   await tell(deps, report, now, compilerVersion, log);
+  await tellAboutTheSilence(deps, report, now, compilerVersion, log);
   return report;
 }
 
@@ -167,7 +196,18 @@ export async function runInterrogation(deps: InterrogationDeps): Promise<Interro
  * **An endpoint braintrust cannot reach opens no fault.** It is not evidence that a Persona
  * is inventing claims, and treating it as one would file an issue every time a synthesiser
  * had a bad afternoon — the exact failure mode the gate avoids by refusing to run semantic
- * checks. Nothing is recorded either, so the assertion stays due and the next run asks again.
+ * checks. No interrogation row is written either, so the assertion stays due and the next run
+ * asks again — which is what makes the silence clock a daily count of attempts.
+ *
+ * **What it does leave is a counted row in the silence ledger**, because *nothing concluded*
+ * and *nothing recorded* turned out to be two different decisions and only the first was
+ * meant. See ./schedule.ts and https://github.com/cgbarlow/braintrust/issues/201.
+ *
+ * **A judge that answers without a usable verdict lands here too**, on the same clock and in
+ * the same issue. Every error path is one bucket — transport error, HTTP 500, non-JSON body,
+ * empty content, and a verdict with no boolean in it — so a dead endpoint and a broken judge
+ * are distinguishable only from the reason text, which the issue carries. That is the
+ * decision rather than an accident of error handling.
  */
 async function ask(
   deps: InterrogationDeps,
@@ -298,9 +338,79 @@ async function tell(
   }
 }
 
+/**
+ * Tells somebody, once, that braintrust has not been able to interrogate itself for a day.
+ *
+ * **A separate arm from {@link tell} and it never touches a fault.** An assertion that could
+ * not be asked concludes nothing about a Persona, so this opens no fault, withdraws no layer
+ * and names no Person — it is one issue about braintrust's own plumbing, listing what went
+ * unchecked, filed once and never repeated while the ledger stays open.
+ *
+ * The ledger is read fresh for the same reason the fault ledger is: the outage whose day is up
+ * now is mostly made of runs that already happened.
+ */
+async function tellAboutTheSilence(
+  deps: InterrogationDeps,
+  report: InterrogationReport,
+  now: number,
+  compilerVersion: string,
+  log: (line: string) => void,
+): Promise<void> {
+  const owing = silencesToFile(await openSilences(deps.db, log), now);
+  if (owing.length === 0) return;
+
+  // One line per assertion, however many subjects it was lost on — the issue is about an
+  // outage, and five personas lost to one endpoint is one row, not five names.
+  type Line = { assertion: string; attempts: number; subjects: number; detail: string };
+  const byAssertion = new Map<string, Line>();
+  for (const silence of owing) {
+    const seen = byAssertion.get(silence.assertion);
+    if (seen) {
+      seen.subjects += 1;
+      seen.attempts = Math.max(seen.attempts, silence.attempts);
+    } else {
+      byAssertion.set(silence.assertion, {
+        assertion: silence.assertion,
+        attempts: silence.attempts,
+        subjects: 1,
+        detail: silence.detail,
+      });
+    }
+  }
+
+  // The oldest clock in the ledger: when braintrust last got an answer out of the judge.
+  const since = owing.reduce(
+    (oldest, one) =>
+      Date.parse(one.first_failed_at) < Date.parse(oldest) ? one.first_failed_at : oldest,
+    owing[0]!.first_failed_at,
+  );
+
+  const issue = await deps.issues.file(
+    silenceIssue({
+      silences: [...byAssertion.values()],
+      since,
+      compilerVersion,
+      interrogator: deps.interrogator.generation,
+    }),
+  );
+
+  // **Only a filing that happened counts as told**, the same rule the fault arm follows: a
+  // null means nobody was reached, and marking it reported would retire the only record that
+  // the central guarantee is going unverified.
+  if (issue !== null) {
+    await markSilencesReported(deps.db, owing.map((one) => one.key), issue, log);
+  }
+
+  report.outage = { assertions: [...byAssertion.keys()], issue };
+  log(
+    `braintrust: could not interrogate itself for over a day — ${owing.length} assertion(s) ` +
+      `unchecked — ${issue ?? `nothing was filed; ${deps.issues.where}`}`,
+  );
+}
+
 /** One line for a job nobody watches. Silence when nothing was due is the normal case. */
 export function summariseInterrogation(report: InterrogationReport): string | null {
-  if (report.asked.length === 0 && report.filed.length === 0) return null;
+  if (report.asked.length === 0 && report.filed.length === 0 && report.outage === null) return null;
 
   const failed = report.asked.filter((one) => one.passed === false);
   const unreached = report.asked.filter((one) => one.passed === null);
@@ -314,6 +424,12 @@ export function summariseInterrogation(report: InterrogationReport): string | nu
       (one) =>
         `  ${one.kind === 'opened' ? 'filed' : 'escalated'} ${one.fault} — ${one.issue ?? 'not filed'}`,
     ),
+    ...(report.outage
+      ? [
+          `  unasked for over a day: ${report.outage.assertions.join(', ')} — ` +
+            `${report.outage.issue ?? 'not filed'}`,
+        ]
+      : []),
   ].join('\n');
 }
 

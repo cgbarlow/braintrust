@@ -16,22 +16,34 @@ import { describe, it } from 'node:test';
 import { COMPILER_VERSION } from '../src/compile/version.js';
 import type { Db, QueryResult } from '../src/db.js';
 import { SPOKEN_DISCLOSURE } from '../src/disclosure.js';
+import type { Fetcher } from '../src/net/fetch.js';
 import {
   ASSERTIONS,
   assertionIds,
+  createInterrogator,
   dueAssertions,
   ESCALATES_AFTER_MS,
   faultsToFile,
   runInterrogation,
+  SILENCE_REPORTS_AFTER_MS,
+  silencesToFile,
+  summariseInterrogation,
   SWEEP_INTERVAL_MS,
   withdrawnLayers,
   type Fault,
   type Interrogation,
   type Interrogator,
   type LastRun,
+  type Silence,
 } from '../src/interrogate/index.js';
-import { escalationIssue, faultIssue, loggingIssueFiler, type Issue } from '../src/interrogate/issues.js';
-import { escalatedFaults } from '../src/interrogate/store.js';
+import {
+  escalationIssue,
+  faultIssue,
+  loggingIssueFiler,
+  silenceIssue,
+  type Issue,
+} from '../src/interrogate/issues.js';
+import { escalatedFaults, recordSilence } from '../src/interrogate/store.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 
 const NOW = Date.parse('2026-08-08T09:00:00.000Z');
@@ -99,6 +111,7 @@ function refusingFiler() {
 }
 
 type FaultSeed = Partial<Fault> & { assertion: string };
+type SilenceSeed = Partial<Silence> & { assertion: string };
 
 /**
  * The whole of the interrogation's storage, in memory: two tables, plus the handful of rows
@@ -112,8 +125,25 @@ function interrogatingDb(seed: {
   fleet?: { person: string; items: number }[];
   last?: LastRun[];
   faults?: FaultSeed[];
+  silences?: SilenceSeed[];
   claims?: { slug: string; statement: string }[];
 } = {}) {
+  const silences = new Map<string, Record<string, unknown>>();
+  for (const silence of seed.silences ?? []) {
+    const key = `${silence.assertion}:${silence.person ?? '*'}`;
+    silences.set(key, {
+      silence_key: key,
+      assertion: silence.assertion,
+      person_slug: silence.person ?? null,
+      detail: silence.detail ?? 'the judge answered HTTP 500',
+      attempts: silence.attempts ?? 1,
+      first_failed_at: new Date(silence.first_failed_at ?? new Date(NOW).toISOString()),
+      last_failed_at: new Date(silence.last_failed_at ?? new Date(NOW).toISOString()),
+      reported_at: silence.reported_at ? new Date(silence.reported_at) : null,
+      reported_issue: silence.reported_issue ?? null,
+    });
+  }
+
   const faults = new Map<string, Record<string, unknown>>();
   for (const fault of seed.faults ?? []) {
     const key = `${fault.assertion}:${fault.person ?? '*'}`;
@@ -150,10 +180,12 @@ function interrogatingDb(seed: {
     sql: string[];
     interrogations: Record<string, unknown>[];
     faults: Map<string, Record<string, unknown>>;
+    silences: Map<string, Record<string, unknown>>;
   } = {
     sql,
     interrogations,
     faults,
+    silences,
 
     async query<Row>(text: string, params: unknown[] = []): Promise<QueryResult<Row>> {
       const flat = text.replace(/\s+/g, ' ').trim();
@@ -251,10 +283,67 @@ function interrogatingDb(seed: {
       return [...faults.values()];
     }
 
+    if (flat.startsWith('insert into braintrust_silences')) {
+      const key = params[0] as string;
+      const existing = silences.get(key);
+      if (existing) {
+        existing.last_failed_at = new Date(NOW);
+        existing.attempts = (existing.attempts as number) + 1;
+        existing.detail = params[3];
+      } else {
+        silences.set(key, {
+          silence_key: key,
+          assertion: params[1],
+          person_slug: params[2],
+          detail: params[3],
+          attempts: 1,
+          first_failed_at: new Date(NOW),
+          last_failed_at: new Date(NOW),
+          reported_at: null,
+          reported_issue: null,
+        });
+      }
+      return [];
+    }
+
+    if (flat.startsWith('delete from braintrust_silences')) {
+      silences.delete(params[0] as string);
+      return [];
+    }
+
+    if (flat.startsWith('update braintrust_silences')) {
+      for (const key of params[0] as string[]) {
+        const row = silences.get(key);
+        if (row) {
+          row.reported_at = new Date(NOW);
+          row.reported_issue = params[1];
+        }
+      }
+      return [];
+    }
+
+    if (flat.includes('from braintrust_silences order by first_failed_at')) {
+      return [...silences.values()];
+    }
+
     return [];
   }
 
   return db;
+}
+
+function silence(seed: SilenceSeed): Silence {
+  return {
+    key: `${seed.assertion}:${seed.person ?? '*'}`,
+    assertion: seed.assertion,
+    person: seed.person ?? null,
+    detail: seed.detail ?? 'the judge answered HTTP 500',
+    attempts: seed.attempts ?? 1,
+    first_failed_at: seed.first_failed_at ?? new Date(NOW).toISOString(),
+    last_failed_at: seed.last_failed_at ?? new Date(NOW).toISOString(),
+    reported_at: seed.reported_at ?? null,
+    reported_issue: seed.reported_issue ?? null,
+  };
 }
 
 function fault(seed: FaultSeed): Fault {
@@ -535,7 +624,7 @@ describe('a failing interrogation', () => {
 });
 
 describe('an interrogator braintrust cannot reach', () => {
-  it('opens no fault and records nothing, so the assertion stays due', async () => {
+  it('opens no fault and concludes nothing, so the assertion stays due', async () => {
     const db = interrogatingDb();
     const issues = recordingFiler();
 
@@ -550,8 +639,360 @@ describe('an interrogator braintrust cannot reach', () => {
     // An endpoint having a bad afternoon is not evidence that a persona is inventing claims.
     assert.deepEqual([...new Set(report.asked.map((one) => one.passed))], [null]);
     assert.equal(db.faults.size, 0);
+    // No verdict row either, which is what leaves the assertion due for the next run.
     assert.equal(db.interrogations.length, 0);
+    // Nothing is filed on the first bad night: the day has not passed.
     assert.deepEqual(issues.filed, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #201 — a check that cannot be asked is counted, and after a day somebody is told
+// ---------------------------------------------------------------------------
+
+describe('an assertion that could not be asked', () => {
+  it('leaves a durable counted row rather than a log line, and never a fault', async () => {
+    const db = interrogatingDb();
+
+    const report = await runInterrogation({
+      db,
+      interrogator: stubInterrogator({ throws: 'connect ECONNREFUSED' }),
+      issues: recordingFiler(),
+      now: NOW,
+      log: () => {},
+    });
+
+    // The first run of this on production read "2 passed, 0 failed, 6 could not be asked"
+    // and wrote nothing at all — which is what made every dashboard read 0 failed while the
+    // central guarantee went unverified.
+    assert.equal(report.silenced.length, report.asked.length);
+    assert.equal(db.silences.size, report.asked.length);
+
+    const row = [...db.silences.values()][0]!;
+    assert.equal(row.attempts, 1);
+    assert.ok(row.first_failed_at instanceof Date);
+    assert.match(row.detail as string, /ECONNREFUSED/);
+
+    // Silence is never a persona's fault: an outage somewhere else must not put five people
+    // in front of a maintainer.
+    assert.equal(db.faults.size, 0);
+  });
+
+  it('counts consecutive attempts without ever moving the clock it is measured against', async () => {
+    const db = interrogatingDb();
+    const interrogator = stubInterrogator({ throws: 'HTTP 500' });
+    const run = (now: number) =>
+      runInterrogation({ db, interrogator, issues: recordingFiler(), now, log: () => {} });
+
+    await run(NOW);
+    await run(NOW + DAY / 2);
+
+    const row = [...db.silences.values()][0]!;
+    assert.equal(row.attempts, 2);
+    // A silence re-observed every morning that reset its own deadline would never file.
+    assert.equal((row.first_failed_at as Date).getTime(), NOW);
+  });
+
+  it('is cleared by an answer, so a single bad night leaves no trace', async () => {
+    const db = interrogatingDb({
+      silences: [{ assertion: FAKING_ASSERTION, person: 'nate-b-jones' }],
+    });
+
+    await runInterrogation({
+      db,
+      interrogator: stubInterrogator(),
+      issues: recordingFiler(),
+      now: NOW + 60_000,
+      log: () => {},
+    });
+
+    assert.equal(db.silences.size, 0);
+  });
+
+  it('is cleared by a failing verdict too, because a check that failed is a check that was made', async () => {
+    const db = interrogatingDb({
+      silences: [{ assertion: FAKING_ASSERTION, person: 'nate-b-jones' }],
+    });
+
+    const report = await runInterrogation({
+      db,
+      interrogator: stubInterrogator({ holds: false }),
+      issues: recordingFiler(),
+      now: NOW + 60_000,
+      log: () => {},
+    });
+
+    // A false verdict is an answer. It has its own fault and its own issue, and leaving the
+    // silence row beside it would eventually file "this went unchecked" about the one thing
+    // braintrust checked hardest.
+    assert.equal(db.silences.size, 0);
+    assert.ok(report.failing.includes(FAKING_ASSERTION));
+  });
+
+  it('counts a judge that answers but will not judge as the same silence', async () => {
+    const db = interrogatingDb();
+    // A live endpoint, HTTP 200, well-formed JSON — that answers a persona quite happily and
+    // then returns a verdict with no boolean in it.
+    const willNotJudge: Fetcher = async (_url, init) => {
+      const sent = init!.json as { messages: { content: string }[] };
+      const judging = sent.messages[0]!.content.includes('checking whether one statement is true');
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: judging
+                    ? '{"why": "I would rather not say"}'
+                    : `${SPOKEN_DISCLOSURE}\n\nI have no way to look anything up.`,
+                },
+              },
+            ],
+          });
+        },
+      };
+    };
+
+    const report = await runInterrogation({
+      db,
+      interrogator: createInterrogator(
+        { baseUrl: 'https://judge.invalid/v1', model: 'a-model', apiKey: undefined },
+        willNotJudge,
+      ),
+      issues: recordingFiler(),
+      now: NOW,
+      log: () => {},
+    });
+
+    // Every way of not getting a verdict is one bucket on one clock — a transport error, an
+    // HTTP 500, a non-JSON body, an empty reply and this. Which is the decision, not an
+    // accident of error handling: a 500 and a refusal are not distinguishable and never were.
+    assert.ok(report.silenced.length > 0);
+    assert.ok(db.silences.size > 0);
+    assert.equal(db.faults.size, 0);
+    assert.match([...db.silences.values()][0]!.detail as string, /boolean verdict/);
+  });
+
+  it('opens no fault and withdraws nothing, however long it lasts', () => {
+    // The silence ledger and the fault ledger are joined nowhere, so there is no silence a
+    // reader could ever be made to pay for.
+    assert.deepEqual(withdrawnLayers([], 'nate-b-jones'), []);
+  });
+});
+
+describe('the one-day silence', () => {
+  const six = [
+    silence({ assertion: FAKING_ASSERTION, person: 'nate-b-jones', attempts: 2 }),
+    silence({ assertion: FAKING_ASSERTION, person: 'add-shore', attempts: 2 }),
+    silence({ assertion: DISCLOSURE_ASSERTION, attempts: 2 }),
+    silence({ assertion: 'an_empty_answer_is_admitted_and_not_filled', attempts: 2 }),
+    silence({ assertion: 'a_persona_that_cannot_reach_the_record_says_so', attempts: 2 }),
+  ];
+
+  it('tells nobody before the day is up', () => {
+    assert.deepEqual(silencesToFile(six, NOW + SILENCE_REPORTS_AFTER_MS - 1), []);
+  });
+
+  it('files one issue for the whole outage once the oldest has outlived the day', () => {
+    const owing = silencesToFile(six, NOW + SILENCE_REPORTS_AFTER_MS);
+
+    // Six of eight lost to one endpoint is one thing that is broken. Six issues would be one
+    // endpoint triaged six times, and would read as six faults where there is one.
+    assert.equal(owing.length, six.length);
+  });
+
+  it('carries a check that joined the outage this morning inside the same issue', () => {
+    const owing = silencesToFile(
+      [...six, silence({ assertion: 'a_late_joiner', first_failed_at: new Date(NOW + DAY).toISOString() })],
+      NOW + SILENCE_REPORTS_AFTER_MS,
+    );
+
+    // Accepted cost, and the reason it is accepted: it went unchecked too, and a separate
+    // issue for it would be the sixth triage of one endpoint.
+    assert.ok(owing.some((one) => one.assertion === 'a_late_joiner'));
+  });
+
+  it('files once and never again while the ledger stays open', () => {
+    const reported = six.map((one, index) =>
+      index === 0 ? { ...one, reported_at: new Date(NOW).toISOString() } : one,
+    );
+
+    // One reported row silences the whole arm. A monthly re-file was offered and declined as
+    // nagging rather than news — and the accepted cost is that a maintainer who closes the
+    // issue without shipping a fix is never told again.
+    assert.deepEqual(silencesToFile(reported, NOW + 30 * DAY), []);
+  });
+
+  it('files for a later outage once the ledger has cleared', () => {
+    const fresh = [silence({ assertion: FAKING_ASSERTION, first_failed_at: new Date(NOW).toISOString() })];
+    assert.equal(silencesToFile(fresh, NOW + SILENCE_REPORTS_AFTER_MS).length, 1);
+  });
+
+  it('files it, marks the whole outage told, and files nothing on the next run', async () => {
+    const db = interrogatingDb({
+      fleet: [{ person: 'nate-b-jones', items: 34 }, { person: 'add-shore', items: 12 }],
+      silences: [
+        { assertion: FAKING_ASSERTION, person: 'nate-b-jones', attempts: 2 },
+        { assertion: FAKING_ASSERTION, person: 'add-shore', attempts: 2 },
+        { assertion: DISCLOSURE_ASSERTION, attempts: 2 },
+      ],
+    });
+    const issues = recordingFiler();
+    const interrogator = stubInterrogator({ throws: 'HTTP 500' });
+
+    const first = await runInterrogation({
+      db,
+      interrogator,
+      issues,
+      now: NOW + SILENCE_REPORTS_AFTER_MS,
+      log: () => {},
+    });
+
+    assert.equal(issues.filed.length, 1);
+    assert.ok(first.outage);
+    assert.equal(first.outage!.issue, 'https://example.invalid/issues/1');
+    assert.ok([...db.silences.values()].every((row) => row.reported_at !== null));
+
+    const second = await runInterrogation({
+      db,
+      interrogator,
+      issues,
+      now: NOW + 2 * SILENCE_REPORTS_AFTER_MS,
+      log: () => {},
+    });
+
+    assert.equal(issues.filed.length, 1);
+    assert.equal(second.outage, null);
+  });
+
+  it('is not marked told when nobody could be told, so it keeps trying', async () => {
+    const db = interrogatingDb({
+      silences: [{ assertion: DISCLOSURE_ASSERTION, attempts: 2 }],
+    });
+    const issues = refusingFiler();
+
+    await runInterrogation({
+      db,
+      interrogator: stubInterrogator({ throws: 'HTTP 500' }),
+      issues,
+      now: NOW + SILENCE_REPORTS_AFTER_MS,
+      log: () => {},
+    });
+
+    // A null is nobody heard. Marking it reported anyway would retire the only record that
+    // the central guarantee is going unverified.
+    assert.equal(issues.attempts.length, 1);
+    assert.ok([...db.silences.values()].every((row) => row.reported_at === null));
+  });
+
+  it('changes nothing a reader is served while it is open', async () => {
+    const db = interrogatingDb({
+      silences: [{ assertion: FAKING_ASSERTION, person: 'nate-b-jones', attempts: 2 }],
+    });
+
+    await runInterrogation({
+      db,
+      interrogator: stubInterrogator({ throws: 'HTTP 500' }),
+      issues: recordingFiler(),
+      now: NOW + SILENCE_REPORTS_AFTER_MS,
+      log: () => {},
+    });
+
+    // The cost of a third party's outage does not land on a reader who did nothing wrong,
+    // and "never verified" is not a quantity with a safe direction to take.
+    assert.equal(db.faults.size, 0);
+    const payload = await loadPersona(db, 'nate-b-jones');
+    assert.ok(payload.speak.includes('HOW THEY ARGUE'));
+    assert.ok(!/unverified|could not be asked|outage/i.test(JSON.stringify(payload)));
+
+    const explained = await explainPersona(db, 'nate-b-jones');
+    assert.ok(!/unverified|could not be asked|outage/i.test(JSON.stringify(explained)));
+  });
+});
+
+describe('the issue a day of silence opens', () => {
+  const issue = silenceIssue({
+    silences: [
+      { assertion: FAKING_ASSERTION, attempts: 2, subjects: 5, detail: 'the judge answered HTTP 500' },
+      { assertion: DISCLOSURE_ASSERTION, attempts: 2, subjects: 1, detail: 'the judge answered HTTP 500' },
+    ],
+    since: '2026-08-08T09:00:00.000Z',
+    compilerVersion: 'compiler-1',
+    interrogator: 'stub@interrogation-1',
+  });
+
+  it('names no person anywhere, because the outage was never theirs', () => {
+    assert.ok(!/nate-b-jones|add-shore/.test(`${issue.title}\n${issue.body}`));
+    // Five personas lost to one endpoint is a count, never a list of names.
+    assert.match(issue.body, /5 subject\(s\)/);
+  });
+
+  it('lists what went unchecked, and says it is braintrust’s own plumbing', () => {
+    assert.match(issue.body, new RegExp(FAKING_ASSERTION));
+    assert.match(issue.body, new RegExp(DISCLOSURE_ASSERTION));
+    assert.match(issue.body, /braintrust's own plumbing/);
+  });
+
+  it('says nothing changed for a reader, and that no fault was opened', () => {
+    assert.match(issue.body, /Nothing changed for readers/);
+    assert.match(issue.body, /no fault was opened against any persona/);
+  });
+
+  it('says a judge that answers without a verdict is the same silence', () => {
+    assert.match(issue.body, /answers but will not judge counts as silence/);
+    // Because it is: a dead endpoint and a broken judge differ only in the reason text.
+    assert.match(issue.body, /HTTP 500/);
+  });
+
+  it('records the two accepted costs where a maintainer will read them', () => {
+    assert.match(issue.body, /closing this without shipping a fix means nobody is told again/);
+    assert.match(issue.body, /stuck for its own reason is reported inside this general outage/);
+  });
+});
+
+describe('a silence ledger braintrust cannot read', () => {
+  it('carries on and says so, because this table ships after the code does', async () => {
+    const said: string[] = [];
+    const missing: Db = {
+      async query<Row>(text: string): Promise<QueryResult<Row>> {
+        if (text.includes('braintrust_silences')) {
+          throw new Error('relation "braintrust_silences" does not exist');
+        }
+        return { rows: [] as Row[] };
+      },
+    };
+
+    await recordSilence(
+      missing,
+      { assertion: DISCLOSURE_ASSERTION, person: null, detail: 'HTTP 500' },
+      (line) => said.push(line),
+    );
+
+    // schema.sql is pasted by hand and the code deploys on merge. Between the two an
+    // un-migrated deployment degrades to the log line this ticket replaces, not to a job
+    // that throws and takes the fault filing down with it.
+    assert.match(said[0]!, /schema\.sql has not been run/);
+  });
+});
+
+describe('the line the job logs', () => {
+  it('says how many could not be asked, and names the outage issue when one was filed', () => {
+    const line = summariseInterrogation({
+      compiler_version: 'compiler-1',
+      asked: [
+        { assertion: DISCLOSURE_ASSERTION, person: null, subject: 'n', why: 'never_asked', passed: null, detail: 'HTTP 500' },
+      ],
+      failing: [],
+      cleared: [],
+      filed: [],
+      silenced: [DISCLOSURE_ASSERTION],
+      outage: { assertions: [DISCLOSURE_ASSERTION], issue: 'https://example.invalid/issues/1' },
+    });
+
+    assert.match(line!, /1 could not be asked/);
+    assert.match(line!, /unasked for over a day/);
   });
 });
 

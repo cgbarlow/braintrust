@@ -989,8 +989,43 @@ layer withheld for a rules change, because there is no second kind of silence �
 passing interrogation restores it with no rebuild.
 
 **Nothing in this section writes to a Compile, a layer or a version.** That is what makes *keeps serving
-unchanged* checkable rather than merely intended: the interrogation has two tables of its own and touches
+unchanged* checkable rather than merely intended: the interrogation has three tables of its own and touches
 nothing else.
+
+### A check that cannot be asked is counted — [#201](https://github.com/cgbarlow/braintrust/issues/201)
+
+The first live run reported `2 passed, 0 failed, 6 could not be asked`, all six lost to the judge endpoint
+returning HTTP 500. The behaviour was right — nothing concluded, no fault opened, no issue filed off a judge
+that is not answering — but **nothing was written**. No row, no attempt count, no first-failure timestamp,
+only a log line in a job nobody watches. Every dashboard read *0 failed*, which was true, while the central
+guarantee of the whole design went unverified and nothing anywhere recorded that it had.
+
+**Silence is a third status, and it is never a Persona's fault.** Treating an unaskable assertion as a
+failure would file issues against five people on the strength of somebody else's outage. So a Silence gets
+its own ledger, joined to the fault ledger nowhere: it opens no Fault, withdraws no layer, and names no
+Person.
+
+**It gets a day of consecutive failure to ask** — started by the first failed attempt after an answer,
+cleared by any answer at all, pass or fail. Not a staleness clock: an assertion that could not be asked
+**stays due** and is retried every run, so attempts already run daily whatever the sweep interval says.
+Measuring attempts reuses §8's day and reaches a maintainer fourteen times sooner than the two-week staleness
+figure this was first worked out as, for nothing. Worst case is a little over the day, and that is bounded:
+if nothing is due while the endpoint is down, the check comes due at the sweep, fails, and files a day later.
+
+**One issue per outage, not per check, and one filing ever.** Six of eight failing on one endpoint for one
+reason is one thing that is broken; six issues would be one endpoint triaged six times. The issue lists what
+went unchecked, is filed against braintrust's own plumbing, and is never re-filed while the ledger stays open
+— a monthly reminder was offered and declined as nagging rather than news.
+
+**Readers never pay.** Nothing is withdrawn, nothing is hedged, no warning enters the payload. This settles
+which half of [#149](https://github.com/cgbarlow/braintrust/issues/149) governs here: *the cost of a third
+party's outage does not land on a reader who did nothing wrong* — **not** *an unmeasured quantity takes its
+most conservative value*, because *never verified* is not a quantity with a safe direction.
+
+**A judge that answers but will not judge counts as silence**, on the same clock and in the same issue. Every
+error path already lands in one bucket — transport error, HTTP 500, non-JSON body, empty content, and a
+verdict with no boolean in it — so *is a 500 distinguishable from a refusal* is answered: no, and it never
+was. This changes no behaviour; it makes the behaviour the decision rather than an accident of error handling.
 
 ---
 
@@ -1013,6 +1048,9 @@ nothing else.
 | **braintrust knowingly serves a Persona it has judged to be inventing claims** until a human ships a compiler change. The alternative — withdrawing a working Persona on one non-reproducible model call — costs a reader who did nothing wrong. The one-day limit is what stops it being permanent. | §8 |
 | **A maintainer who closes the first issue without shipping a fix is never told again by the opening arm.** braintrust's ledger clears on a passing assertion, not on an issue being closed. Only the day-mark escalation speaks after that. | §8 |
 | **The assertion closest to what a reader hears is the one whose failure they never see.** A disclosure fault escalates to a second issue and nothing else, because the disclosure is the one sentence that must always ship and there is nothing to withdraw. | §8 |
+| **A single check stuck for its own reason is reported inside a general outage rather than on its own.** One issue per outage means a lone silence joins an open filing and gets no issue of its own. | §8 |
+| **A maintainer who closes the silence issue without shipping a fix is never told again.** braintrust files once, never re-files, and never reopens; the ledger clears only when an assertion gets an answer. | §8 |
+| **A dead endpoint and a broken judge are distinguishable only from the reason text inside the issue.** Every way of not getting a verdict is one bucket on one clock — which the issue carries anyway. | §8 |
 | **braintrust owns a compiler forever.** Nothing upstream can be adopted. | header |
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
 | **About a fifth of what the extractor proposes is thrown away**, measured at 291 of 1,093 on the first real corpus. 87 of those differ from the body only in punctuation and case and are dropped anyway; the rest quote words that are not there. Stated rather than engineered around: the alternative is a Persona citing a model. | §1 |

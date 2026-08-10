@@ -23,6 +23,12 @@ const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
 const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
 
 const TABLES = [
+  // braintrust checking itself, first because nothing references them and they reference
+  // nothing — the separation that makes "a failing interrogation changes nothing a persona
+  // serves" checkable rather than promised.
+  'braintrust_silences',
+  'braintrust_faults',
+  'braintrust_interrogations',
   'braintrust_through_line_items',
   'braintrust_through_lines',
   'braintrust_position_relations',

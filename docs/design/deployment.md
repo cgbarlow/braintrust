@@ -86,6 +86,11 @@ What it must not do is fail quietly — so an unconfigured deployment prints the
 **every** run until either a tracker is configured or the assertion passes. Going silent after one
 announcement would retire the loudest thing braintrust can say after nobody heard it.
 
+**The same channel carries the outage.** If the judge endpoint stops answering, no assertion fails — none
+can be *asked* — so nothing is concluded and nothing a reader receives changes. After a day of consecutive
+failed attempts, one issue lists what has gone unchecked (compiler.md §8). It is filed against braintrust's
+own plumbing and names no person, because a third party's downtime is not evidence against anybody.
+
 **The extractor is required for a different reason than the embeddings endpoint.** A defaulted embeddings
 endpoint would ship a corpus to a third party on the first run; nothing is shipped by accident here, because
 there is nowhere to send it. What a missing extractor buys instead is a daily job that runs green forever and
