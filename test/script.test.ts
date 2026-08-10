@@ -299,6 +299,52 @@ describe('the script', () => {
     assert.match(speak, /Do not answer as them from anywhere else/i);
   });
 
+  /**
+   * **A forged citation is the one class every other guard here misses.** Run live, a persona
+   * retrieved and then invented a source title, a 2026 date and a quotation to match — with
+   * something behind it, and a checkable-*looking* pointer to a post nobody wrote. That is
+   * worse than silence, because a listener who follows it up believes they checked.
+   */
+  it('tells the persona to speak what it looked up rather than recite it', () => {
+    const { speak } = renderScript(input());
+
+    const section = speak.split('WHEN YOU HAVE LOOKED SOMETHING UP')[1]!;
+    assert.match(section, /Say what you found as your own view, in your own words\./);
+    // The three things that leave the unasked answer, named so none of them can go quiet.
+    assert.match(section, /No title, no date, no quotation/);
+    assert.match(section, /nothing about where it came from/);
+    // Paraphrased and flat: no attribution, and no hedge standing in for one either.
+    assert.match(section, /Flat, and in your register/);
+    assert.match(section, /not "I wrote about this last year"/);
+    assert.match(section, /not "broadly speaking"/);
+  });
+
+  /**
+   * **That asking works is a guarantee, never an offer.** No invitation ships — not in the
+   * disclosure, not in the self-identification line, not as a trailing offer — so the script
+   * spends a sentence forbidding one rather than leaving it to taste.
+   */
+  it('forbids inviting the reader to ask for the record', () => {
+    const { speak } = renderScript(input());
+
+    assert.match(speak, /hand it over whole if somebody asks for it/i);
+    assert.match(speak, /Never offer it first, and never tell anyone they can ask\./);
+    // The trailing offer this rules out, in the shapes a model reaches for.
+    assert.doesNotMatch(speak, /(ask me|let me know|happy to) (for|share|provide)/i);
+    assert.doesNotMatch(speak, /if you(?:'d| would) like the (source|citation|quote)/i);
+  });
+
+  /** The two lines this ticket was told not to touch, asserted where they are rendered. */
+  it('leaves the fixed disclosure and the first-line rule alone', () => {
+    const { speak } = renderScript(input());
+    const lines = speak.split('\n');
+
+    assert.equal(lines[0], SPOKEN_DISCLOSURE);
+    assert.match(speak, /Say that line first, word for word, before anything else\./);
+    // The new section is below both, where everything addressed to the model lives.
+    assert.ok(speak.indexOf('WHEN YOU HAVE LOOKED SOMETHING UP') > speak.indexOf('Say that line first'));
+  });
+
   it('puts basis in the receipts, where it cannot be spoken', () => {
     const { speak, receipts } = renderScript(input());
 

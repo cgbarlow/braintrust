@@ -123,9 +123,17 @@ describe('the MCP surface', () => {
     // braintrust_explain_persona, in front of the client that asked for the workings.
     assert.match(instructions!, /Never answer a question about braintrust's own workings/);
     assert.match(instructions!, /Never fill a gap from your own knowledge/);
+    // Rule 3 stops an answer with nothing behind it. Rule 4 stops an answer that had
+    // something behind it and grew a checkable-looking pointer to something else, which is
+    // worse — and it spans every tool, so it cannot live in one description.
+    assert.match(instructions!, /Four rules hold across every tool here/);
+    assert.match(instructions!, /Speak what braintrust returned; do not read out where it came from/);
+    assert.match(instructions!, /no title, no date, no quotation and no attribution/);
+    assert.match(instructions!, /Never offer it first/);
     assert.doesNotMatch(instructions!, /evidence floor/i);
     await client.close();
   });
+
 
   it('exposes the tools built so far, and marks which of them write', async () => {
     const client = await connect();
@@ -186,6 +194,14 @@ describe('the MCP surface', () => {
     assert.match(load, /braintrust_explain_persona/);
     assert.match(load, /never compiled/i);
     assert.doesNotMatch(load, /measured or inferred/);
+
+    // Rule 4 takes the title and the date out of an unasked answer, and read carelessly it
+    // would empty the recency tool: "I've published a few things lately" is not an answer to
+    // what have you published lately. The boundary is stated where a client reads it.
+    const recent = byName.get('braintrust_recent_items')!;
+    assert.match(recent, /Naming an item here is not the attribution rule 4 forbids/);
+    assert.match(recent, /what they\s*\n?\s*are called and when they landed \*is\* the answer/);
+    assert.doesNotMatch(recent, /you can cite it/);
 
     // …and the essay lands where the client that wants it will be.
     const explain = byName.get('braintrust_explain_persona')!;
@@ -272,6 +288,49 @@ describe('the retrieval tool, on a server that has an embeddings endpoint', () =
     assert.match(find.description!, /cannot tell you they never said it/);
     // Quotes stay a must-not-get-wrong.
     assert.match(find.description!, /the tidied version is not the quote/);
+    await client.close();
+  });
+
+  /**
+   * **A false citation is a class no other guarantee covers.** A persona retrieved and then
+   * invented a source title, a 2026 date and a quotation to match — something behind it, and
+   * a checkable-looking pointer to a post nobody wrote. So the choosing surface says what the
+   * dates and quotes in this payload are *for*: being right, not being read out.
+   */
+  it('tells a client to speak the record rather than recite it, and never to offer it', async () => {
+    const client = await connectSearchable();
+    const { tools } = await client.listTools();
+    const find = tools.find((tool) => tool.name === 'braintrust_find_positions')!;
+
+    assert.match(find.description!, /\*\*Speak it, do not recite it\.\*\*/);
+    assert.match(find.description!, /leave the item title, the date and the quotation out of it/);
+    assert.match(find.description!, /believes they checked/);
+    // No invitation ships: that asking works is a guarantee, never an offer.
+    assert.match(find.description!, /do not tell anyone they can ask/);
+    // And nothing left in here asks for the opposite. "Tidy them for display" was an
+    // instruction to display them.
+    assert.doesNotMatch(find.description!, /Tidy them for display/);
+    assert.doesNotMatch(find.description!, /positions you can cite/);
+    await client.close();
+  });
+
+  /**
+   * The unasked answer carries nothing a listener can check, so nothing braintrust ships may
+   * be the thing that asks for a title, a date or a quotation. Read as one surface rather
+   * than tool by tool, because a rule stated in several places is one that can be
+   * half-changed — see hermes/README.md on `SOUL.md` and #121.
+   */
+  it('asks nowhere for a source title, a date or a verbatim quote in an unasked answer', async () => {
+    const client = await connectSearchable();
+    const { tools } = await client.listTools();
+    const surface = [client.getInstructions()!, ...tools.map((tool) => tool.description!)].join('\n\n');
+
+    assert.doesNotMatch(surface, /you can cite it/);
+    assert.doesNotMatch(surface, /do not drop the citation/);
+    assert.doesNotMatch(surface, /with dates and citations/);
+    // Nor an invitation for the reader to ask for the record — that decision is #194's and
+    // it is "no invitation ships".
+    assert.doesNotMatch(surface, /(offer|invite|remind) (them|the reader|whoever)/i);
     await client.close();
   });
 

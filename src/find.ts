@@ -31,6 +31,16 @@
  * the rest, with no human gate. The consent posture adopted no verbatim cap and that
  * stands — this is a readability default, and any caller may undo it.
  *
+ * **The payload still carries everything a Persona no longer says out loud, on purpose.**
+ * [#202](https://github.com/cgbarlow/braintrust/issues/202) took verbatim, item title and
+ * date out of the *unasked answer*; the rule lives on the speaking surfaces — the Script,
+ * this tool's description, the server instructions — and expressly not here. Withholding
+ * citations from the payload until asked is the honest form and was measured: starve this
+ * model of the quotable thing and 2 of 8 replies replace it with invented first-person
+ * anecdote, buying a forgery fix by inducing the founding failure. So quotes, titles, dates
+ * and urls all still ship, and a reader can still tell the difference from the payload
+ * alone. **Nothing here may be trimmed on the grounds that it is no longer spoken.**
+ *
  * **No Coverage block.** Coverage is a Core concern and this tool stays lean, so an empty
  * answer here is silent about whether 304 unread paid posts might have held it. The
  * accepted cost is paid by the tool description, which points clients at

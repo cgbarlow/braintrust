@@ -375,6 +375,13 @@ describe('finding positions, against real Postgres', { skip }, () => {
     assert.deepEqual(answer.passages, [], 'passages are the fallback, not a companion');
   });
 
+  /**
+   * **The payload is unchanged by #202, and this is the check that says so.** A persona no
+   * longer speaks the title, the date or the quotation in an unasked answer — but it is still
+   * handed all of them, because withholding them until asked was measured and rejected:
+   * starve this model of the quotable thing and 2 of 8 replies replace it with invented
+   * anecdote. A reader must be able to tell the difference from the payload alone.
+   */
   it('cites what the person published — quote, item, url and date', async () => {
     await compile();
     const answer = await find({ query: await chunkTextOf('evals') });

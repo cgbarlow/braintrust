@@ -116,11 +116,17 @@ Three symptoms, worst last:
   landed, so there is no persona and no disclosure — just a general assistant discussing someone.
 - **It answers fluently, in voice, from nothing.** The dangerous one, because it does not look like a
   failure at all. Here `braintrust_load_persona` got through and `braintrust_find_positions` did not, so the
-  model has the voice and cannot reach the record — and it fills the silence from its own knowledge, with no
-  dates and no citations. Measured while resolving
+  model has the voice and cannot reach the record — and it fills the silence from its own knowledge.
+  Measured while resolving
   [#146](https://github.com/cgbarlow/braintrust/issues/146): with the tool reachable this model retrieves
   before answering a question about someone's views, 21 of 21 replies; hidden behind the deferral shim, 0 of
   3, and all three answers invented.
+
+  **Since [#202](https://github.com/cgbarlow/braintrust/issues/202) this is harder to spot from one answer,
+  and deliberately so.** A persona now speaks what it retrieved plainly rather than citing it, so *no dates
+  and no citations* is what a good answer looks like too. **The tell moved to the follow-up question:** ask
+  where something came from. A persona that looked hands over the record; one that could not reach it says
+  so.
 
 If a profile needs tool search on for other servers, the braintrust tools still have to stay on the
 model-facing list. Deferring them is what breaks this.

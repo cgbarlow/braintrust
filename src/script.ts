@@ -252,6 +252,7 @@ export function renderScript(input: ScriptInput): RenderedScript {
     parts.push('', 'HOW THEY ARGUE', '', instructions.map((text) => `- ${text}`).join('\n'));
   }
 
+  parts.push('', 'WHEN YOU HAVE LOOKED SOMETHING UP', '', SPEAK_DO_NOT_RECITE);
   parts.push('', 'WHAT YOU HAVE NOT READ', '', blindSpots(read, skewed, sources));
 
   return {
@@ -266,6 +267,52 @@ export function renderScript(input: ScriptInput): RenderedScript {
     },
   };
 }
+
+/**
+ * What the Persona does with the record it was handed: speaks it, and does not read it out.
+ *
+ * **A forged citation is a class every other guard on this map misses.** Everything else here
+ * protects against a Persona saying something with *nothing behind it* — absence. Run live
+ * through the Hermes client, a Persona **retrieved** and then invented a source title, a 2026
+ * date and a quotation to match, with no such item in that Corpus, plus a real quote hung on
+ * the wrong post. It had something behind it and produced a checkable-*looking* pointer that
+ * resolves to a post nobody wrote, which defeats the one defence a listener has — and defeats
+ * it worse than silence does, because a listener who follows it up believes they checked.
+ *
+ * No client configuration makes a model author a title, so the invention happened after the
+ * record was in hand. **What this removes is the incentive, not the capability**: a model told
+ * to attribute reaches for an attribution it may not have, where a model asked to speak plainly
+ * has nothing it is expected to produce.
+ *
+ * **The payload is unchanged.** Quotes, titles, dates and urls all still ship — a reader can
+ * still tell the difference from the payload alone. What changes is what gets said out loud
+ * unprompted. Withholding the citation from the *payload* until asked is the honest form and is
+ * rejected on measurement: take the quotable thing away and 2 of 8 replies replaced it with
+ * invented first-person anecdote. Starvation is what makes this model manufacture support.
+ *
+ * **Two costs, both accepted.** *Ship, don't recite* is an instruction, and this map's own line
+ * is that a Persona is honest because it looked and not because it was told to. And an unasked
+ * answer now carries nothing a listener can check, so it looks — to that listener, in that
+ * moment — exactly like this map's founding failure. **The tell moves from the answer to the
+ * follow-up question.**
+ *
+ * **Nothing invites the reader to ask.** That the record is produced on request is a guarantee,
+ * never an offer, so the last line here is a prohibition rather than a prompt.
+ *
+ * See docs/design/mcp-surface.md, rule 5, and
+ * https://github.com/cgbarlow/braintrust/issues/202.
+ */
+const SPEAK_DO_NOT_RECITE = [
+  'Say what you found as your own view, in your own words. No title, no date, no quotation, ' +
+    'and nothing about where it came from — nobody asked you for the record, and an answer ' +
+    'that reaches for an attribution is where an invented one gets said out loud.',
+  '',
+  'Flat, and in your register: not "I wrote about this last year", not "as I put it in a ' +
+    'piece on X", not "broadly speaking". Just the thing itself, the way you would say it.',
+  '',
+  'You have the record in front of you and you hand it over whole if somebody asks for it. ' +
+    'Never offer it first, and never tell anyone they can ask.',
+].join('\n');
 
 /**
  * What the Persona says when a question lands outside what braintrust read.

@@ -206,7 +206,12 @@ export function buildServer({
         'positions it returns for everything else, dated across years.\n\n' +
         '`note` is what braintrust recorded the one time it read the item — its argument and ' +
         'its claims, as stored. It is not a summary generated for you now, so it is the same ' +
-        'every time and you can cite it.\n\n' +
+        'every time and it is what braintrust actually read. Say what is in it in your own ' +
+        'words rather than quoting it.\n\n' +
+        '**Naming an item here is not the attribution rule 4 forbids.** Somebody asking what ' +
+        'this person has published lately is asking about the items themselves, so what they ' +
+        'are called and when they landed *is* the answer. What stays out is hanging a title ' +
+        'and a date on a claim nobody asked the source of.\n\n' +
         '**Items braintrust never read are listed too, carrying `not_read` instead of a note.** ' +
         'A paywalled post still happened and still has a date; leaving it out would tell you ' +
         'this person published less than they did. Say what it is and do not guess what was ' +
@@ -298,9 +303,16 @@ export function buildServer({
       {
         title: 'Find what someone has said about something',
         description:
-          'What a person has said about a topic, with dates and citations. This is the tool for ' +
-          '*what have they said about X*; braintrust_load_persona is the tool for answering **as** ' +
-          'them.\n\n' +
+          'What a person has said about a topic, with the dates, quotes and urls behind it. This ' +
+          'is the tool for *what have they said about X*; braintrust_load_persona is the tool for ' +
+          'answering **as** them.\n\n' +
+          '**Speak it, do not recite it.** Answer in this person\'s own voice, paraphrased, and ' +
+          'leave the item title, the date and the quotation out of it. The record is here so you ' +
+          'can be right, not so it can be read out: an unasked answer that reaches for an ' +
+          'attribution is where a model invents one, and a citation resolving to a post nobody ' +
+          'wrote is worse than no citation, because whoever follows it up believes they checked. ' +
+          'If someone asks where something came from, this payload is the answer — do not offer ' +
+          'it first, and do not tell anyone they can ask.\n\n' +
           'Each position carries two grades and they mean different things. `confidence` is how ' +
           'well braintrust knows the position. `fit` is how well it answers the question you ' +
           'asked. A `high` position with `distant` fit is well evidenced and not an answer. ' +
@@ -315,10 +327,12 @@ export function buildServer({
           'it — inferred across their work rather than quoted from any one piece of it, so it ' +
           'carries no date and nothing to quote. Speak it as flatly as anything else: no hedge, ' +
           'no "broadly speaking", no naming it as inferred. It only ever arrives alongside ' +
-          'positions you can cite, which is what makes that safe.\n\n' +
-          '**Quotes are verbatim.** Most of the corpus is auto-generated video captions, so they ' +
-          'arrive unpunctuated and sometimes mishearing names. Tidy them for display if you like, ' +
-          'but the tidied version is not the quote.\n\n' +
+          'positions braintrust can produce the record for, which is what makes that safe.\n\n' +
+          '**Quotes are verbatim, and they are for you rather than for the answer.** Most of the ' +
+          'corpus is auto-generated video captions, so they arrive unpunctuated and sometimes ' +
+          'mishearing names. On the one occasion a quote is spoken — somebody asked for the ' +
+          'record — tidy it for legibility if you like, but the tidied version is not the ' +
+          'quote.\n\n' +
           '**An empty answer is facts, not a sentence.** `nothing_matched` never contains prose ' +
           'to read out — say it in this person\'s own register, then use `nothing_matched.nearest` ' +
           'to name what they have written about nearby and offer that. A dead end with no next ' +
