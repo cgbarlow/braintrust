@@ -33,13 +33,10 @@ import { SERVED_LAYERS } from './version.js';
  * the rule that rejected a Compile whose beliefs layer carried nothing is gone because
  * there is no such layer, not because emptiness became acceptable in one place.
  *
- * Nothing replaced it for through-lines. Under the survives-two-readings bar a great many
- * people legitimately have none — anyone whose work fits in a single reading, by
- * construction — so a floor here would refuse to publish good Personas for having a small
- * Corpus. **This is the collapse floor that was recommended and declined**, and the cost is
- * known: a Compile that came back empty because the synthesiser had a bad afternoon looks
- * exactly like one that came back empty because there was nothing to find, and it replaces
- * a Persona that had through-lines yesterday.
+ * Through-lines are still not on it, and are no longer unguarded either. A presence rule
+ * here would refuse to publish a Persona whose subject genuinely has nothing durable to say;
+ * what {@link noLayerEmptiedBySelection} refuses instead is the case that is actually a
+ * defect — braintrust finding candidates and its own rules leaving none of them.
  */
 export const CORE_LAYERS = SERVED_LAYERS;
 
@@ -86,6 +83,23 @@ export type ItemCounts = {
   pending: number;
 };
 
+/**
+ * What one selecting layer found, and what braintrust's own rules left of it.
+ *
+ * **The only fact in the gate the rows cannot answer.** Every other check recounts the
+ * Compile from what was stored; this one is about the difference between what a Compile
+ * found and what it kept, and nothing is stored for what it did not keep. So the compiler
+ * hands it over — one entry per layer that selects, counted where the selection happens.
+ */
+export type LayerSelection = {
+  /** The layer, named as a Persona names it. What a rejection reports. */
+  layer: string;
+  /** Candidates found, before any rule of braintrust's ran over them. */
+  candidates: number;
+  /** What survived them, as it will be served. */
+  published: number;
+};
+
 export type GateFacts = {
   layers: GateLayer[];
   /** The Coverage layer's stored `evidence`, as it will be served. */
@@ -97,6 +111,11 @@ export type GateFacts = {
    * two Positions that must share a score.
    */
   positions: { slug: string; citations: number; graded_on: string | null }[];
+  /**
+   * What each selecting layer found and what it published. Empty is a legal value — a caller
+   * with nothing to declare declares nothing, and this check passes.
+   */
+  selection: LayerSelection[];
   /** Positions on the Compile this one would replace. Zero when there is no predecessor. */
   previous_positions: number;
   /** Positions this Compile put on the earlier side of a `revised` relation. */
@@ -247,6 +266,12 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
     guarantees:
       'an empty answer hands over the facts and no sentence, so the persona says it in their own register rather than reciting braintrust',
     run: nothingMatchedCarriesNoProse,
+  },
+  {
+    id: 'no_layer_emptied_by_selection',
+    guarantees:
+      "no layer braintrust found candidates for was left empty by braintrust's own rules, so a silence in a persona is something the person did not say rather than something a rule ate",
+    run: noLayerEmptiedBySelection,
   },
   {
     id: 'revisions_have_not_swept',
@@ -483,6 +508,47 @@ function positionsHaveNotCollapsed(facts: GateFacts): GateCheckResult {
     detail: passed
       ? `${now} position(s) against ${before} on the previous compile`
       : `positions fell from ${before} to ${now}, below the ${floor} this compile had to hold`,
+  };
+}
+
+/**
+ * **No Compile may publish a layer its own rules emptied.**
+ *
+ * Two silences look identical from the outside and are not the same fact. *There was nothing
+ * to say* is allowed, and a Persona says it in prose. *A rule ate it* is a defect, and it has
+ * shipped twice — the survives-two-readings bar left three of five Personas holding no
+ * through-lines on the first fleet rebuild, and the three-item style floor halved the habits
+ * block between rebuilds for reasons that had nothing to do with the person. Both were
+ * legible only to someone reading the compiler; from the outside each looked like a person
+ * with nothing to say.
+ *
+ * So the difference is made structural: a layer that found candidates and published none is
+ * rejected, whatever rule did the emptying and whatever number was in force. It is
+ * retrospective by construction — it does not know about readings, floors or menus, only
+ * about found-and-kept — which is what makes it survive the next rule somebody adds.
+ *
+ * No model call, no audience, no previous Compile needed. And a rejection is cheap: the
+ * previous Persona keeps answering and tomorrow's run tries again.
+ */
+function noLayerEmptiedBySelection(facts: GateFacts): GateCheckResult {
+  const emptied = facts.selection.filter(
+    (one) => one.candidates > 0 && one.published === 0,
+  );
+
+  const declared = facts.selection.length;
+
+  return {
+    passed: emptied.length === 0,
+    detail:
+      emptied.length === 0
+        ? `${declared} selecting layer(s) kept something of what they found, or found nothing to keep`
+        : emptied
+            .map(
+              (one) =>
+                `${one.layer} found ${one.candidates} candidate(s) and published none, so the ` +
+                'silence a reader hears is a rule of braintrust\'s rather than the person',
+            )
+            .join('; '),
   };
 }
 

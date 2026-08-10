@@ -177,8 +177,9 @@ know to ask.
 **And then the layer itself went** ([#169](https://github.com/cgbarlow/braintrust/issues/169)). Keeping it out
 of the Script left it in `explain_persona`, which is a payload — so the conclusions were still handed over
 before any question was asked, one call away. They are not compiled any more. What a Person holds is a
-**Through-line**, returned by `find_positions` beside claims that can be cited, and a Compile that finds none
-publishes normally.
+**Through-line**, returned by `find_positions` beside claims that can be cited. Every Persona with any
+candidates holds four, ranked; a Compile that genuinely finds none publishes normally, and one whose own rules
+emptied the layer is rejected.
 
 The consequence is a rule the Script relies on rather than merely states: **a Persona holds no standing
 Positions, so it cannot assert what someone thinks without retrieving it.** That is enforced by the shape of

@@ -529,6 +529,11 @@ describe('finding positions, against real Postgres', { skip }, () => {
   it('rides a through-line with the answer whose positions rest on the same items', async () => {
     await graded();
 
+    // Every persona holds four ranked through-lines now, traced to whatever the readings
+    // saw. Cleared, so the one thing riding with an answer here is this test's own fixture
+    // and *which items it was traced to* is the only thing deciding whether it travels.
+    await db.query('delete from braintrust_through_lines');
+
     // A through-line traced to the item behind one topic, written the way a compile writes
     // one: no date, no citations, nothing to quote.
     const { rows } = await db.query<{ id: string }>(

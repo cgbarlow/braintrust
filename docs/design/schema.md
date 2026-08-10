@@ -533,7 +533,7 @@ Four properties worth naming:
 - **`on delete cascade` does all the cleanup.** Deleting the old compile row removes its layers, positions,
   citations and relations. There is no reconciliation step and nothing to leak.
 - **Regeneration is affordable only while the core stays bounded.** Voice, reasoning and coverage converge as
-  the corpus grows; positions and through-lines grow. If the core ever grows with the corpus, full regeneration
+  the corpus grows and through-lines are a ranked four whatever its size; positions grow. If the core ever grows with the corpus, full regeneration
   stops being cheap and the no-drift guarantee goes with it.
 
 ## The backlog needs no table

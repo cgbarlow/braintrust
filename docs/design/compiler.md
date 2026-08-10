@@ -180,12 +180,13 @@ number and becomes something a human can read.
 | **Coverage** | measured | counts over `braintrust_items`, their `retrieval` status and their form | **no** | fixed size |
 | **Reasoning** | inferred | chosen from an authored menu against Notes | yes | converges |
 | **Positions** | measured, cited, dated | clustered from Note `claims`; every Position keeps its citations | yes | **grows** |
-| **Through-lines** | inferred | LLM synthesis across separate readings of the Notes | yes | **grows** |
+| **Through-lines** | inferred | LLM synthesis across separate readings of the Notes, ranked; the best four ship | yes | fixed size |
 | **Relations** | measured / inferred | pairwise judgement over candidate claim pairs | yes | **grows** |
 
 **The first three are the Core** — roughly constant in size at any Corpus scale, and what a client loads to
-sound like someone. **The last three grow** and are
-[queried rather than loaded whole](./mcp-surface.md#3-braintrust_find_positions).
+sound like someone. **The last three are
+[queried rather than loaded whole](./mcp-surface.md#3-braintrust_find_positions)**; Positions and Relations
+grow with the Corpus, and Through-lines are a ranked list of four whatever its size.
 
 **Nothing in the Core states a conclusion** ([#169](https://github.com/cgbarlow/braintrust/issues/169)).
 Beliefs was a fourth Core layer of durable commitments, and it shipped in every payload — so a model asked what
@@ -571,24 +572,51 @@ none of the Position apparatus does.
   it is earned by a lookup that already happened and cannot compete for the top of a list.
 - **Never the whole of an answer.** The load-bearing one: it is spoken flatly, with no hedge and no
   attribution, and that is affordable only because something checkable is always beside it.
-- **A Compile with no through-lines publishes.** They are not in the gate at all.
+- **A Compile that found no through-lines publishes.** A Compile whose own rules emptied the layer does not —
+  see `no_layer_emptied_by_selection` in §5.
+
+#### Four for everyone, ranked rather than barred — [#157](https://github.com/cgbarlow/braintrust/issues/157)
+
+**Every Persona with any candidates at all publishes four**, or all of them where the Corpus supported fewer.
+They are ordered **recurrence first, breadth second**: a claim two readings surfaced outranks one a single
+reading did, and a claim traced to more Items outranks a narrower one below that. Ties break on the slug, so a
+rebuild that changed nothing changes nothing.
+
+**The bar this replaces starved the layer.** *Survives more than one separate reading* was structural, cheap
+and needed no judgement — and measured on the first fleet rebuild that compiled through-lines, **11 candidates
+became 1, 10 became 1, 10 became 0**. Three of five Personas said *this person holds no durable commitments*,
+which is the failure this whole map was chartered on, produced by braintrust's own rules rather than by a model
+inventing anything. The old bar's intent survives as the first ranking signal: a claim seen once is outranked,
+never deleted.
+
+**The standing rule this establishes: a small integer on model output may *rank*, and may never *bar*.** Both
+gates built the other way have failed, in opposite directions — this one starved, and the three-item style
+floor in §3 jittered, halving a block between rebuilds for reasons that had nothing to do with the person. A
+ranked list of fixed length cannot empty itself and cannot change size, so neither failure has anywhere to
+express itself. `MAX_ENTRIES`, `MAX_POSITIONS`, `DEFAULT_CITATIONS` and `NEAREST_ON_EMPTY` are caps on ranked
+lists — the shape this recommends, not the shape it kills. `MIN_IN_CORPUS` and the distance floors are
+untouched: they decide whether a *measurement* is trustworthy rather than whether a *line reaches a reader*.
 
 #### What a reading is — [#160](https://github.com/cgbarlow/braintrust/issues/160)
 
-A through-line exists only if it survives **more than one separate reading**, and nothing said what a reading
-was. It is the one hole the spec could not close, and it decides who gets through-lines at all.
+Recurrence is the first ranking signal, so the Corpus is still divided, and nothing said what a division was.
+It is the one hole the spec could not close, and it now decides how through-lines are *ordered* rather than
+whether anyone has any.
 
 **A reading is one budget-sized pass over the Notes** — the division the compiler already builds: contiguous,
 in publication order, disjoint. Split **by count rather than by date**, because a date split produces an empty
 division after a quiet six months and then means something different for every person in the fleet.
 **Contiguous rather than interleaved**, because the artefact this guard exists to exclude is a pattern produced
-by what was read side by side: contiguous divisions maximise clustering *within* a division, so surviving two
-of them means the entry crossed a topical era. **Never overlapping**, for the same reason.
+by what was read side by side: contiguous divisions maximise clustering *within* a division, so recurring
+across two of them means the entry crossed a topical era. **Never overlapping**, for the same reason.
 
-**At least two, always.** Most Personas are one pass, so the rule would otherwise be unsatisfiable for the
-whole fleet — a Corpus under the budget is halved and pays one extra synthesis call. **A reading holds at least
-three Notes**, so a Corpus under six gets none: that number keeps #144's priced cost (*Chris on five Items gets
-none*) true rather than quietly repricing it.
+**Two where the Corpus can carry two.** Most Personas are one pass, so recurrence would otherwise be
+unmeasurable for the whole fleet — a Corpus under the budget is halved and pays one extra synthesis call, now
+for a ranking signal rather than for a rule that could refuse it everything. **A reading holds at least three
+Notes**, and that is the whole of what `MIN_NOTES_PER_READING` says now: a division of two Notes is not a
+second look at someone's work. It no longer holds an accepted cost in place. **A Corpus too small to divide is
+read once and ranked on breadth alone**, which is what makes *everyone* true rather than *everyone above six
+Notes* — and it costs one synthesis call rather than two.
 
 **[reasoned], not [measured]**, and the direction of each failure is on
 [#160](https://github.com/cgbarlow/braintrust/issues/160). Changing it is a version bump and a rebuild rather
@@ -704,6 +732,7 @@ the way the compiler fails:
 | `habits_rest_on_distinct_evidence` | no two lines in the argument-habits block rest on the identical set of Items |
 | `speak_opens_with_disclosure` | the first line a reader hears is the disclosure, word for word, and not an instruction addressed to the model |
 | `nothing_matched_carries_no_prose` | an empty answer hands over the facts and no sentence, so the persona says it in their own register |
+| `no_layer_emptied_by_selection` | no layer braintrust found candidates for was left empty by braintrust's own rules |
 | `revisions_have_not_swept` | no more than half the Positions were superseded on this rebuild |
 
 **The gate is a list, not a function with a clause per rule.** Every check is a named entry carrying the
@@ -721,6 +750,17 @@ the Corpus, full regeneration stops being cheap and the no-drift guarantee goes 
 **A gate rejection does not stop the schedule.** The daily job keeps trying, because a retry is cheap and new
 Items can genuinely fix a gate failure — a Position-count collapse caused by a thin day resolves itself the
 next day.
+
+**`no_layer_emptied_by_selection` separates two silences that look identical from the outside.** *There was
+nothing to say* is allowed, and a Persona says it in prose. *A rule of braintrust's ate it* is a defect, and it
+has shipped twice — the survives-two-readings bar left three of five Personas holding no through-lines (§3),
+and the three-item style floor halved the argument-habits block between rebuilds. Neither was visible to anyone
+who was not reading the compiler, and **braintrust runs unattended**. So a Compile that found candidates for a
+layer and published none of them is rejected, and one that found none publishes. The check knows nothing about
+readings, floors or menus — only what was found and what was kept — which is what makes it retrospective:
+whatever number was in force, and whatever rule somebody adds next, emptying a layer it had candidates for is
+the failure. Structural, no model call, and the only fact in the gate the rows cannot answer, because nothing
+is stored for what a Compile threw away.
 
 **`positions_are_graded_apart` enforces a general rule rather than an instance, and it is the only check here
 that exists because of what a *reader* could not catch.** `fit` has shipped wrong three times —
@@ -1001,7 +1041,9 @@ nothing else.
 | **You can sit on a stale Persona without knowing.** The gate records why it rejected; nothing in v1 reads it. | §5 |
 | **Passages read like unpunctuated speech**, because that is what they are. | §6 |
 | **A Through-line is uncitable.** No single Item asserts one, so it carries the Items it was traced to and nothing quotable. It is spoken flatly and unhedged, which is affordable only because it never arrives without cited Positions beside it. | §2 |
-| **No floor protects the Through-lines.** A collapse floor was recommended and declined: under *survives more than one separate reading* a great many people legitimately hold none, so a rule rejecting on emptiness would block good Personas from shipping. The cost is that a synthesiser having a bad afternoon quietly replaces a Persona that had Through-lines yesterday with one that has none, and nothing notices. | §5 |
+| **A Through-line one reading saw once is spoken as flatly as one seen everywhere.** Recurrence ranks it below what recurred and no longer deletes it, so the thinnest thing a reading found can reach a reader in someone's voice with nothing they can point at. #144 declined to pay this; #157 overturns that, because the alternative was three of five Personas holding nothing at all. | §3 |
+| **Every Persona pays one extra synthesis call for a ranking signal.** A Corpus that fits one budget-sized pass is still halved so recurrence can be counted, and the second call now buys an ordering rather than a rule that could refuse the layer everything. A Corpus too small to divide is read once and pays nothing extra. | §3 |
+| **No floor protects the Through-lines, and none is wanted.** A collapse floor was recommended and declined twice: a person may genuinely have nothing durable to say, and refusing to publish them would make convictions a condition of having a Persona. What is refused instead is the case that is a defect — a layer braintrust found candidates for and its own rules emptied. A synthesiser having a genuinely empty afternoon still replaces a Persona that had Through-lines yesterday, and nothing notices. | §5 |
 | **Voice can only find moves someone thought to look for.** A Corpus whose most distinctive habit is not in the pattern list is measured as ordinary, and nothing in the layer can notice the omission. | §2 |
 | **An inferred entry's item count is a floor, not a tally.** A folded Corpus attributes each entry to the pass that found it, so a move genuinely present throughout can be traced to a fraction of the Items. The prose says *traced to* rather than *measured in*; it cannot say how much it missed. | §3 |
 | **A Compile that fails the gate spends the synthesis anyway.** The model calls happen before the check, because most of what the gate checks does not exist until they have. A persistently rejected compiler pays full price every day for a Persona nobody receives. | §5 |

@@ -357,8 +357,10 @@ create index if not exists braintrust_position_embeddings_hnsw_idx
 -- are indistinguishable once printed. No embedding, because a through-line has
 -- no retrieval path of its own: it rides with an answer that already matched.
 --
--- `readings` is why it exists at all — an entry that surfaced in only one
--- separate reading of the corpus is not published.
+-- `readings` is the first ranking signal, not a bar: the four best-supported
+-- through-lines ship, ordered by how many separate readings surfaced each and
+-- then by how many items it was traced to. One is a legal value — an entry a
+-- single reading saw is outranked, never deleted.
 create table if not exists braintrust_through_lines (
   id          uuid primary key default gen_random_uuid(),
   compile_id  uuid not null references braintrust_compiles(id) on delete cascade,

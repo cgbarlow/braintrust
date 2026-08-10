@@ -36,8 +36,17 @@ import { isEventStream, joinStream } from '../net/stream.js';
  * `compiler_version` — which is on the Compile row and travels out through both read
  * tools. Unlike the extractor generation, bumping this is cheap: it re-synthesises from
  * Notes that already exist rather than re-reading the Corpus.
+ *
+ * **`core-4` is through-lines becoming a ranked list of four.** No prompt moved; what
+ * changed is the rule braintrust applies to the answers, and that is load-bearing rather
+ * than documentary. A Persona whose subject has not published has no `has_unseen`, so this
+ * version is the only thing that can rebuild it — and without the bump, the three of five
+ * Personas the survives-two-readings bar left holding nothing would keep holding nothing
+ * until their subject next published, which is the one condition that has nothing to do
+ * with the rule having changed. See ./throughlines.ts and
+ * [#197](https://github.com/cgbarlow/braintrust/issues/197).
  */
-export const SYNTHESIS_VERSION = 'core-3';
+export const SYNTHESIS_VERSION = 'core-4';
 
 /**
  * Versioned apart from the Core's prompts, because it answers a different question and

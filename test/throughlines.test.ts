@@ -1,11 +1,12 @@
 /**
- * Through-lines: what someone broadly holds, and the rule that decides whether it exists.
+ * Through-lines: what someone broadly holds, and the ranking that decides which four ship.
  *
- * The rule is *survives more than one separate reading*, chosen because it is structural and
- * needs no judgement from anything. What a reading is was the one hole the spec could not
- * close, and these tests pin the answer — because it decides who gets through-lines at all,
- * in both directions: too generous and the rule admits exactly the artefacts it exists to
- * exclude, too strict and nobody has one.
+ * **The bar is gone.** *Survives more than one separate reading* was structural and needed
+ * no judgement from anything, and it starved the layer: 11 candidates became 1, 10 became 1,
+ * 10 became 0 on the first fleet rebuild. Recurrence is the first ranking signal now, so the
+ * old rule's intent survives as a preference — and these tests pin both halves of that: that
+ * a single-reading claim is *ranked below* one that recurred, and that it is never dropped
+ * for it.
  */
 
 import assert from 'node:assert/strict';
@@ -15,9 +16,9 @@ import type { StoredNote } from '../src/notes/store.js';
 import {
   compileThroughLines,
   MIN_NOTES_PER_READING,
-  READINGS_REQUIRED,
   readingsOf,
   slugOf,
+  THROUGH_LINES_SHIPPED,
 } from '../src/compile/throughlines.js';
 import type { SynthesisedEntry, Synthesiser } from '../src/compile/synthesis.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
@@ -36,11 +37,19 @@ function notes(count: number): StoredNote[] {
 }
 
 describe('dividing a corpus into readings', () => {
-  it('gives nothing to a person whose work cannot be read twice', () => {
-    // #144 priced this: a person whose work fits in one reading gets no through-lines,
-    // Chris on five items included. The floor is the smallest one that keeps that true.
-    assert.deepEqual(readingsOf(notes(5)), []);
-    assert.equal(MIN_NOTES_PER_READING * READINGS_REQUIRED, 6);
+  it('reads a corpus too small to divide once, rather than refusing it', () => {
+    // #144 priced *a person whose work fits in one reading gets none*, Chris on five items
+    // included, and #197 overturns it: the division measures recurrence, and an instrument
+    // that cannot be applied is a missing signal rather than a verdict of nothing.
+    const readings = readingsOf(notes(5));
+
+    assert.equal(readings.length, 1);
+    assert.equal(readings[0]!.length, 5);
+    assert.ok(5 < MIN_NOTES_PER_READING * 2, 'too small to divide is the case under test');
+  });
+
+  it('has nothing to read for a corpus with no notes in it', () => {
+    assert.deepEqual(readingsOf(notes(0)), []);
   });
 
   it('splits a corpus that fits in one call rather than leaving it whole', () => {
@@ -123,15 +132,109 @@ describe('a through-line', () => {
     };
   }
 
-  it('does not ship when it surfaced in only one reading', async () => {
+  it('ships when it surfaced in only one reading, ranked rather than barred', async () => {
+    // The reversal. Under the old bar this was the commonest outcome in the fleet — one
+    // candidate, one reading, nothing published — and braintrust presented it as *this person
+    // holds no durable commitments*.
     const found = await compileThroughLines(
       notes(6),
       readingBy([[held('Judgement is the scarce thing', ['post-0'])], []]),
     );
 
-    assert.deepEqual(found.through_lines, []);
-    assert.equal(found.dropped_single_reading, 1);
+    assert.equal(found.through_lines.length, 1);
+    assert.equal(found.through_lines[0]!.readings, 1);
+    assert.equal(found.candidates, 1);
     assert.equal(found.readings, 2);
+  });
+
+  it('ranks recurrence first and breadth second, and drops neither', async () => {
+    const found = await compileThroughLines(
+      notes(6),
+      readingBy([
+        [
+          held('Seen twice', ['post-0']),
+          held('Seen once, and widely', ['post-0', 'post-1', 'post-2']),
+          held('Seen once, narrowly', ['post-1']),
+        ],
+        [held('Seen twice', ['post-4'])],
+      ]),
+    );
+
+    assert.deepEqual(
+      found.through_lines.map((one) => one.statement),
+      ['Seen twice', 'Seen once, and widely', 'Seen once, narrowly'],
+    );
+    // The claim one reading saw is *below* the one that recurred, and still on the list.
+    assert.equal(found.through_lines[0]!.readings, 2);
+    assert.equal(found.outranked, 0);
+  });
+
+  it('publishes four, and no more, when a corpus supports more than four', async () => {
+    const many = Array.from({ length: 7 }, (_, index) =>
+      held(`Candidate ${index}`, ['post-0', ...(index < 3 ? ['post-1'] : [])]),
+    );
+
+    const found = await compileThroughLines(notes(6), readingBy([many, []]));
+
+    assert.equal(found.through_lines.length, THROUGH_LINES_SHIPPED);
+    assert.equal(found.candidates, 7);
+    assert.equal(found.outranked, 3);
+    // Breadth decides which four, because nothing here recurred.
+    assert.deepEqual(
+      found.through_lines.map((one) => one.statement),
+      ['Candidate 0', 'Candidate 1', 'Candidate 2', 'Candidate 3'],
+    );
+  });
+
+  it('publishes all of them when a corpus supported fewer than four', async () => {
+    const found = await compileThroughLines(
+      notes(6),
+      readingBy([[held('The only one', ['post-0'])], []]),
+    );
+
+    assert.equal(found.through_lines.length, 1);
+    assert.equal(found.outranked, 0);
+  });
+
+  it('gives a person whose corpus fits in one reading four of them', async () => {
+    // Chris on five items: the case #144 priced as *gets none* and #197 reverses. One
+    // reading, ranked on breadth alone, and the list is the same length as anybody else's.
+    const found = await compileThroughLines(
+      notes(5),
+      readingBy([
+        [
+          held('Widest', ['post-0', 'post-1', 'post-2']),
+          held('Wide', ['post-0', 'post-1']),
+          held('Narrow', ['post-3']),
+          held('Also narrow', ['post-4']),
+          held('Narrower still', ['post-2']),
+        ],
+      ]),
+    );
+
+    assert.equal(found.readings, 1, 'too small to divide, so it is read once');
+    assert.equal(found.through_lines.length, THROUGH_LINES_SHIPPED);
+    assert.deepEqual(
+      found.through_lines.slice(0, 2).map((one) => one.statement),
+      ['Widest', 'Wide'],
+    );
+    // Every one of them was seen in the single reading there was. Recurrence is a missing
+    // signal here, not a verdict of one.
+    assert.ok(found.through_lines.every((one) => one.readings === 1));
+  });
+
+  it('orders the same corpus the same way on every rebuild', async () => {
+    // Two candidates alike in recurrence and breadth. A list that reordered between rebuilds
+    // would read as the person changing when nothing did.
+    const reading = [held('Beta', ['post-0']), held('Alpha', ['post-1'])];
+    const once = await compileThroughLines(notes(6), readingBy([reading, []]));
+    const again = await compileThroughLines(notes(6), readingBy([[...reading].reverse(), []]));
+
+    assert.deepEqual(
+      once.through_lines.map((one) => one.slug),
+      again.through_lines.map((one) => one.slug),
+    );
+    assert.deepEqual(once.through_lines.map((one) => one.slug), ['alpha', 'beta']);
   });
 
   it('ships when the same conviction surfaced in two', async () => {
@@ -182,13 +285,17 @@ describe('a through-line', () => {
     );
 
     assert.deepEqual(found.through_lines, []);
+    // Found and thrown away by a rule, which is the shape the gate rejects a compile for.
+    assert.equal(found.candidates, 1);
+    assert.equal(found.dropped_unattributable, 1);
   });
 
-  it('holds none at all for a person with too little to read twice', async () => {
-    const found = await compileThroughLines(notes(5), readingBy([[held('Never asked', ['post-0'])]]));
+  it('says it found nothing when the readings found nothing, which is a different fact', async () => {
+    const found = await compileThroughLines(notes(6), readingBy([[], []]));
 
     assert.deepEqual(found.through_lines, []);
-    assert.equal(found.readings, 0);
+    assert.equal(found.candidates, 0);
+    assert.equal(found.dropped_unattributable, 0);
   });
 });
 
@@ -196,9 +303,10 @@ describe('a through-line', () => {
  * The merge, which is now the only place it runs over entries — it came here with the
  * Beliefs layer it used to fold, and these two properties came with it.
  *
- * They are what makes the survives-two-readings rule mean convictions rather than wordings:
- * the threshold is applied *after* the merge, so the merge deciding that two differently
- * worded entries say the same thing is the whole of the judgement in this file.
+ * They are what makes the ranking mean convictions rather than wordings: it is applied
+ * *after* the merge, so the merge deciding that two differently worded entries say the same
+ * thing is the whole of the judgement in this file. Ranking first would count one conviction
+ * worded twice as two claims a single reading saw.
  */
 describe('the merge under it', () => {
   it('is never shown an item id, so it cannot return one braintrust does not hold', async () => {

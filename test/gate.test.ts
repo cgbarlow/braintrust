@@ -69,6 +69,12 @@ function facts(overrides: Partial<GateFacts> = {}): GateFacts {
     ],
     coverage_evidence: { ...ITEMS },
     items: { ...ITEMS },
+    // A compile whose selecting layers kept something of what they found. The interesting
+    // cases are candidates with nothing published, and nothing found at all.
+    selection: [
+      { layer: 'reasoning', candidates: 3, published: 2 },
+      { layer: 'through_lines', candidates: 6, published: 4 },
+    ],
     positions: [],
     previous_positions: 0,
     superseded_positions: 0,
@@ -612,6 +618,63 @@ describe('an empty answer', () => {
   });
 });
 
+/**
+ * **The two silences, told apart.**
+ *
+ * *There was nothing to say* is allowed and said in prose. *A rule of braintrust's ate it* is
+ * a defect, and it has shipped twice: the survives-two-readings bar left three of five
+ * Personas holding no through-lines on the first fleet rebuild, and the three-item style
+ * floor halved the habits block between rebuilds. From the outside the two look identical,
+ * which is why nobody caught either — so the difference is structural now.
+ */
+describe('a layer its own rules emptied', () => {
+  const emptied = (layer: string, candidates: number) =>
+    facts({ selection: [{ layer, candidates, published: 0 }] });
+
+  it('is rejected, and the reason names the layer and what it found', () => {
+    const verdict = checkCompile(emptied('through_lines', 11));
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /no_layer_emptied_by_selection: through_lines/);
+    assert.match(verdict.reason!, /11 candidate\(s\) and published none/);
+  });
+
+  it('publishes when the layer genuinely found nothing, which is a different fact', () => {
+    // The whole point. A person with nothing durable to say gets a persona that says so;
+    // only a persona *silenced by braintrust* is withheld.
+    const verdict = checkCompile(facts({ selection: [{ layer: 'through_lines', candidates: 0, published: 0 }] }));
+
+    assert.equal(verdict.passed, true);
+    assert.equal(check(verdict, 'no_layer_emptied_by_selection').passed, true);
+  });
+
+  it('catches the reading bar retrospectively, whatever number was in force', () => {
+    // Measured on the first fleet rebuild that compiled through-lines: 10 candidates, none
+    // published. No version of the rule is named here — found and kept is all it reads.
+    assert.equal(check(checkCompile(emptied('through_lines', 10)), 'no_layer_emptied_by_selection').passed, false);
+  });
+
+  it('catches a style floor emptying the habits block the same way', () => {
+    assert.equal(check(checkCompile(emptied('reasoning', 5)), 'no_layer_emptied_by_selection').passed, false);
+  });
+
+  it('passes a compile that declared no selections at all', () => {
+    // A caller checking only the stored half of a Compile declares nothing, and a check with
+    // nothing to compare may not invent a failure.
+    assert.equal(check(checkCompile(facts({ selection: [] })), 'no_layer_emptied_by_selection').passed, true);
+  });
+
+  it('needs no model, no audience and no previous compile to say so', () => {
+    // Three counts and a comparison. The check that catches a silent failure cannot itself
+    // depend on the thing that failed.
+    const verdict = checkCompile(
+      facts({ selection: [{ layer: 'through_lines', candidates: 4, published: 0 }], previous_positions: 0 }),
+    );
+
+    assert.equal(check(verdict, 'no_layer_emptied_by_selection').passed, false);
+  });
+});
+
 describe('the gate as an enumerable list of checks', () => {
   it('can list every check by name without running any of them', () => {
     assert.deepEqual(gateCheckIds(), [
@@ -626,6 +689,7 @@ describe('the gate as an enumerable list of checks', () => {
       'habits_rest_on_distinct_evidence',
       'speak_opens_with_disclosure',
       'nothing_matched_carries_no_prose',
+      'no_layer_emptied_by_selection',
       'revisions_have_not_swept',
     ]);
   });

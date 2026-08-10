@@ -141,8 +141,8 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
       if (options.entriesFor) return options.entriesFor(items);
 
       // The same two convictions from every reading, which is what a person who holds
-      // something consistently looks like — so the survives-two-readings rule has something
-      // to keep. A test that wants an entry seen once asks for one.
+      // something consistently looks like — so recurrence has something to rank. A test that
+      // wants an entry seen once asks for one.
       return [
         {
           label: 'The constraint is never speed',

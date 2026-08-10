@@ -120,11 +120,13 @@ How a Person gets to a conclusion, as distinct from what they conclude.
 _Avoid_: method, approach
 
 **Through-line**:
-What a Person broadly holds, inferred across their work rather than quoted from any one piece of it. It has to
-survive more than one separate reading of the Corpus to exist at all, and it is retrieved rather than carried:
-it rides with an answer that already matched, and may never be the whole of one. Carries no date and nothing
-to quote — the only date available would be a fact about braintrust's reading schedule, and an illustrative
-quote is indistinguishable from a supporting one once printed.
+What a Person broadly holds, inferred across their work rather than quoted from any one piece of it. Every
+Persona holds the four best-supported, ranked by how many separate readings of the Corpus surfaced each and
+then by how much of the Corpus it was traced to — ranked rather than barred, so a claim one reading saw is
+outranked and never deleted. Retrieved rather than carried: it rides with an answer that already matched, and
+may never be the whole of one. Carries no date and nothing to quote — the only date available would be a fact
+about braintrust's reading schedule, and an illustrative quote is indistinguishable from a supporting one once
+printed.
 
 **Replaces Beliefs**, which was a Core layer of durable commitments and shipped in every payload. That let a
 model answer what somebody thinks without looking anything up, which is the thing braintrust exists not to do.

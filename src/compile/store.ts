@@ -17,7 +17,7 @@ import { nothingMatched, RETRIEVAL_FLOOR } from '../find.js';
 import { renderScript, scriptInputFrom } from '../script.js';
 import type { CoverageEvidence, SourceCoverage } from './coverage.js';
 import { VOICE_MIN_WORDS } from './voice.js';
-import type { GateFacts, GateLayer, ItemCounts } from './gate.js';
+import type { GateFacts, GateLayer, ItemCounts, LayerSelection } from './gate.js';
 import type { BuiltPosition } from './positions.js';
 import type { ThroughLine } from './throughlines.js';
 import type { MeasuredItem } from './voice.js';
@@ -391,7 +391,15 @@ export async function rejectCompile(db: Db, compileId: string, reason: string): 
  * whether the rows a client is about to be served agree with the rows they claim to
  * describe.
  */
-export async function gateFacts(db: Db, personId: string, compileId: string): Promise<GateFacts> {
+export async function gateFacts(
+  db: Db,
+  personId: string,
+  compileId: string,
+  // What each selecting layer found and kept — the one fact here the rows cannot answer,
+  // because nothing is stored for what a Compile did not keep. Defaulted to nothing declared
+  // so a caller checking the stored half of a Compile does not have to invent counts.
+  selection: LayerSelection[] = [],
+): Promise<GateFacts> {
   const layers = await db.query<GateLayer & { evidence: unknown }>(
     `select layer, basis, descriptive_md, generative_md, evidence
        from braintrust_persona_layers where compile_id = $1 order by layer`,
@@ -479,6 +487,7 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
       citations: Number(row.citations),
       graded_on: row.graded_on,
     })),
+    selection,
     previous_positions: Number(previous.rows[0]!.count),
     superseded_positions: Number(superseded.rows[0]!.count),
     // Built by the function the read path calls, for the same reason `speak` is rendered

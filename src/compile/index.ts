@@ -294,10 +294,10 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       );
     }
 
-    // What this person broadly holds, read twice. Beside the quoted claims rather than
-    // above them: a through-line rides with an answer that already matched, so it needs no
-    // embedding, no citations and no place in the gate — and it may never be the whole of
-    // an answer, which is the only reason it is allowed to be spoken flatly.
+    // What this person broadly holds: the four best-supported, ranked recurrence first and
+    // breadth second. Beside the quoted claims rather than above them — a through-line rides
+    // with an answer that already matched, so it needs no embedding and no citations — and it
+    // may never be the whole of an answer, which is the only reason it is spoken flatly.
     const inferred = await compileThroughLines(notes, deps.synthesiser);
     const throughLines = await writeThroughLines(
       deps.db,
@@ -307,10 +307,13 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     );
 
     log(
-      inferred.readings === 0
-        ? `braintrust: ${person.slug} has too little to read twice, so it holds no through-lines.`
-        : `braintrust: ${throughLines} through-line(s) of ${person.slug} survived more than one ` +
-          `of ${inferred.readings} readings; ${inferred.dropped_single_reading} appeared in only one.`,
+      inferred.candidates === 0
+        ? `braintrust: braintrust found nothing ${person.slug} durably holds across ` +
+          `${inferred.readings} reading(s), so the persona holds no through-lines.`
+        : `braintrust: ${throughLines} through-line(s) of ${person.slug} ship from ` +
+          `${inferred.candidates} candidate(s) across ${inferred.readings} reading(s); ` +
+          `${inferred.outranked} were outranked and ${inferred.dropped_unattributable} named no ` +
+          'item braintrust holds.',
     );
 
     // The growth of a Corpus, visible before it becomes a failure. Positions are rows
@@ -381,7 +384,18 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
 
     // The gate, on the rows as a client would be served them rather than on the
     // compiler's own view of what it just built.
-    const verdict = checkCompile(await gateFacts(deps.db, person.id, compileId));
+    //
+    // The one exception is what each selecting layer *found* — the rows hold what shipped,
+    // and no row exists for a candidate a rule threw away, so the counts are carried here
+    // from where the selection happened. That difference is the whole of
+    // `no_layer_emptied_by_selection`: a layer emptied by braintrust's own rules is a defect,
+    // where a layer that found nothing is a person with nothing durable to say.
+    const verdict = checkCompile(
+      await gateFacts(deps.db, person.id, compileId, [
+        { layer: 'reasoning', candidates: habits.candidates, published: habits.evidence.entries.length },
+        { layer: 'through_lines', candidates: inferred.candidates, published: throughLines },
+      ]),
+    );
     if (!verdict.passed) {
       await rejectCompile(deps.db, compileId, verdict.reason!);
       return { kind: 'rejected', reason: verdict.reason! };

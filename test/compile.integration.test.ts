@@ -212,17 +212,20 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     await compile({ synthesiser });
 
     // **Not one call writes a layer of conclusions.** The habits are a selection off an
-    // authored menu and the positions carry their own citations — and the third question,
-    // through-lines, is not asked at all here: four items cannot be read twice, so this
-    // persona holds none and publishes anyway. A rebuild still costs a handful of calls
-    // over notes rather than a re-read of the corpus.
+    // authored menu, the positions carry their own citations, and the third question —
+    // through-lines — is asked of everyone now: four items are too few to divide, so they
+    // are read once and the candidates are ranked on breadth alone. A rebuild still costs a
+    // handful of calls over notes rather than a re-read of the corpus.
     assert.deepEqual(
       synthesiser.calls.map((call) => `${call.kind}:${call.mode}`),
-      ['habits:pass', 'positions:pass'],
+      ['habits:pass', 'positions:pass', 'through_lines:pass', 'through_lines:merge'],
     );
 
-    // Every item's note is in the core digests, and none of the item bodies are.
-    for (const call of synthesiser.calls.filter((one) => one.kind !== 'positions')) {
+    // Every item's note is in the core digests, and none of the item bodies are. The merge
+    // is exempt: it is handed wordings and indices, which is why it cannot name an item.
+    for (const call of synthesiser.calls.filter(
+      (one) => one.kind !== 'positions' && one.mode !== 'merge',
+    )) {
       assert.equal(idsFromDigest(call.digest).length, ITEMS);
       assert.doesNotMatch(call.digest, /speed is the constraint/);
     }
@@ -660,10 +663,11 @@ describe('compiling the core, against real Postgres', { skip }, () => {
    * **The compiler seam this ticket has to be provable at.**
    *
    * The gate used to reject a compile whose beliefs layer carried nothing, and that rule
-   * dies with the layer: under *survives more than one separate reading* a great many
-   * people legitimately hold no through-lines, so a rule rejecting on emptiness would
-   * block good personas from ever shipping. Six items — enough to be read twice — and a
-   * synthesiser that finds nothing in either reading.
+   * dies with the layer: a person may genuinely have nothing durable to say, and refusing to
+   * publish them would make having convictions a condition of having a persona. What is
+   * refused instead is a layer braintrust's own rules emptied — see the through-lines suite
+   * below. Six items, enough to be read twice, and a synthesiser that finds nothing in either
+   * reading: nothing found, so nothing was eaten.
    */
   it('publishes a compile that holds no through-lines at all', async () => {
     for (let index = ITEMS; index < 6; index += 1) {
@@ -816,25 +820,87 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       assert.equal(rows[0]!.readings, 2);
     });
 
-    it('does not publish one that surfaced in a single reading', async () => {
+    it('publishes one that surfaced in a single reading, below what recurred', async () => {
+      // The reversal #197 makes. Under the old bar both of these were deleted and the
+      // persona said it held nothing durable; they are ranked now, and the one the readings
+      // agreed on is first.
       await enoughToReadTwice();
+
+      // Three entries over two readings, of which the merge says the first and the third are
+      // one conviction worded twice. The second is left standing alone, which is exactly the
+      // shape the old bar deleted.
+      let call = 0;
       await compile({
+        synthesiser: fakeSynthesiser({
+          entriesFor: (items) =>
+            (call++ === 0
+              ? ['Judgement is scarce', 'Only the first reading saw this']
+              : ['Judgement is scarce']
+            ).map((label) => ({ label, body: `About ${label}.`, items })),
+          groupsFor: (indices) =>
+            indices.length === 3 ? [{ members: [1, 3], clearest: 1 }] : [],
+        }),
+      });
+
+      const { rows } = await db.query<{ statement: string; readings: number }>(
+        `select t.statement, t.readings from braintrust_through_lines t
+           join braintrust_compiles c on c.id = t.compile_id
+          where c.status = 'current'
+          order by t.readings desc, t.slug`,
+      );
+
+      assert.deepEqual(
+        rows.map((row) => `${row.statement} (${row.readings})`),
+        ['Judgement is scarce (2)', 'Only the first reading saw this (1)'],
+      );
+    });
+
+    it('gives a person too small to divide the same four as anybody else', async () => {
+      // Four items cannot be read twice. They are read once and ranked on breadth alone,
+      // which is what makes *everyone* true rather than *everyone above six notes*.
+      const report = await compile({
         synthesiser: readings(
-          [['Only the first reading saw this'], ['Something else entirely']],
+          [['Quests beat goals', 'The eval is the unit', 'Taste is the moat']],
           false,
         ),
       });
 
-      assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
+      assert.deepEqual(report.compiled, ['nate']);
+      assert.equal(await count('select count(*) from braintrust_through_lines'), 3);
     });
 
-    it('publishes a compile that found none, because an empty answer is a real one', async () => {
-      // Four items is under the floor: this person cannot be read twice, so they hold no
-      // through-lines and the persona ships anyway.
-      const report = await compile();
+    it('publishes a compile whose readings found none, because an empty answer is a real one', async () => {
+      const report = await compile({ synthesiser: fakeSynthesiser({ entriesFor: () => [] }) });
 
       assert.deepEqual(report.compiled, ['nate']);
       assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
+    });
+
+    /**
+     * **The two silences, told apart at the seam.**
+     *
+     * A layer braintrust found candidates for and its own rules emptied is a defect, and
+     * `no_layer_emptied_by_selection` is what refuses to publish it. Here the rule doing the
+     * emptying is attribution — every entry names an item braintrust does not hold — and the
+     * check does not need to know that: it compares what was found with what shipped.
+     */
+    it('is rejected when a rule of braintrust\'s emptied the layer it found candidates for', async () => {
+      const before = await currentCompileId();
+
+      const report = await compile({
+        synthesiser: fakeSynthesiser({
+          entriesFor: () => [
+            { label: 'Invented from nowhere', body: 'About it.', items: ['post-999'] },
+          ],
+        }),
+      });
+
+      assert.deepEqual(report.compiled, []);
+      assert.match(report.rejected[0]!.reason, /no_layer_emptied_by_selection: through_lines/);
+      assert.match(report.rejected[0]!.reason, /candidate\(s\) and published none/);
+
+      // The previous persona is untouched and still the one a client is served.
+      assert.equal(await currentCompileId(), before);
     });
 
     it('is dropped with the compile it belongs to, like every other tier 3 row', async () => {

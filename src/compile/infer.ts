@@ -96,6 +96,19 @@ export type InferredLayer = {
 };
 
 /**
+ * The Reasoning layer, plus what it found before its own rules ran.
+ *
+ * **Counted here because nowhere else can count it.** A layer's rows say what shipped; the
+ * difference between that and what the synthesiser chose exists only inside this function,
+ * and it is the difference the gate needs to tell *nothing was found* from *a rule ate it*.
+ * See `no_layer_emptied_by_selection` in ./gate.ts.
+ */
+export type CompiledHabits = InferredLayer & {
+  /** Distinct habits the synthesiser chose, before the menu and the evidence rules ran. */
+  candidates: number;
+};
+
+/**
  * Reasoning, chosen rather than written.
  *
  * **Same evidence rule, different half of the compiler.** The Notes are folded and read
@@ -116,7 +129,7 @@ export type InferredLayer = {
 export async function compileHabits(
   notes: StoredNote[],
   synthesiser: Synthesiser,
-): Promise<InferredLayer> {
+): Promise<CompiledHabits> {
   const passes = digestPasses(notes);
   const known = new Set(notes.map((note) => note.external_id));
 
@@ -137,14 +150,19 @@ export async function compileHabits(
     known,
   );
 
-  return habitsLayer(shipped, {
-    items_synthesised: notes.length,
-    synthesiser: synthesiser.habits,
-    passes: passes.length,
-    // Off the menu, or naming no item braintrust holds. Counted for an operator the same
-    // way an unattributable entry always was.
-    dropped: chosen.length - shipped.length,
-  });
+  return {
+    ...habitsLayer(shipped, {
+      items_synthesised: notes.length,
+      synthesiser: synthesiser.habits,
+      passes: passes.length,
+      // Off the menu, or naming no item braintrust holds. Counted for an operator the same
+      // way an unattributable entry always was.
+      dropped: chosen.length - shipped.length,
+    }),
+    // Distinct habits, because two passes choosing the same one found one thing. Counting
+    // the replies would let a repeated choice look like candidates that were thrown away.
+    candidates: unioned.size,
+  };
 }
 
 /**
