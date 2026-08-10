@@ -27,6 +27,14 @@
  * flatly, with no hedge and no attribution, is affordable only because something checkable is
  * always beside it. The two stand or fall together. See ../find.ts.
  *
+ * **That flatness is now every sentence's, not this layer's alone.**
+ * [#202](https://github.com/cgbarlow/braintrust/issues/202) took verbatim, item title and date
+ * out of the unasked answer, so a through-line no longer sounds different from a quoted claim
+ * — it sounds the same because everything is now spoken the way this layer already was. What
+ * stays true here is the *pairing*: a through-line still rides only with positions the record
+ * stands behind, because what makes flat speech affordable is that braintrust can produce the
+ * record when asked, and for a through-line alone it cannot.
+ *
  * **Accepted costs, all named and all chosen.** A through-line that is not really there gets
  * spoken confidently in someone's voice, and nothing a listener hears gives them anywhere to
  * go. Losing *they have held this a long time* is a real loss — duration is the most

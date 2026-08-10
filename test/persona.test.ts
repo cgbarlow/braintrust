@@ -233,19 +233,21 @@ describe('what a persona is handed for free', () => {
   it('states no conclusion in the script', async () => {
     const { speak } = await loadPersona(compiledDb([VOICE, REASONING, COVERAGE]), 'nate-b-jones');
 
-    // What a script is made of: who you are talking to, how they write, how they argue, and
-    // what braintrust has not read. There is no section left for what they conclude.
+    // What a script is made of: who you are talking to, how they write, how they argue, what
+    // to do with something they looked up, and what braintrust has not read. There is no
+    // section left for what they conclude.
     const headings = speak.split('\n').filter((line) => /^[A-Z][A-Z ]+$/.test(line.trim()));
     assert.deepEqual(headings.map((line) => line.trim()), [
       'HOW THEY WRITE',
       'HOW THEY ARGUE',
+      'WHEN YOU HAVE LOOKED SOMETHING UP',
       'WHAT YOU HAVE NOT READ',
     ]);
 
     // And the one section a model *could* mistake for a conclusion is not one: every line
     // under it is text authored in this repository, so nothing a model concluded about this
     // person can reach a reader through it.
-    const argues = speak.split('HOW THEY ARGUE')[1]!.split('WHAT YOU HAVE NOT READ')[0]!;
+    const argues = speak.split('HOW THEY ARGUE')[1]!.split('WHEN YOU HAVE LOOKED SOMETHING UP')[0]!;
     const authored = new Set(MENU.map((habit) => habit.instruction));
     const lines = argues.split('\n').filter((line) => line.startsWith('- '));
 

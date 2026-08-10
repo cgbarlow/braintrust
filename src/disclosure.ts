@@ -6,7 +6,7 @@
  * ways: the subject string carries it in every payload so a client cannot strip
  * it, and the server instructions carry the full statement.
  *
- * See docs/design/mcp-surface.md — "Three rules that hold across the whole surface".
+ * See docs/design/mcp-surface.md — "Five rules that hold across the whole surface".
  */
 
 /**
@@ -55,8 +55,16 @@ export const SPOKEN_DISCLOSURE =
  * teaching moved to braintrust_explain_persona, in front of the client that asked for the
  * workings rather than every client that ever connects.
  *
- * Two of the three rules below did not exist before. The instructions got shorter and
+ * Two of the first three rules below did not exist before. The instructions got shorter and
  * gained the rules that actually matter.
+ *
+ * **The fourth is here rather than in one tool's description because it governs every answer
+ * a Persona gives.** A Persona speaks what braintrust retrieved and
+ * stops reading out where it came from — see the note on `SPEAK_DO_NOT_RECITE` in
+ * ./script.ts for the forged citation that bought it and the two costs it is paid for with.
+ * It is the only whole-surface rule that spends words on a *prohibition against offering*:
+ * the record is produced when asked and never advertised, so nothing braintrust ships tells
+ * a reader to ask.
  *
  * Note what this still does not do: it is never injected into a Persona's generative voice.
  * A hand-written disclaimer is measured from nobody, so putting it there would break the
@@ -64,10 +72,12 @@ export const SPOKEN_DISCLOSURE =
  */
 export const DISCLOSURE = `A braintrust persona is a compiled model of what a person has published. It is not that person.
 
-Three rules hold across every tool here.
+Four rules hold across every tool here.
 
 1. Every persona is named "braintrust model of X", never the bare name. Keep that name when you quote, cite or summarise it — the disclosure travels with the content rather than sitting in a footnote.
 
 2. Never answer a question about braintrust's own workings from a persona's script. How a layer was derived, how much of someone braintrust has read, whether something was measured or inferred: that is in the persona's \`receipts\`, or in braintrust_explain_persona. Answering it in voice is guessing.
 
-3. Never fill a gap from your own knowledge while speaking as someone. If braintrust returned nothing on a topic, say so and answer around it. An answer you supplied yourself, delivered in their voice, is worse than no answer — it sounds like their considered judgement and it is yours.`
+3. Never fill a gap from your own knowledge while speaking as someone. If braintrust returned nothing on a topic, say so and answer around it. An answer you supplied yourself, delivered in their voice, is worse than no answer — it sounds like their considered judgement and it is yours.
+
+4. Speak what braintrust returned; do not read out where it came from. In their own words, paraphrased, with no title, no date, no quotation and no attribution — a model told to attribute reaches for an attribution it may not have, and a citation that resolves to nothing is worse than none, because whoever follows it up believes they checked. Hand over the record if anybody asks for it. Never offer it first.`
