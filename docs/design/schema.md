@@ -576,7 +576,7 @@ claim a complete corpus.
 through a ~395-item re-read would be a persona built from a quarter of the corpus. Waiting keeps the
 previous persona live for the duration.
 
-## Two tables that are about braintrust, not about a person
+## Three tables that are about braintrust, not about a person
 
 ```sql
 create table braintrust_interrogations (
@@ -603,6 +603,18 @@ create table braintrust_faults (
   escalated_at     timestamptz,
   escalated_issue  text
 );
+
+create table braintrust_silences (
+  silence_key      text primary key, -- assertion plus subject
+  assertion        text not null,
+  person_slug      text,
+  detail           text not null,
+  attempts         int not null default 1,
+  first_failed_at  timestamptz not null default now(),
+  last_failed_at   timestamptz not null default now(),
+  reported_at      timestamptz,
+  reported_issue   text
+);
 ```
 
 **Their separation from everything above is the guarantee, not an accident of layout.** A failing
@@ -614,10 +626,19 @@ it, without searching an issue tracker to find out. `first_failed_at` is never m
 the one-day limit runs on, and a fault that reset it every run would never escalate. A row is **deleted** when
 its assertion passes — cleared by a pass, never by an issue being closed.
 
-**Neither table has a foreign key to `braintrust_people`.** A compiler fault is about braintrust and outlives
+**No table here has a foreign key to `braintrust_people`.** A compiler fault is about braintrust and outlives
 any particular person, and a fault about somebody since unfollowed is still a fault worth reading. `person_slug`
 being null is a fact rather than a gap: it means the assertion is a property of the compiler, so it runs once
 per compiler version rather than once per persona.
+
+**`braintrust_silences` is a separate table from `braintrust_faults` and the two are joined nowhere.** An
+assertion that could not be **asked** is a third status (compiler.md §8) and it is never a persona's fault —
+it is somebody else's outage, it is evidence against nobody, and it must not be able to withdraw a layer or
+put a person's name in front of a maintainer. Two tables that nothing joins is what makes that checkable
+rather than promised. `attempts` counts consecutive failures to ask rather than elapsed staleness, because an
+assertion that could not be asked stays due and is retried every run; a row is **deleted** the moment its
+assertion gets an answer, pass or fail, so a single bad night leaves no trace. `reported_at` is set on every
+row of one outage at once — one outage, one issue, filed once and never re-filed while the ledger stays open.
 
 ## House-style requirements
 

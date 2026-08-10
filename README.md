@@ -145,6 +145,7 @@ Some things braintrust does to keep that honest rather than just say it:
 - **Where someone changed their mind, both states survive.** The older position is kept and served flagged, never quietly dropped.
 - **Quotes are verbatim.** Much of what braintrust reads is auto-generated captions — a machine's transcript, not something the person wrote or approved. It hands you what was said rather than tidying it into prose nobody spoke.
 - **braintrust checks the above on itself, weekly, and files the bug when it fails.** The one that matters most cannot be proved by reading code: that a persona with nothing looked up cannot produce that person's distinctive claims. So braintrust asks a model holding a persona and no way to search, and when it catches itself failing it opens an issue on this repo — because nobody is watching, and a fault only a code change can fix has a maintainer as its audience rather than you.
+- **And when it cannot run the check at all, it says that too.** A judge that is down is nobody's fault and concludes nothing — so no persona is withdrawn and nothing you are served changes — but braintrust counts every attempt, and after a day of not being able to ask it files one issue saying what has gone unverified. *Zero failures* and *never checked* are different things, and only one of them used to be visible.
 
 ## What braintrust refuses to do
 

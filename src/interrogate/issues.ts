@@ -175,6 +175,73 @@ export function escalationIssue(input: FaultIssueInput): Issue {
   };
 }
 
+export type SilenceIssueInput = {
+  /** Every assertion currently going unasked, with how many subjects and how many tries. */
+  silences: { assertion: string; attempts: number; subjects: number; detail: string }[];
+  /** The oldest silence's clock — when braintrust last got an answer out of the judge. */
+  since: string;
+  compilerVersion: string;
+  interrogator: string;
+};
+
+/**
+ * The issue a day of not being able to ask opens.
+ *
+ * **It names no Person, anywhere.** Six assertions lost to one endpoint returning HTTP 500 is
+ * one outage in braintrust's own plumbing; putting five slugs in a title would file somebody
+ * else's downtime against people who did nothing. So a persona-scoped assertion appears as a
+ * count of personas and never as a list of them.
+ *
+ * **The reason text is doing real work.** A dead endpoint and a judge that answers without a
+ * usable verdict land in the same bucket on the same clock — that is decided, not accidental —
+ * and the only place they are told apart is the `detail` carried here.
+ */
+export function silenceIssue(input: SilenceIssueInput): Issue {
+  const total = input.silences.reduce((sum, one) => sum + one.subjects, 0);
+
+  return {
+    title: `Interrogation could not be asked: ${total} assertion(s) unchecked since ${input.since.slice(0, 10)}`,
+    body: [
+      'braintrust has been unable to interrogate itself for over a day. Nothing failed — nothing ' +
+        'could be *asked*, which is a third status and is not any persona\'s fault.',
+      '',
+      `**What has gone unchecked since ${input.since}.**`,
+      ...input.silences.map(
+        (one) =>
+          `- \`${one.assertion}\` — ${one.subjects} subject(s), ${one.attempts} attempt(s), last reason: ${one.detail}`,
+      ),
+      '',
+      `- compiler version: \`${input.compilerVersion}\``,
+      `- interrogator: \`${input.interrogator}\``,
+      '',
+      '**This is braintrust\'s own plumbing, and it names nobody.** These assertions are almost ' +
+        'certainly all lost to the same thing — one endpoint, one reason — so this is one issue ' +
+        'rather than one per check. An assertion that could not be asked concludes nothing, so no ' +
+        'fault was opened against any persona and none is named here.',
+      '',
+      '**Nothing changed for readers, and nothing will.** No persona was withdrawn, no layer went ' +
+        'absent, nothing was hedged and no warning entered any payload. The cost of a third ' +
+        "party's outage does not land on a reader who did nothing wrong — and *never verified* is " +
+        'not a quantity with a safe direction, so there is no conservative value to take.',
+      '',
+      '**A judge that answers but will not judge counts as silence**, on this clock and in this ' +
+        'issue: a transport error, an HTTP 500, a non-JSON body, an empty reply and a verdict with ' +
+        'no boolean in it are one bucket. The reasons above are the only place they differ.',
+      '',
+      '**This is filed once and never again.** braintrust does not close this issue and does not ' +
+        're-file it — a monthly reminder was declined as nagging rather than news. The ledger ' +
+        'clears when an assertion gets an answer, pass or fail, and only then can a later outage ' +
+        'file. **Accepted cost:** closing this without shipping a fix means nobody is told again, ' +
+        'and a single check stuck for its own reason is reported inside this general outage ' +
+        'rather than on its own.',
+      '',
+      '**What is true while this is open.** The guarantee that a persona with no way to look ' +
+        'anything up cannot produce that person\'s distinctive claims is *unverified*, not ' +
+        'broken. braintrust cannot fix the endpoint; what it can do is stop nobody knowing.',
+    ].join('\n'),
+  };
+}
+
 function details(input: FaultIssueInput): string {
   return [
     `- assertion: \`${input.assertion}\``,

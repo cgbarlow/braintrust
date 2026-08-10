@@ -1,5 +1,5 @@
 /**
- * The interrogation's two tables, and the read the serving path makes against one of them.
+ * The interrogation's three tables, and the read the serving path makes against one of them.
  *
  * **Nothing here touches a Compile.** That is the guarantee this ticket is mostly made of:
  * a Persona that fails its interrogation keeps serving unchanged, so the interrogation
@@ -9,10 +9,16 @@
  * Faults key on the Person's **slug** rather than their id, and carry no foreign key. A
  * compiler fault is about braintrust and outlives any particular Person, and a fault about
  * somebody who has since been unfollowed is still a fault a maintainer wants to read.
+ *
+ * The third table is the silence ledger, and it is a separate table rather than a nullable
+ * column on the second because a Silence is **never a Fault**: an assertion that could not be
+ * asked is somebody else's outage, it is evidence against nobody, and it must not be capable
+ * of withdrawing a layer or naming a Person. Two tables that nothing joins is what makes that
+ * checkable rather than promised.
  */
 
 import type { Db } from '../db.js';
-import { faultKey, type Fault, type LastRun } from './schedule.js';
+import { faultKey, silenceKey, type Fault, type LastRun, type Silence } from './schedule.js';
 
 export type InterrogationRun = {
   assertion: string;
@@ -223,6 +229,128 @@ export async function escalatedFaults(db: Db, log = console.error): Promise<Faul
   }
 }
 
+// ---------------------------------------------------------------------------
+// The silence ledger
+// ---------------------------------------------------------------------------
+
+/**
+ * Every read and write of the silence ledger, wrapped so a missing table cannot take the
+ * interrogation down with it.
+ *
+ * **This is #187's lesson applied before it costs anything.** `schema.sql` is pasted by hand
+ * and the code deploys on merge, so between those two steps this table does not exist — and
+ * the run that would have counted a silence would instead throw, taking the fault filing that
+ * already worked with it. An un-migrated deployment degrades to exactly the behaviour this
+ * ticket replaces (a log line) rather than to a broken job.
+ *
+ * Logged rather than swallowed, for the same reason: failing open is the right answer to a
+ * missing ledger and the wrong answer to nobody noticing it is missing.
+ */
+async function silenceLedger<T>(what: string, fallback: T, run: () => Promise<T>, log: (line: string) => void): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    log(
+      `braintrust: could not ${what} in the silence ledger — ` +
+        `${error instanceof Error ? error.message : String(error)}. The interrogation carries on ` +
+        'and nothing a persona serves is affected, but an assertion that cannot be asked is ' +
+        'going uncounted. If this is "relation does not exist", schema.sql has not been run.',
+    );
+    return fallback;
+  }
+}
+
+/**
+ * Counts one attempt that could not be made, and starts the clock if it is the first.
+ *
+ * **`first_failed_at` is never moved and `attempts` only goes up.** The clock measures a run
+ * of consecutive failures to ask, so a silence re-observed every morning must not keep
+ * resetting the day it is being measured against — the same rule `braintrust_faults` learned,
+ * for the same reason.
+ *
+ * **This writes nowhere else.** No interrogation row (which would make the assertion look
+ * asked and stop it being due), no fault row, no Compile. An assertion that could not be asked
+ * stays due and is retried on the next run, which is what makes attempts a daily count.
+ */
+export async function recordSilence(
+  db: Db,
+  silence: { assertion: string; person: string | null; detail: string },
+  log = console.error,
+): Promise<void> {
+  await silenceLedger('count an assertion that could not be asked', undefined, async () => {
+    await db.query(
+      `insert into braintrust_silences (silence_key, assertion, person_slug, detail)
+            values ($1, $2, $3, $4)
+       on conflict (silence_key) do update
+              set last_failed_at = now(),
+                  attempts = braintrust_silences.attempts + 1,
+                  detail = excluded.detail`,
+      [
+        silenceKey(silence.assertion, silence.person),
+        silence.assertion,
+        silence.person,
+        silence.detail,
+      ],
+    );
+  }, log);
+}
+
+/**
+ * The assertion was asked and answered, so it is not going unchecked.
+ *
+ * **Any answer clears it, not only a passing one.** A failed verdict means the question was
+ * put and something came back — that is a Fault, it has its own ledger and its own issue, and
+ * leaving a silence row open beside it would eventually file *this went unchecked* about the
+ * one thing braintrust checked hardest.
+ *
+ * Deleted rather than marked over, so a single bad night leaves no trace after the next
+ * answer — including the record that it was reported, which is what lets the next outage file.
+ */
+export async function clearSilence(
+  db: Db,
+  assertion: string,
+  person: string | null,
+  log = console.error,
+): Promise<void> {
+  await silenceLedger('clear an assertion that has been answered', undefined, async () => {
+    await db.query(`delete from braintrust_silences where silence_key = $1`, [
+      silenceKey(assertion, person),
+    ]);
+  }, log);
+}
+
+export async function openSilences(db: Db, log = console.error): Promise<Silence[]> {
+  return silenceLedger<Silence[]>('read what is going unasked', [], async () => {
+    const { rows } = await db.query<SilenceRow>(
+      `select * from braintrust_silences order by first_failed_at asc, silence_key asc`,
+    );
+    return rows.map(asSilence);
+  }, log);
+}
+
+/**
+ * Marks the whole outage told, in one statement, because it was told in one issue.
+ *
+ * Every key at once rather than one per row: a partial mark would leave an unreported silence
+ * behind that files a second issue for the same outage tomorrow.
+ */
+export async function markSilencesReported(
+  db: Db,
+  keys: string[],
+  issue: string,
+  log = console.error,
+): Promise<void> {
+  if (keys.length === 0) return;
+  await silenceLedger('mark an outage reported', undefined, async () => {
+    await db.query(
+      `update braintrust_silences
+          set reported_at = now(), reported_issue = $2
+        where silence_key = any($1::text[])`,
+      [keys, issue],
+    );
+  }, log);
+}
+
 type FaultRow = {
   fault_key: string;
   assertion: string;
@@ -233,6 +361,32 @@ type FaultRow = {
   reported_at: Date | null;
   escalated_at: Date | null;
 };
+
+type SilenceRow = {
+  silence_key: string;
+  assertion: string;
+  person_slug: string | null;
+  detail: string;
+  attempts: string | number;
+  first_failed_at: Date;
+  last_failed_at: Date;
+  reported_at: Date | null;
+  reported_issue: string | null;
+};
+
+function asSilence(row: SilenceRow): Silence {
+  return {
+    key: row.silence_key,
+    assertion: row.assertion,
+    person: row.person_slug,
+    detail: row.detail,
+    attempts: Number(row.attempts),
+    first_failed_at: iso(row.first_failed_at),
+    last_failed_at: iso(row.last_failed_at),
+    reported_at: row.reported_at === null ? null : iso(row.reported_at),
+    reported_issue: row.reported_issue,
+  };
+}
 
 function asFault(row: FaultRow): Fault {
   return {
