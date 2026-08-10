@@ -199,9 +199,12 @@ describe('the MCP surface', () => {
     // would empty the recency tool: "I've published a few things lately" is not an answer to
     // what have you published lately. The boundary is stated where a client reads it.
     const recent = byName.get('braintrust_recent_items')!;
-    assert.match(recent, /Naming an item here is not the attribution rule 4 forbids/);
-    assert.match(recent, /what they\s*\n?\s*are called and when they landed \*is\* the answer/);
+    assert.match(recent, /\*\*Naming an item here is not an attribution\.\*\*/);
+    assert.match(recent, /what they are called and\s*\n?\s*when they landed \*is\* the answer/);
     assert.doesNotMatch(recent, /you can cite it/);
+    // Stated, never cross-referenced by ordinal: the rules in the server instructions are a
+    // numbered list, and a number here breaks silently the day one is inserted.
+    assert.doesNotMatch(recent, /rule \d/i);
 
     // …and the essay lands where the client that wants it will be.
     const explain = byName.get('braintrust_explain_persona')!;

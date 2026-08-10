@@ -13,7 +13,7 @@ It is a personal tool: one person, their own council, not a service.
 1. **Follow.** Paste the links you already have for someone. braintrust resolves them, prices the work, and shows you the plan before it fetches anything.
 2. **Ingest.** It reads their archive back twelve months, then checks daily. Raw text and embeddings stay separate, so a better model means re-indexing rather than re-fetching.
 3. **Distill.** Each item is read exactly once and what was read is kept. A persona is rebuilt whenever something new arrives — never on a timer — and each rebuild replaces the last one whole, so a persona cannot drift from its evidence.
-4. **Consult.** Any MCP client — Claude, ChatGPT, Cursor — loads a persona's voice and reasoning, asks what they've said about something and gets it back with quotes and dates, or asks what they've published lately and gets it in date order with what braintrust made of each piece. Or give each Person [their own Hermes agent](#talking-to-one-persona-a-hermes-agent-per-person) and talk to them one at a time.
+4. **Consult.** Any MCP client — Claude, ChatGPT, Cursor — loads a persona's voice and reasoning, asks what they've said about something and gets it answered in their voice, or asks what they've published lately and gets it in date order with what braintrust made of each piece. The quotes, dates and links travel in the payload rather than being read out at you — the record is in the persona's hands rather than in its sentences, and it hands it over if you ask. Or give each Person [their own Hermes agent](#talking-to-one-persona-a-hermes-agent-per-person) and talk to them one at a time.
 
 ## What it reads
 
@@ -73,7 +73,7 @@ Add your first council member through your AI client, not the command line — `
 
 `npm test` runs the suite; the database tests skip without a Postgres.
 
-**There is nothing to calibrate.** braintrust has to know when a question falls outside what it has read — otherwise a persona answers anyway, and answers well, with real quotes and real dates. Where that line sits depends on your embeddings model, so braintrust measures it rather than shipping a number: every compile probes the persona's own positions against questions nobody could think it covers, and puts the floor in the gap. It re-measures on every rebuild, so it tracks a corpus as it grows. `npm run calibrate` reports what was measured and why, if you ever want to look — a persona reading `overlapping` is telling you your embeddings model cannot tell covered from uncovered, which is worth knowing.
+**There is nothing to calibrate.** braintrust has to know when a question falls outside what it has read — otherwise a persona answers anyway, and answers well, on whatever its corpus holds nearest, which for an off-corpus question is its most central claims and nothing to do with what was asked. Where that line sits depends on your embeddings model, so braintrust measures it rather than shipping a number: every compile probes the persona's own positions against questions nobody could think it covers, and puts the floor in the gap. It re-measures on every rebuild, so it tracks a corpus as it grows. `npm run calibrate` reports what was measured and why, if you ever want to look — a persona reading `overlapping` is telling you your embeddings model cannot tell covered from uncovered, which is worth knowing.
 
 ## Talking to one persona: a Hermes agent per Person
 

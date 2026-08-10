@@ -320,6 +320,30 @@ describe('the script', () => {
   });
 
   /**
+   * **The bound belongs here, not only in a tool description.** *What have you published
+   * lately* is a question whose whole answer is titles and dates, so an unqualified
+   * prohibition empties it — the degenerate answer braintrust_recent_items exists to prevent.
+   * A description is read at choosing time and a Hermes soul is copied into a profile once;
+   * the script is the only surface guaranteed to be in front of the model.
+   */
+  it('bounds the rule where the question is itself what they published', () => {
+    const { speak } = renderScript(input());
+
+    const section = speak.split('WHEN YOU HAVE LOOKED SOMETHING UP')[1]!;
+    assert.match(section, /Unless what they published is itself the question\./);
+    assert.match(section, /the titles and the dates are what was asked for — name them/);
+    // And the distinction that keeps the bound from swallowing the rule.
+    assert.match(section, /Asked what you think about something, they are not/);
+    assert.match(section, /a title and a date hung on a claim nobody asked the source of/);
+
+    // **The trigger is the inventory question and nothing wider.** "What have you written
+    // about hiring?" is a question about hiring — the topic shape this rule exists to keep
+    // unattributed, and the sentence the interrogation probes with — so a carve-out reading
+    // "asked what you have written" would collect it.
+    assert.doesNotMatch(section, /[Aa]sked what you have written/);
+  });
+
+  /**
    * **That asking works is a guarantee, never an offer.** No invitation ships — not in the
    * disclosure, not in the self-identification line, not as a trailing offer — so the script
    * spends a sentence forbidding one rather than leaving it to taste.

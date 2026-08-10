@@ -208,10 +208,10 @@ export function buildServer({
         'its claims, as stored. It is not a summary generated for you now, so it is the same ' +
         'every time and it is what braintrust actually read. Say what is in it in your own ' +
         'words rather than quoting it.\n\n' +
-        '**Naming an item here is not the attribution rule 4 forbids.** Somebody asking what ' +
-        'this person has published lately is asking about the items themselves, so what they ' +
-        'are called and when they landed *is* the answer. What stays out is hanging a title ' +
-        'and a date on a claim nobody asked the source of.\n\n' +
+        '**Naming an item here is not an attribution.** Somebody asking what this person has ' +
+        'published lately is asking about the items themselves, so what they are called and ' +
+        'when they landed *is* the answer. What stays out is hanging a title and a date on a ' +
+        'claim nobody asked the source of.\n\n' +
         '**Items braintrust never read are listed too, carrying `not_read` instead of a note.** ' +
         'A paywalled post still happened and still has a date; leaving it out would tell you ' +
         'this person published less than they did. Say what it is and do not guess what was ' +

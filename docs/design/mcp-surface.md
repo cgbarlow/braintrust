@@ -671,9 +671,20 @@ record was in hand: braintrust's side of the seam.
 
 **So verbatim, item title and date all leave the unasked answer.** The Persona speaks the retrieved material
 in their own voice, paraphrased, with no attribution and no hedge, and produces the record when a listener
-asks for it. The rule is stated in three places, each of which reaches a client the others do not: the
-Script's *when you have looked something up* section (§2), `find_positions`' own description, and
-[rule 5](#five-rules-that-hold-across-the-whole-surface).
+asks for it.
+
+**It ships on five surfaces, and changing it means changing all five.** The inventory is written down rather
+than left to a `grep`, because *a rule stated in more than one place is a rule that can be half-changed* —
+this document's own [#121 lesson](#deliberately-not-decided). **States** is the rule itself; **bounds** is
+[naming an item is not an attribution](#naming-an-item-here-is-not-an-attribution), the one exemption it has.
+
+| Surface | Read when | States | Bounds |
+|---|---|:---:|:---:|
+| [Rule 5](#five-rules-that-hold-across-the-whole-surface) | before any tool is chosen | ✓ | |
+| The Script's *when you have looked something up* section (§2) | **always** — the one surface guaranteed to be in a model's context | ✓ | ✓ |
+| `find_positions`' description | at choosing time | ✓ | |
+| `recent_items`' description | at choosing time | | ✓ |
+| [`hermes/SOUL.md.template`](../../hermes/SOUL.md.template) | at session start, and **copied into a profile rather than linked**, so an edit here never reaches a profile already created | ✓ | ✓ |
 
 **The payload is unchanged.** Quotes, titles, dates and urls all still ship, so this map's destination — *a
 reader can tell the difference from the payload alone* — survives intact. What changes is what gets said out
@@ -879,16 +890,33 @@ recorded here as a known one rather than fixed on a ticket that did not scope it
 **`note` and `not_read` are mutually exclusive**, never both and never neither. An empty Note would read as
 *there was not much in it* rather than *nobody read it*.
 
-#### Naming an item here is not an attribution — the one boundary [rule 5](#five-rules-that-hold-across-the-whole-surface) needs
+#### Naming an item here is not an attribution
 
-Rule 5 takes the item title and the date out of an unasked answer, and read carelessly it would empty this
-tool: *"I've published a few things recently"* is not an answer to *what have you published recently*.
+The one boundary [rule 5](#five-rules-that-hold-across-the-whole-surface) needs. Rule 5 takes the item title
+and the date out of an unasked answer, and read carelessly it would empty this tool: *"I've published a few
+things recently"* is not an answer to *what have you published recently*.
 
 **The rule governs a pointer attached to a claim, not the subject of the question.** Somebody asking what
 this Person has published is asking about the Items, so what they are called and when they landed **is** the
 substance. What rule 5 stops is hanging a title and a date on a claim nobody asked the source of — the shape
-that came back forged. The tool description says so in its own text, because this is exactly the kind of
-boundary a client infers wrongly and silently.
+that came back forged.
+
+**The bound is in the Script, not only in this tool's description.** A client reads a description at choosing
+time and may weigh it lightly; the Script is the one surface guaranteed to be in front of the model, and it
+is where the unqualified prohibition would otherwise sit alone. A bound that reaches only an attentive
+reader of `recent_items`, or only a Hermes profile created after the template changed, does not reach the
+model that needs it. **Both sides are named there** — the trigger is the inventory question, and *asked what
+you think about something, they are not* sits beside it, because a carve-out reading *asked what you have
+written* collects *"what have you written about hiring?"*, which is the topic shape the rule exists for.
+
+**The residual, named — and it is the exemption's, not the rule's.** An exemption is still an expectation to
+produce something, which is the mechanism [rule 5](#five-rules-that-hold-across-the-whole-surface) exists to
+remove: a client that has hidden `recent_items` behind a tool-search deferral leaves a Persona instructed to
+name titles it never fetched. That is
+[the deferral failure](#the-empty-answer-is-facts-and-the-sentence-is-theirs) rather than a new one, and what
+catches it is the Script's existing *if you have no way to look anything up at all, say that, and say it
+first*. It is recorded here because §3 names every cost this rule is paid for with, and this is the one
+bought by the exemption rather than by the rule.
 
 #### It is the natural moment to notice a Persona is behind
 

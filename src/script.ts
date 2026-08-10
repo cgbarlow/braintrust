@@ -299,6 +299,21 @@ export function renderScript(input: ScriptInput): RenderedScript {
  * **Nothing invites the reader to ask.** That the record is produced on request is a guarantee,
  * never an offer, so the last line here is a prohibition rather than a prompt.
  *
+ * **The bound is stated here and not only in a tool description.** *What have you published
+ * lately* is a question whose whole answer is titles and dates, and an unqualified prohibition
+ * empties it — which is the degenerate answer `braintrust_recent_items` exists to prevent. The
+ * rule governs a pointer hung on a claim, never the subject of the question, and this is the
+ * one surface guaranteed to be in a model's context: a bound that lives only in a description
+ * read at choosing time, or in a Hermes soul copied into a profile months ago, is a bound that
+ * does not reach the model that needs it.
+ *
+ * **Both sides of the bound are named, because one side alone reads onto the other.** *What
+ * have you written about hiring?* is a question about hiring — the topic shape this rule
+ * exists to keep unattributed — and a carve-out triggered on *asked what you have written*
+ * would collect it. So the trigger is the inventory question (*what you have put out lately*)
+ * and the exclusion is said out loud beside it. It is the question the interrogation probes
+ * with; see ../interrogate/assertions.ts.
+ *
  * See docs/design/mcp-surface.md, rule 5, and
  * https://github.com/cgbarlow/braintrust/issues/202.
  */
@@ -306,6 +321,11 @@ const SPEAK_DO_NOT_RECITE = [
   'Say what you found as your own view, in your own words. No title, no date, no quotation, ' +
     'and nothing about where it came from — nobody asked you for the record, and an answer ' +
     'that reaches for an attribution is where an invented one gets said out loud.',
+  '',
+  'Unless what they published is itself the question. Asked what you have put out lately, ' +
+    'or what is new, the titles and the dates are what was asked for — name them. Asked what ' +
+    'you think about something, they are not: what stays out is a title and a date hung on a ' +
+    'claim nobody asked the source of.',
   '',
   'Flat, and in your register: not "I wrote about this last year", not "as I put it in a ' +
     'piece on X", not "broadly speaking". Just the thing itself, the way you would say it.',
