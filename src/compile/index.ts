@@ -294,24 +294,23 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       );
     }
 
-    // What this person broadly holds, ranked rather than barred. Beside the quoted claims
-    // rather than above them: a through-line rides with an answer that already matched, so
-    // it needs no embedding and no citations — and it may never be the whole of an answer,
-    // which is the only reason it is allowed to be spoken flatly.
+    // What this person broadly holds — the four best, for everyone. Beside the quoted claims
+    // rather than above them: a through-line rides with an answer that already matched, so it
+    // needs no embedding, no citations and no place in the gate — and it may never be the
+    // whole of an answer, which is the only reason it is allowed to be spoken flatly.
     const inferred = await compileThroughLines(notes, deps.synthesiser);
     const throughLines = await writeThroughLines(
       deps.db,
       compileId,
       person.id,
       inferred.through_lines,
-      inferred.candidates,
     );
 
     log(
       inferred.readings === 0
-        ? `braintrust: ${person.slug} has no notes to read, so it holds no through-lines.`
-        : `braintrust: ${throughLines} through-line(s) of ${person.slug} shipped from ` +
-          `${inferred.candidates} candidate(s) across ${inferred.readings} reading(s).`,
+        ? `braintrust: ${person.slug} has too little to divide, so through-lines are ranked on breadth alone.`
+        : `braintrust: ${throughLines} through-line(s) of ${person.slug} across ${inferred.readings} readings; ` +
+          `${inferred.dropped_single_reading} appeared in only one.`,
     );
 
     // The growth of a Corpus, visible before it becomes a failure. Positions are rows

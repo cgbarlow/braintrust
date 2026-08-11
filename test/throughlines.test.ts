@@ -1,9 +1,9 @@
 /**
- * Through-lines: what someone broadly holds, ranked rather than barred.
+ * Through-lines: what someone broadly holds — the four best, for everyone.
  *
- * The four best-supported through-lines ship for everyone, ordered recurrence first,
- * breadth second. A claim seen in one reading is outranked instead of deleted. A Person
- * whose work fits in a single reading gets through-lines — ranked on breadth alone.
+ * Under the new rule (#157) the survives-two-readings bar is overturned. Nothing found
+ * is thrown away for failing to recur; entries are ranked by recurrence first and breadth
+ * second, and at most four reach a reader.
  */
 
 import assert from 'node:assert/strict';
@@ -12,8 +12,8 @@ import { describe, it } from 'node:test';
 import type { StoredNote } from '../src/notes/store.js';
 import {
   compileThroughLines,
+  MAX_THROUGH_LINES,
   MIN_NOTES_PER_READING,
-  THROUGH_LINES_SHIPPED,
   readingsOf,
   slugOf,
 } from '../src/compile/throughlines.js';
@@ -33,13 +33,11 @@ function notes(count: number): StoredNote[] {
 }
 
 describe('dividing a corpus into readings', () => {
-  it('gives one reading to a person whose work is too small to divide', () => {
-    const readings = readingsOf(notes(2));
-    assert.equal(readings.length, 1);
-    assert.equal(readings[0]!.length, 2);
+  it('returns nothing for fewer than the minimum notes per reading', () => {
+    assert.deepEqual(readingsOf(notes(2)), []);
   });
 
-  it('splits a corpus that fits in one call rather than leaving it whole', () => {
+  it('splits a corpus that fits in one call in half', () => {
     const readings = readingsOf(notes(6));
 
     assert.equal(readings.length, 2);
@@ -107,71 +105,82 @@ describe('a through-line', () => {
     };
   }
 
-  it('ships when surfaced in a single reading, ranked on breadth', async () => {
+  it('ships even when it surfaced in only one reading — ranked lower, not deleted', async () => {
     const found = await compileThroughLines(
-      notes(2),
+      notes(6),
       readingBy([[held('Judgement is the scarce thing', ['post-0'])], []]),
     );
 
     assert.equal(found.through_lines.length, 1);
     assert.equal(found.through_lines[0]!.statement, 'Judgement is the scarce thing');
     assert.equal(found.through_lines[0]!.readings, 1);
+    assert.equal(found.dropped_single_reading, 1);
+    assert.equal(found.readings, 2);
   });
 
-  it('ships when the same conviction surfaced in two, ranked above single-reading entries', async () => {
+  it('ranks recurrence first — a claim across two readings beats one in a single reading', async () => {
     const found = await compileThroughLines(
       notes(6),
       readingBy([
-        [held('Recurred', ['post-0'])],
-        [held('Recurred', ['post-4'])],
+        [held('Recurred across eras', ['post-0']), held('Single appearance', ['post-1'])],
+        [held('Recurred across eras', ['post-4'])],
+      ]),
+    );
+
+    assert.equal(found.through_lines.length, 2);
+    assert.equal(found.through_lines[0]!.statement, 'Recurred across eras');
+    assert.equal(found.through_lines[0]!.readings, 2);
+    assert.equal(found.through_lines[1]!.readings, 1);
+  });
+
+  it('caps at four, however many survived the merge', async () => {
+    const found = await compileThroughLines(
+      notes(24),
+      readingBy([
+        [
+          held('One', ['post-0']),
+          held('Two', ['post-1']),
+          held('Three', ['post-2']),
+          held('Four', ['post-3']),
+          held('Five', ['post-4']),
+        ],
+        [
+          held('Six', ['post-8']),
+          held('Seven', ['post-9']),
+          held('Eight', ['post-10']),
+        ],
+      ]),
+    );
+
+    // All eight entries are single-reading (different labels each reading),
+    // so only MAX_THROUGH_LINES reach a reader.
+    assert.ok(found.through_lines.length <= MAX_THROUGH_LINES);
+    assert.equal(found.through_lines.length, 4);
+  });
+
+  it('ships when the same conviction surfaced in two readings and is ranked first', async () => {
+    const found = await compileThroughLines(
+      notes(6),
+      readingBy([
+        [held('Judgement is the scarce thing', ['post-0'])],
+        [held('Judgement is the scarce thing', ['post-4'])],
       ]),
     );
 
     assert.equal(found.through_lines.length, 1);
     const line = found.through_lines[0]!;
-    assert.equal(line.statement, 'Recurred');
+    assert.equal(line.statement, 'Judgement is the scarce thing');
     assert.equal(line.readings, 2);
     assert.deepEqual(line.items.sort(), ['post-0', 'post-4']);
   });
 
-  it('ranks recurrence above breadth', async () => {
+  it('carries no date and nothing to quote, by construction', async () => {
     const found = await compileThroughLines(
       notes(6),
       readingBy([
-        [
-          held('Recurred twice, one item each', ['post-0']),
-          held('Recurred twice, many items', ['post-1', 'post-2']),
-        ],
-        [
-          held('Recurred twice, one item each', ['post-4']),
-          held('Recurred twice, many items', ['post-5']),
-        ],
+        [held('Judgement is the scarce thing', ['post-0'])],
+        [held('Judgement is the scarce thing', ['post-4'])],
       ]),
-    );
-
-    // Recurred entries rank above any single-reading entry
-    assert.ok(found.through_lines.length >= 2);
-    for (const line of found.through_lines) {
-      assert.equal(line.readings, 2);
-    }
-  });
-
-  it('caps at four through-lines', async () => {
-    // Generate more than 4 entries across readings so the cap applies
-    const entries = Array.from({ length: 6 }, (_, i) => held(`Entry ${i}`, [`post-${i}`]));
-    const found = await compileThroughLines(
-      notes(12),
-      readingBy([entries, []]),
-    );
-
-    assert.ok(found.through_lines.length <= THROUGH_LINES_SHIPPED);
-    assert.equal(found.candidates, 6);
-  });
-
-  it('carries no date and nothing to quote, by construction', async () => {
-    const found = await compileThroughLines(
-      notes(2),
-      readingBy([[held('Judgement is the scarce thing', ['post-0'])], []]),
     );
 
     assert.deepEqual(Object.keys(found.through_lines[0]!).sort(), [
@@ -184,20 +193,30 @@ describe('a through-line', () => {
 
   it('drops an entry naming no item braintrust holds, like every other inferred claim', async () => {
     const found = await compileThroughLines(
-      notes(2),
-      readingBy([[held('Invented from nowhere', ['post-999'])], []]),
+      notes(6),
+      readingBy([
+        [held('Invented from nowhere', ['post-999'])],
+        [held('Invented from nowhere', ['post-998'])],
+      ]),
     );
 
     assert.deepEqual(found.through_lines, []);
-    assert.equal(found.candidates, 1);
   });
 
-  it('holds none at all for a person with no notes, and counts zero candidates', async () => {
-    const found = await compileThroughLines(notes(0), readingBy([[]]));
+  it('ranks on breadth for a corpus with reading signal but no recurrence signal', async () => {
+    // 3 notes is the minimum for one reading. With 5 notes the corpus is halved into two
+    // small readings. Entries from the first reading outrank the second because they come first.
+    const found = await compileThroughLines(
+      notes(5),
+      readingBy([
+        [held('Earlier reading claim', ['post-0'])],
+        [held('Later reading claim', ['post-3'])],
+      ]),
+    );
 
-    assert.deepEqual(found.through_lines, []);
-    assert.equal(found.readings, 0);
-    assert.equal(found.candidates, 0);
+    assert.equal(found.through_lines.length, 2);
+    assert.equal(found.readings, 2);
+    assert.equal(found.through_lines[0]!.readings, 1);
   });
 });
 
