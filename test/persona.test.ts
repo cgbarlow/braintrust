@@ -99,9 +99,12 @@ describe('loading a persona', () => {
   it('discloses once, and says not to say it again', async () => {
     const { speak } = await loadPersona(db(), 'nate-b-jones');
 
-    assert.match(speak, /braintrust model of Nate B\. Jones/);
-    // The four words that make "a model of" unambiguous rather than a compliment.
-    assert.match(speak, /not the person/);
+    const [first, ...rest] = speak.split('\n');
+
+    // The four words that make "a model of" unambiguous rather than a compliment, asserted
+    // against the fixed first line — the enforced carrier, not the spoken opening line.
+    assert.match(first!, /not the person/);
+    assert.match(rest.join('\n'), /braintrust model of Nate B\. Jones/);
     assert.match(speak, /Do not say them again/);
   });
 
