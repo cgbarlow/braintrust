@@ -392,6 +392,17 @@ export async function rejectCompile(db: Db, compileId: string, reason: string): 
  * describe.
  */
 export async function gateFacts(db: Db, personId: string, compileId: string): Promise<GateFacts> {
+  const tlCandidates = await db.query<{ candidates: string | null }>(
+    `select through_line_candidates::text as candidates
+       from braintrust_compiles where id = $1`,
+    [compileId],
+  );
+
+  const tlPublished = await db.query<{ count: string }>(
+    `select count(*)::text as count
+       from braintrust_through_lines where compile_id = $1`,
+    [compileId],
+  );
   const layers = await db.query<GateLayer & { evidence: unknown }>(
     `select layer, basis, descriptive_md, generative_md, evidence
        from braintrust_persona_layers where compile_id = $1 order by layer`,
@@ -456,6 +467,9 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
   );
 
   const counts = items.rows[0]!;
+  const tlCand = tlCandidates.rows[0]?.candidates;
+  const tlPub = tlPublished.rows[0]?.count;
+
   return {
     layers: layers.rows.map((row) => ({
       layer: row.layer,
@@ -481,6 +495,8 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
     })),
     previous_positions: Number(previous.rows[0]!.count),
     superseded_positions: Number(superseded.rows[0]!.count),
+    through_line_candidates: tlCand !== null && tlCand !== undefined ? Number(tlCand) : 0,
+    through_lines_published: Number(tlPub),
     // Built by the function the read path calls, for the same reason `speak` is rendered
     // rather than described. The numbers are stand-ins — an empty answer needs a question
     // and the gate has none — and the check is about the *shape*: whether braintrust put a
@@ -621,12 +637,29 @@ export async function writeThroughLines(
   compileId: string,
   personId: string,
   throughLines: ThroughLine[],
+  /** Total candidates found before ranking, stored for the gate check. */
+  candidates?: number,
 ): Promise<number> {
-  if (throughLines.length === 0) return 0;
+  if (throughLines.length === 0) {
+    if (candidates !== undefined && candidates > 0) {
+      await db.query(
+        `update braintrust_compiles set through_line_candidates = $2
+          where id = $1`,
+        [compileId, candidates],
+      );
+    }
+    return 0;
+  }
 
   let written = 0;
 
   await db.transaction(async (tx) => {
+    await tx.query(
+      `update braintrust_compiles set through_line_candidates = $2
+        where id = $1`,
+      [compileId, candidates ?? throughLines.length],
+    );
+
     for (const line of throughLines) {
       const { rows } = await tx.query<{ id: string }>(
         `insert into braintrust_through_lines (compile_id, slug, statement, readings)

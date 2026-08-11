@@ -770,21 +770,13 @@ describe('compiling the core, against real Postgres', { skip }, () => {
    * flatly, and it is structural — the merge already sees which readings an entry came from.
    */
   describe('through-lines', () => {
-    /** Six notes, which is the fewest that can be read twice. */
+    /** Six notes, which makes two readings of three notes each. */
     async function enoughToReadTwice(): Promise<void> {
       for (let index = ITEMS; index < 6; index += 1) {
         await addItem(`post-${index}`, body(index), `2025-0${index + 1}-01`);
       }
     }
 
-    /**
-     * A synthesiser whose entries differ per reading, so the rule is observable.
-     *
-     * `sameThing` is what the merge would answer: true when the readings found one
-     * conviction worded twice, false when they found two different ones. That judgement is
-     * the only thing here a model is for, and the compiler counts readings after it rather
-     * than before — two wordings of one conviction are one through-line seen twice.
-     */
     function readings(perReading: string[][], sameThing = true) {
       let call = 0;
       return fakeSynthesiser({
@@ -797,7 +789,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       });
     }
 
-    it('publishes one that survived a second reading', async () => {
+    it('publishes one that survived a second reading, ranked above single-reading entries', async () => {
       await enoughToReadTwice();
       await compile({
         synthesiser: readings([['Judgement is scarce'], ['Judgement is scarce']]),
@@ -816,7 +808,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
       assert.equal(rows[0]!.readings, 2);
     });
 
-    it('does not publish one that surfaced in a single reading', async () => {
+    it('publishes one seen in a single reading, ranked below recurring ones', async () => {
       await enoughToReadTwice();
       await compile({
         synthesiser: readings(
@@ -825,13 +817,15 @@ describe('compiling the core, against real Postgres', { skip }, () => {
         ),
       });
 
-      assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
+      // Single-reading entries are ranked (not dropped), so both publish.
+      assert.equal(await count('select count(*) from braintrust_through_lines'), 2);
     });
 
-    it('publishes a compile that found none, because an empty answer is a real one', async () => {
-      // Four items is under the floor: this person cannot be read twice, so they hold no
-      // through-lines and the persona ships anyway.
-      const report = await compile();
+    it('publishes a compile that found no candidates, because an empty answer is real', async () => {
+      // Four items produce two readings now; force the synthesiser to return nothing.
+      const report = await compile({
+        synthesiser: fakeSynthesiser({ entriesFor: () => [] }),
+      });
 
       assert.deepEqual(report.compiled, ['nate']);
       assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
@@ -848,6 +842,21 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
       assert.equal(await count('select count(*) from braintrust_through_lines'), 0);
       assert.equal(await count('select count(*) from braintrust_through_line_items'), 0);
+    });
+
+    it('blocks a compile where candidates were found and none survived attribution', async () => {
+      await enoughToReadTwice();
+      // Return entries that name items braintrust does not hold, so the attribution
+      // filter drops every one and zero through-lines are written.
+      const report = await compile({
+        synthesiser: fakeSynthesiser({
+          entriesFor: () => [{ label: 'Invented', body: 'Not real.', items: ['post-999'] }],
+          groupsFor: () => [],
+        }),
+      });
+
+      assert.deepEqual(report.rejected.length, 1);
+      assert.match(report.rejected[0]!.reason, /through_lines_published/);
     });
   });
 

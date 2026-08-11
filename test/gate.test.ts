@@ -72,6 +72,8 @@ function facts(overrides: Partial<GateFacts> = {}): GateFacts {
     positions: [],
     previous_positions: 0,
     superseded_positions: 0,
+    through_line_candidates: 0,
+    through_lines_published: 0,
     // Built by the same function the read path calls, which is what makes the check about
     // the object a client receives rather than one written to be checked.
     nothing_matched: nothingMatched({ nearest_similarity: null, floor: 0.55, nearest: [] }),
@@ -321,6 +323,41 @@ describe('positions', () => {
 
     assert.equal(REVISION_SWEEP_CEILING, 0.5);
     assert.equal(verdict.passed, true);
+  });
+});
+
+/**
+ * **No Compile may publish a layer its own rules emptied.**
+ *
+ * If braintrust found candidates for a layer and its own selection left none, the Compile
+ * is blocked rather than published thin. A compile that legitimately found no candidates
+ * publishes normally.
+ */
+describe('through-lines', () => {
+  it('passes when no candidates were found — the layer is legitimately empty', () => {
+    const verdict = checkCompile(
+      facts({ through_line_candidates: 0, through_lines_published: 0 }),
+    );
+
+    assert.equal(check(verdict, 'through_lines_published').passed, true);
+  });
+
+  it('passes when some candidates survived to publication', () => {
+    const verdict = checkCompile(
+      facts({ through_line_candidates: 5, through_lines_published: 4 }),
+    );
+
+    assert.equal(check(verdict, 'through_lines_published').passed, true);
+  });
+
+  it('fails when candidates were found and none survived selection', () => {
+    const verdict = checkCompile(
+      facts({ through_line_candidates: 3, through_lines_published: 0 }),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /through_lines_published: /);
+    assert.match(verdict.reason!, /a rule ate what braintrust found/);
   });
 
   /**
@@ -627,6 +664,7 @@ describe('the gate as an enumerable list of checks', () => {
       'speak_opens_with_disclosure',
       'nothing_matched_carries_no_prose',
       'revisions_have_not_swept',
+      'through_lines_published',
     ]);
   });
 
