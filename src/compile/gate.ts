@@ -263,6 +263,12 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
       'no compile may publish a layer its own rules emptied — a layer that found candidates must publish at least one',
     run: throughLinesPublished,
   },
+  {
+    id: 'through_lines_proportion',
+    guarantees:
+      'no compile carries more through-lines than positions, so no answer may be assembled with more through-lines than Positions',
+    run: throughLinesProportion,
+  },
 ];
 
 /** Every check that runs, by name, without running any of them. */
@@ -657,6 +663,29 @@ function throughLinesPublished(facts: GateFacts): GateCheckResult {
         : `${facts.through_lines_published} through-line(s) published from ${facts.through_line_candidates} candidates`
       : `${facts.through_line_candidates} candidate(s) were found and none survived selection — ` +
         'a rule ate what braintrust found, and yesterday\'s persona stays live',
+  };
+}
+
+/**
+ * **No compile may carry more through-lines than Positions.**
+ *
+ * A through-line never outnumbers the quoted claims beside it. The cap is applied at
+ * assembly (see ../find.ts), and this check makes it a publication-blocking condition
+ * too: a compile whose stored rows would violate the proportion is refused before any
+ * server assembles an answer from them.
+ *
+ * Structural, no model call, no audience needed. An answer with no Positions carries
+ * no through-lines; an answer with N Positions carries at most N through-lines.
+ */
+function throughLinesProportion(facts: GateFacts): GateCheckResult {
+  const passed = facts.through_lines_published <= facts.positions.length;
+
+  return {
+    passed,
+    detail: passed
+      ? `${facts.through_lines_published} through-line(s) against ${facts.positions.length} position(s)`
+      : `${facts.through_lines_published} through-line(s) exceed(s) ${facts.positions.length} position(s)` +
+        ' — a through-line may never outnumber the Positions beside it',
   };
 }
 

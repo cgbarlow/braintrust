@@ -360,6 +360,34 @@ describe('through-lines', () => {
     assert.match(verdict.reason!, /a rule ate what braintrust found/);
   });
 
+  it('passes when through-lines do not outnumber positions', () => {
+    const verdict = checkCompile(
+      facts({
+        positions: [position('one', 1), position('two', 1), position('three', 1)],
+        through_lines_published: 2,
+      }),
+    );
+
+    assert.equal(check(verdict, 'through_lines_proportion').passed, true);
+  });
+
+  it('passes when there are no positions and no through-lines', () => {
+    assert.equal(check(checkCompile(facts()), 'through_lines_proportion').passed, true);
+  });
+
+  it('fails when through-lines outnumber positions', () => {
+    const verdict = checkCompile(
+      facts({
+        positions: [position('one', 1)],
+        through_lines_published: 3,
+      }),
+    );
+
+    assert.equal(verdict.passed, false);
+    assert.match(verdict.reason!, /through_lines_proportion: /);
+    assert.match(verdict.reason!, /a through-line may never outnumber the Positions beside it/);
+  });
+
   /**
    * **The check that catches the fourth `fit` defect.**
    *
@@ -665,6 +693,7 @@ describe('the gate as an enumerable list of checks', () => {
       'nothing_matched_carries_no_prose',
       'revisions_have_not_swept',
       'through_lines_published',
+      'through_lines_proportion',
     ]);
   });
 

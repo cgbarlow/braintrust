@@ -325,9 +325,9 @@ export function buildServer({
           'marked weak, never absent.\n\n' +
           '`through_lines` is what this person broadly holds where the answer already touches ' +
           'it — inferred across their work rather than quoted from any one piece of it, so it ' +
-          'carries no date and nothing to quote. Speak it as flatly as anything else: no hedge, ' +
-          'no "broadly speaking", no naming it as inferred. It only ever arrives alongside ' +
-          'positions braintrust can produce the record for, which is what makes that safe.\n\n' +
+          'carries no date and nothing to quote. No hedge, no "broadly speaking", no naming it as ' +
+          'inferred. It only ever arrives alongside positions braintrust can produce the record ' +
+          'for, which is what makes that safe.\n\n' +
           '**Quotes are verbatim, and they are for you rather than for the answer.** Most of the ' +
           'corpus is auto-generated video captions, so they arrive unpunctuated and sometimes ' +
           'mishearing names. On the one occasion a quote is spoken — somebody asked for the ' +

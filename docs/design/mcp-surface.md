@@ -716,6 +716,25 @@ self-identification line, the Script or any description tells a reader they may 
 sentence forbidding the Persona from saying so. What braintrust does when somebody does ask is
 [#194](https://github.com/cgbarlow/braintrust/issues/194), not this.
 
+#### A through-line never outnumbers the Positions beside it — [#198](https://github.com/cgbarlow/braintrust/issues/198)
+
+The cap that enforces *never the whole of an answer* as a **proportion**: an answer cannot carry more
+through-lines than Positions. When the cap bites, the through-lines kept are those touching the most of the
+answer's own Positions — ranked by how many of the answer's Positions each through-line touches, which is a
+fact about a lookup that already happened. Ties fall back to the Persona's standing order, so the same
+question returns the same through-lines on repeated reads. An answer with no Positions carries no
+through-lines at all.
+
+**The cap is applied at assembly, never at Compile** — it prunes a list that already rode in, it cannot empty
+the layer, and it cannot change what a Persona holds. The surplus is dropped without a model call and without
+a retrieval path of its own. A publication-blocking check at the gate (`through_lines_proportion`) enforces
+the same proportion on the stored compile.
+
+**What this deliberately does not do.** A persona can still lead with the broad claim and speak the quoted
+one thinly, and nothing checks the paragraph — the rule is about the line count, not about the prose. No
+minimum-claims floor is added either. What the rule buys is a bound on the worst case: at one broad claim per
+quoted claim, the model is never left holding a paragraph with nothing to lean on.
+
 #### Positions carry two grades, not one
 
 `confidence` grades **how well braintrust knows this Position**. It says nothing about whether the Position
