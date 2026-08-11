@@ -32,9 +32,10 @@ import {
 import { escalationIssue, faultIssue, silenceIssue, type IssueFiler } from './issues.js';
 import { dueAssertions, faultsToFile, silencesToFile, type Due } from './schedule.js';
 import {
-  claimsHeldFor,
   clearFault,
   clearSilence,
+  claimsHeldFor,
+  corpusItems,
   lastInterrogations,
   markEscalated,
   markReported,
@@ -270,6 +271,7 @@ function outcomeOf(item: Due): Omit<AssertionOutcome, 'passed' | 'detail'> {
 async function subjectFor(db: Db, person: string): Promise<InterrogationSubject> {
   const persona = await loadPersona(db, person);
   const claims = await claimsHeldFor(db, person);
+  const items = await corpusItems(db, person);
 
   return {
     person,
@@ -281,6 +283,7 @@ async function subjectFor(db: Db, person: string): Promise<InterrogationSubject>
       floor: RETRIEVAL_FLOOR,
       nearest: claims.slice(0, NEAREST_ON_EMPTY),
     }) as unknown as Record<string, unknown>,
+    items,
   };
 }
 

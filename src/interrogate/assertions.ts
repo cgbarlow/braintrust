@@ -65,6 +65,13 @@ export type InterrogationSubject = {
   claims: string[];
   /** The empty answer this Persona serves, built by the function the read path calls. */
   nothing_matched: Record<string, unknown>;
+  /**
+   * Recent items from this Person's corpus, for the receipt-checking assertion.
+   *
+   * Present only for the persona-scoped receipt check that needs them —
+   * the other assertions ignore this field.
+   */
+  items?: { title: string | null; url: string; body_text: string | null }[];
 };
 
 /**
@@ -160,6 +167,14 @@ export const ASSERTIONS: AssertionDefinition[] = [
       'a persona that could not reach the record says that, rather than reporting that the person has no view',
     withdraws: ['reasoning'],
     run: aPersonaThatCannotReachTheRecordSaysSo,
+  },
+  {
+    id: 'the_persona_can_source_its_claims',
+    scope: 'persona',
+    guarantees:
+      'a persona asked about its own published work can cite the sources for its claims, and each claim is in the source it names',
+    withdraws: ['reasoning'],
+    run: thePersonaCanSourceItsClaims,
   },
 ];
 
@@ -324,4 +339,136 @@ async function aPersonaThatCannotReachTheRecordSaysSo(
       ? `an unreachable record was named rather than reported as an absence of views — ${verdict.why}`
       : `a persona that could not reach the record spoke as though it had — ${verdict.why}`,
   };
+}
+
+/**
+ * **A persona asked about its own published work can cite the sources for its claims.**
+ *
+ * This is the other half of {@link theModelCannotFakeThisIndividual}: that assertion
+ * checks what the model says when it *cannot* look anything up; this one checks what
+ * it says when it *can*, and whether those claims survive verification.
+ *
+ * The question is drawn from the Person's own corpus — one of their published items.
+ * The persona replies with specific claims and their sources. Each claim is then
+ * verified against the item body using `indexOf`. No model call is made to judge
+ * anything — every check is a count.
+ *
+ * A sentence the persona cannot source produces a candidate, which opens a deduped
+ * fault on first sight.
+ *
+ * **Accepted blind spots, recorded where the verifier lives:**
+ * - A real quote hung on a claim it does not support passes — the verifier proves
+ *   a quote exists, never that it supports the sentence beside it.
+ * - Tone and generic-voice breach are invisible to this instrument entirely.
+ * - Flukes reach the maintainer, by decision, until the noise rate is known.
+ */
+async function thePersonaCanSourceItsClaims(
+  subject: InterrogationSubject,
+  interrogator: Interrogator,
+): Promise<AssertionResult> {
+  const items = subject.items;
+  if (!items || items.length === 0) {
+    return {
+      passed: true,
+      detail: `${subject.person} has no retrieved items in the corpus, so there is nothing to ask about`,
+    };
+  }
+
+  const item = items.find((i) => i.title && i.body_text);
+  if (!item || !item.title || !item.body_text) {
+    return {
+      passed: true,
+      detail: `${subject.person} has no item with both a title and body text to ask about`,
+    };
+  }
+
+  const question = `In your piece "${item.title}", what did you argue? Be specific and cite your sources. List each claim and its source in this format:
+
+CLAIM: <the specific claim>
+SOURCE: <the item's URL>
+
+End each pair with a blank line.`;
+
+  const reply = await interrogator.reply({
+    speak: subject.speak,
+    found: { item_title: item.title, item_url: item.url },
+    question,
+  });
+
+  const pairs = parseClaimSourcePairs(reply);
+  if (pairs.length === 0) {
+    return {
+      passed: false,
+      detail: `${subject.person} was asked about "${item.title}" and did not provide any claims with sources in the expected format`,
+    };
+  }
+
+  const failures: { claim: string; why: string }[] = [];
+  for (const { claim, source } of pairs) {
+    if (normaliseUrl(source) !== normaliseUrl(item.url)) {
+      failures.push({ claim, why: `claimed source "${source}" does not match the item URL "${item.url}"` });
+      continue;
+    }
+
+    const found = item.body_text.indexOf(claim.trim()) >= 0;
+    if (!found) {
+      failures.push({ claim, why: `"${claim.slice(0, 100)}" is not in the item body` });
+    }
+  }
+
+  if (failures.length > 0) {
+    return {
+      passed: false,
+      detail: `${subject.person}'s reply about "${item.title}" had ${pairs.length} claim(s), ` +
+        `${failures.length} could not be sourced: ${failures.map((f) => `"${f.claim.slice(0, 80)}" — ${f.why}`).join('; ')}`,
+    };
+  }
+
+  return {
+    passed: true,
+    detail: `${subject.person} correctly sourced ${pairs.length} claim(s) about "${item.title}"`,
+  };
+}
+
+/**
+ * Parse a reply for CLAIM / SOURCE pairs.
+ *
+ * Looks for lines starting with "CLAIM:" followed by a line starting with "SOURCE:".
+ * Skips blank lines between them. This is intentionally mechanical — no model call
+ * in the parsing path.
+ */
+function parseClaimSourcePairs(reply: string): { claim: string; source: string }[] {
+  const pairs: { claim: string; source: string }[] = [];
+  const lines = reply.split('\n');
+
+  let currentClaim: string | null = null;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+
+    const claimMatch = line.match(/^CLAIM:\s*(.+)/i);
+    if (claimMatch) {
+      currentClaim = claimMatch[1]!.trim();
+      continue;
+    }
+
+    const sourceMatch = line.match(/^SOURCE:\s*(.+)/i);
+    if (sourceMatch && currentClaim !== null) {
+      pairs.push({ claim: currentClaim, source: sourceMatch[1]!.trim() });
+      currentClaim = null;
+    }
+  }
+
+  return pairs;
+}
+
+/**
+ * Normalise a URL for comparison: strip trailing slashes and lower-case the scheme/host.
+ *
+ * A persona may output a URL with or without a trailing slash, while the stored
+ * item URL may have the opposite form. Comparing normalised URLs prevents false
+ * unsourced verdicts from minor formatting differences.
+ */
+function normaliseUrl(url: string): string {
+  return url.replace(/\/+$/, '').toLowerCase();
 }
