@@ -15,6 +15,14 @@
  */
 
 import { compileCorpus, personasBehind, type CompileReport, type Synthesiser } from '../compile/index.js';
+import {
+  recordStuckRebuild,
+  clearStuckRebuild,
+  stuckRebuilds,
+  type StuckRebuild,
+} from '../compile/store.js';
+import { openFault } from '../interrogate/store.js';
+import { faultKey } from '../interrogate/schedule.js';
 import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
 import type { Fetcher } from '../net/fetch.js';
@@ -211,8 +219,19 @@ export type CycleReport = {
    * asserts that the run left nobody behind, and it is asked every cycle whether or not
    * anyone is looking — because the failure it exists to catch is staleness fixed only for
    * the people somebody happens to read. Empty is what a healthy run reports.
+   *
+   * **How to read this after the two-cycle rule:** one cycle behind is the design
+   * and says nothing. Two or more is the fault, tracked in `stuck` below.
    */
   serving_behind: string[];
+  /**
+   * The stuck-rebuild ledger. Personas two or more cycles behind the compiler,
+   * meaning the rebuild is not completing. An issue is filed (deduped) and the
+   * persona speaks its own limit in voice through the Script.
+   *
+   * Empty is what a healthy run reports.
+   */
+  stuck: StuckRebuild[];
 };
 
 export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
@@ -331,6 +350,44 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
         })
       : undefined;
 
+  // 7. The stuck-rebuild ledger. After the compile, check who is still behind and
+  // track how many cycles each has been behind. One cycle behind is the design and
+  // says nothing; two or more is the fault.
+  const serving_behind = compile ? await personasBehind(deps.db, compile.compiler_version) : [];
+  const behindSet = new Set(serving_behind);
+
+  // Everyone still behind: upsert and increment cycles_behind.
+  for (const slug of serving_behind) {
+    await recordStuckRebuild(deps.db, slug);
+  }
+
+  // Anyone tracked that is no longer behind: they caught up (or were paused).
+  // Clear the stuck-rebuild row so the next time they fall behind the clock starts
+  // fresh. Also delete any open stuck-rebuild fault — there is no interrogation
+  // assertion for this fault type, so the normal fault-clearance path does not run.
+  const allStuck = await deps.db.query<{ person_slug: string }>(
+    'select person_slug from braintrust_stuck_rebuilds',
+  );
+  for (const { person_slug } of allStuck.rows) {
+    if (!behindSet.has(person_slug)) {
+      await clearStuckRebuild(deps.db, person_slug);
+      await deps.db.query(`delete from braintrust_faults where fault_key = $1`, [
+        faultKey('persona_stuck_behind_compiler', person_slug),
+      ]);
+    }
+  }
+
+  const stuck = await stuckRebuilds(deps.db);
+
+  // Personas stuck for two or more cycles open a fault — the rebuild is not completing.
+  for (const one of stuck) {
+    await openFault(deps.db, {
+      assertion: 'persona_stuck_behind_compiler',
+      person: one.person_slug,
+      detail: `${one.person_slug} has been behind the compiler for ${one.cycles_behind} cycles since ${one.first_stuck_at}`,
+    });
+  }
+
   const report: CycleReport = {
     started: started.toISOString(),
     finished: now().toISOString(),
@@ -344,7 +401,8 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     index,
     ...(notes ? { notes } : {}),
     ...(compile ? { compile } : {}),
-    serving_behind: compile ? await personasBehind(deps.db, compile.compiler_version) : [],
+    serving_behind,
+    stuck,
   };
 
   // Said out loud, every run. A persona that has differed on part of its compiler version
@@ -354,6 +412,15 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
       `braintrust: ${report.serving_behind.join(', ')} ${report.serving_behind.length === 1 ? 'is' : 'are'} ` +
         'still serving on rules that have moved. Anyone reading them gets a tightened gate and ' +
         'no prose from the parts that changed; the next run tries the rebuild again.',
+    );
+  }
+
+  // One cycle behind is the design and says nothing. Two or more is the fault.
+  if (report.stuck.length > 0) {
+    log(
+      `braintrust: ${report.stuck.map((s) => s.person_slug).join(', ')} ` +
+        `${report.stuck.length === 1 ? 'has' : 'have'} been behind for two or more cycles. ` +
+        'An issue will be filed and the persona speaks its own limit.',
     );
   }
 
@@ -1208,12 +1275,16 @@ export function summarise(report: CycleReport): string {
     (compile.compiled.length === 0 && compile.failed.length === 0 && compile.rejected.length === 0);
   // **Before the idle shortcut, because this is the one thing an idle run can still be
   // wrong about.** A run where nothing was due is exactly when a persona left behind by a
-  // rules change goes unnoticed — which is how one of them differed on part of its
-  // compiler version for three days.
+  // rules change goes unnoticed — and the stuck-rebuild check is the same: it fires even
+  // on an idle run, because the daily clock is the recovery mechanism.
   const behind = servingBehindLine(report);
+  const stuck = stuckBehindLine(report);
 
   if (report.sources.length === 0 && idleIndex && idleNotes && idleCompile) {
-    return behind ? `braintrust: nothing was due.\n${behind}` : 'braintrust: nothing was due.';
+    const extras = [behind, stuck].filter((line): line is string => line !== null);
+    return extras.length > 0
+      ? `braintrust: nothing was due.\n${extras.join('\n')}`
+      : 'braintrust: nothing was due.';
   }
 
   // A run where no Source was due can still have real work to report: an endpoint that
@@ -1299,7 +1370,10 @@ export function summarise(report: CycleReport): string {
     lines.push(`  compile: ${built.join(', ')}`);
   }
 
+  // A new line, not folded into the serving-behind line above. See the earlier
+  // `const stuck = stuckBehindLine(report)` already computed above the idle shortcut.
   if (behind) lines.push(behind);
+  if (stuck) lines.push(stuck);
 
   if (report.stopped_early) lines.push('  stopped early; the next run continues from these rows');
 
@@ -1315,5 +1389,17 @@ function servingBehindLine(report: CycleReport): string | null {
   return (
     `  serving behind the compiler: ${report.serving_behind.join(', ')} — readers get a ` +
     'tightened gate and no prose from the parts that moved; the next run retries the rebuild'
+  );
+}
+
+/**
+ * The stuck-rebuild check. A persona two or more cycles behind the compiler means the
+ * rebuild is not completing. One cycle behind by design says nothing.
+ */
+function stuckBehindLine(report: CycleReport): string | null {
+  if (report.stuck.length === 0) return null;
+  return (
+    `  stuck behind the compiler: ${report.stuck.map((s) => s.person_slug).join(', ')} ` +
+    `— behind for ${report.stuck[0]!.cycles_behind}+ cycles, issue filed, spoken to readers`
   );
 }

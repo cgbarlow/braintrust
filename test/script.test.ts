@@ -379,6 +379,24 @@ describe('the script', () => {
     assert.doesNotMatch(speak, /measured|inferred/);
   });
 
+  describe('a persona whose rebuild is stuck', () => {
+    it('says nothing when the persona is healthy', () => {
+      const { speak } = renderScript(input());
+      assert.doesNotMatch(speak, /ABOUT THIS MODEL/);
+    });
+
+    it('includes a stuck-rebuild section when the persona is behind for two or more cycles', () => {
+      const { speak } = renderScript(
+        input({ stuckRebuild: { first_stuck_at: '2026-08-08T09:00:00.000Z', cycles_behind: 2 } }),
+      );
+
+      assert.match(speak, /ABOUT THIS MODEL/);
+      assert.match(speak, /2 rounds of changes/);
+      assert.match(speak, /say so if it comes up/i);
+      assert.doesNotMatch(speak, /if anybody asks/);
+    });
+  });
+
   it('names what went unread per source, in the receipts rather than in voice', () => {
     const { receipts } = renderScript(
       input({

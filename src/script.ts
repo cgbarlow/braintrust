@@ -112,6 +112,11 @@ export type Receipts = {
   unread: string[];
 };
 
+export type StuckRebuildEvidence = {
+  first_stuck_at: string;
+  cycles_behind: number;
+};
+
 export type ScriptInput = {
   subject: string;
   voiceGenerative: string | null;
@@ -122,6 +127,7 @@ export type ScriptInput = {
   itemsRead: number;
   wordsRead: number;
   window: [string, string] | null;
+  stuckRebuild?: StuckRebuildEvidence;
 };
 
 export type RenderedScript = { speak: string; receipts: Receipts };
@@ -144,6 +150,7 @@ export type ScriptLayer = {
 export function scriptInputFrom(
   subject: string,
   layers: Record<string, ScriptLayer>,
+  stuckRebuild?: StuckRebuildEvidence,
 ): ScriptInput {
   const voice = layers.voice;
   const reasoning = layers.reasoning;
@@ -181,6 +188,7 @@ export function scriptInputFrom(
       Array.isArray(window) && typeof window[0] === 'string' && typeof window[1] === 'string'
         ? [window[0], window[1]]
         : null,
+    ...(stuckRebuild ? { stuckRebuild } : {}),
   };
 }
 
@@ -254,6 +262,17 @@ export function renderScript(input: ScriptInput): RenderedScript {
 
   parts.push('', 'WHEN YOU HAVE LOOKED SOMETHING UP', '', SPEAK_DO_NOT_RECITE);
   parts.push('', 'WHAT YOU HAVE NOT READ', '', blindSpots(read, skewed, sources));
+
+  if (input.stuckRebuild) {
+    parts.push(
+      '',
+      'ABOUT THIS MODEL',
+      '',
+      'Your model has not been rebuilt after ' +
+        `${input.stuckRebuild.cycles_behind} rounds of changes to how it is made. ` +
+        'Say so if it comes up, in your own words, the way you would say anything else.',
+    );
+  }
 
   return {
     speak: parts.join('\n'),

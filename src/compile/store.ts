@@ -19,6 +19,7 @@ import type { CoverageEvidence, SourceCoverage } from './coverage.js';
 import { VOICE_MIN_WORDS } from './voice.js';
 import type { GateFacts, GateLayer, ItemCounts } from './gate.js';
 import type { BuiltPosition } from './positions.js';
+import type { StuckRebuildEvidence } from '../script.js';
 import type { ThroughLine } from './throughlines.js';
 import type { MeasuredItem } from './voice.js';
 
@@ -826,6 +827,99 @@ export type LoadedPersona = {
   corpus_stats: Record<string, unknown> | null;
   layers: LoadedLayer[];
 };
+
+/** A persona's stuck rebuild state, read from the ledger. */
+export type StuckRebuild = {
+  person_slug: string;
+  first_stuck_at: string;
+  cycles_behind: number;
+};
+
+/**
+ * Upsert a stuck rebuild row, incrementing cycles_behind.
+ *
+ * The row is the deduplication: a persona already tracked increments rather
+ * than inserting a second row, which is what makes `first_stuck_at` the clock
+ * the fault runs on — it is never moved once set.
+ */
+export async function recordStuckRebuild(
+  db: Db,
+  personSlug: string,
+): Promise<void> {
+  await db.query(
+    `insert into braintrust_stuck_rebuilds (person_slug)
+        values ($1)
+   on conflict (person_slug) do update
+          set cycles_behind = braintrust_stuck_rebuilds.cycles_behind + 1`,
+    [personSlug],
+  );
+}
+
+/**
+ * The persona caught up (or was paused). Clear the stuck record so the next
+ * time it falls behind the clock starts fresh.
+ */
+export async function clearStuckRebuild(db: Db, personSlug: string): Promise<void> {
+  await db.query(`delete from braintrust_stuck_rebuilds where person_slug = $1`, [personSlug]);
+}
+
+/**
+ * Everyone currently stuck: two or more cycles behind the compiler, meaning
+ * the rebuild is not completing.
+ *
+ * A cycle is one daily run. One cycle behind by design is the normal case
+ * (the build queue); two or more means the rebuild has failed to complete
+ * across consecutive runs, which is the fault.
+ */
+export async function stuckRebuilds(db: Db): Promise<StuckRebuild[]> {
+  const { rows } = await db.query<{
+    person_slug: string;
+    first_stuck_at: Date;
+    cycles_behind: string | number;
+  }>(
+    `select person_slug, first_stuck_at, cycles_behind
+       from braintrust_stuck_rebuilds
+      where cycles_behind >= 2
+      order by person_slug`,
+  );
+
+  return rows.map((row) => ({
+    person_slug: row.person_slug,
+    first_stuck_at: isoDate(row.first_stuck_at),
+    cycles_behind: Number(row.cycles_behind),
+  }));
+}
+
+/** A slug exists in the stuck ledger. */
+export async function isStuckRebuild(db: Db, slug: string): Promise<boolean> {
+  const { rows } = await db.query<{ person_slug: string }>(
+    'select person_slug from braintrust_stuck_rebuilds where person_slug = $1 and cycles_behind >= 2',
+    [slug],
+  );
+  return rows.length > 0;
+}
+
+/** The stuck-rebuild evidence for one persona, or undefined if they are not stuck. */
+export async function stuckRebuildEvidenceFor(db: Db, slug: string): Promise<StuckRebuildEvidence | undefined> {
+  const { rows } = await db.query<{
+    person_slug: string;
+    first_stuck_at: Date;
+    cycles_behind: string | number;
+  }>(
+    'select person_slug, first_stuck_at, cycles_behind from braintrust_stuck_rebuilds where person_slug = $1 and cycles_behind >= 2',
+    [slug],
+  );
+  const row = rows[0];
+  if (!row) return undefined;
+  return {
+    first_stuck_at: isoDate(row.first_stuck_at),
+    cycles_behind: Number(row.cycles_behind),
+  };
+}
+
+function isoDate(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
 
 /**
  * Every Persona currently serving on rules that have moved under it.
