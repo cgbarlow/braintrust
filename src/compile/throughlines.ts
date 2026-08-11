@@ -15,10 +15,9 @@
  * **No verbatim, ever.** An illustrative quote and a supporting one are indistinguishable
  * once printed, and a Persona reads whichever it is handed as support.
  *
- * **It must survive more than one separate reading.** Structural, costs nothing, and needs
- * no judgement from anything — the merge already sees it. What a *reading* is was the one
- * hole the spec could not close; see {@link readingsOf} and
- * [#160](https://github.com/cgbarlow/braintrust/issues/160).
+ * **Ranked, not barred.** The four best-supported through-lines ship for everyone, ordered
+ * recurrence first, breadth second. A claim seen in one reading is outranked instead of
+ * deleted. A Person whose work fits in a single reading gets four, ranked on breadth alone.
  *
  * **No retrieval path of its own.** It rides with an answer that already matched rather than
  * competing for the top of one, which is why it needs no embedding and no gate.
@@ -39,9 +38,9 @@
  * spoken confidently in someone's voice, and nothing a listener hears gives them anywhere to
  * go. Losing *they have held this a long time* is a real loss — duration is the most
  * interesting thing about a durable commitment and the one thing braintrust cannot honestly
- * measure. A person whose work fits in one reading gets none. And a Compile that came back
- * empty because the synthesiser had a bad afternoon is indistinguishable from one that came
- * back empty because there was nothing.
+ * measure. A claim seen in only one reading is now spoken flatly in someone's voice with
+ * nothing a listener can point at. And one extra synthesis call per Persona is now paid for
+ * a ranking signal rather than a rule.
  *
  * See docs/design/compiler.md and https://github.com/cgbarlow/braintrust/issues/167.
  */
@@ -49,69 +48,66 @@
 import type { StoredNote } from '../notes/store.js';
 import { DIGEST_BUDGET_CHARS, noteDigest } from './infer.js';
 import { foldByMerging } from './merge.js';
-import { MAX_ENTRIES, type SynthesisedEntry, type Synthesiser } from './synthesis.js';
-
-/**
- * How many readings a through-line has to appear in. Two, and *more than one* is the whole
- * of the rule — whether two is the right number at all is
- * [#157](https://github.com/cgbarlow/braintrust/issues/157) and is not settled here.
- */
-export const READINGS_REQUIRED = 2;
+import { type SynthesisedEntry, type Synthesiser } from './synthesis.js';
 
 /**
  * The fewest Notes that make a reading a reading.
  *
- * **Chosen to keep an accepted cost true rather than because three is interesting.**
- * [#144](https://github.com/cgbarlow/braintrust/issues/144) priced *a person whose work fits
- * in one reading gets none*, Chris on five Items included, and three-per-reading is the
- * smallest floor that still says so. Two would have handed him through-lines and quietly
- * repriced a cost that was argued and accepted.
+ * **Chosen to define what a reading is, not to hold a bar in place.**
+ * A reading is a budget-sized pass over the Notes, and a trailing stretch shorter than this
+ * folds into the preceding reading.
  */
 export const MIN_NOTES_PER_READING = 3;
 
 /**
+ * How many through-lines ship for everyone. A fixed-size ranked list cannot empty itself
+ * and cannot change size, so neither jitter nor starvation can express themselves here.
+ */
+export const THROUGH_LINES_SHIPPED = 4;
+
+/**
  * A Corpus divided into readings: contiguous, in publication order, and never overlapping.
  *
- * **This is [#160](https://github.com/cgbarlow/braintrust/issues/160), and it decides who
- * gets through-lines at all.** Four choices, each with a direction of failure:
+ * **This is [#160](https://github.com/cgbarlow/braintrust/issues/160), and it decides how
+ * the Corpus is read.** Four choices, each with a direction of failure:
  *
  * **Split by count, not by date.** A date split follows the person's rhythm, which sounds
  * like the meaningful choice and is the fragile one — a quiet six months produces an empty
  * division, and the same instrument then means something different for every person in the
  * fleet.
  *
- * **Contiguous, in the order the Notes already arrive.** The artefact this guard exists to
+ * **Contiguous, in the order the Notes already arrive.** The artefact this rule exists to
  * exclude is a pattern produced by *what was read side by side*. Contiguous divisions
  * maximise topical clustering *within* a division, so surviving two of them means the entry
  * crossed a topical era. Interleaving would make every division a representative sample of
- * the whole Corpus, in which anything general appears everywhere — the generous failure,
- * admitting exactly what the rule exists to exclude.
+ * the whole Corpus, in which anything general appears everywhere — the generous failure.
  *
  * **Never overlapping**, for the same reason.
  *
- * **At least two, always.** The compiler's existing passes are budget-sized, so a Corpus
- * under the budget is one pass — and *survives more than one reading* would be unsatisfiable
- * for most of the fleet, quietly turning #144's accepted cost into *almost nobody gets any*.
- * A Corpus that fits in one pass is split in half and pays one extra synthesis call for it.
+ * **A Corpus too small to divide reads once.** Recurrence is the first ranking signal, so
+ * the half-split from [#160](https://github.com/cgbarlow/braintrust/issues/160) stays, and
+ * keeps costing one extra synthesis call. A Corpus too small to divide reads once and ranks
+ * on breadth alone rather than returning nothing.
  *
- * A named consequence rather than a hidden one: the number of readings grows with the Corpus,
- * so a prolific person needs 2 of 20 where a thin one needs 2 of 2. Deliberate — a
- * proportional bar would make through-lines hardest for exactly the people most likely to
- * have them — but the threshold is doing different work at each end of the fleet.
- *
- * Returns an empty list when there is not enough to read twice. That is a real answer.
+ * Returns an empty list only when there are no Notes at all (which is not a compile-time
+ * state). A single reading is a real answer — the Persona ranks on breadth.
  */
 export function readingsOf(
   notes: StoredNote[],
   budget = DIGEST_BUDGET_CHARS,
 ): StoredNote[][] {
-  if (notes.length < MIN_NOTES_PER_READING * READINGS_REQUIRED) return [];
+  if (notes.length === 0) return [];
 
   const readings = byBudget(notes, budget);
 
-  // One pass means the Corpus fits comfortably in a call, which is most Personas. Halved by
-  // count rather than left whole, because a single reading can never satisfy the rule.
+  // One pass means the Corpus fits comfortably in a call, which is most Personas. Split in
+  // half so recurrence can be the first ranking signal — the half-split from #160 stays,
+  // and keeps costing one extra synthesis call.
   if (readings.length < 2) {
+    if (notes.length < MIN_NOTES_PER_READING) {
+      // Too small to divide: read once, rank on breadth alone.
+      return [notes];
+    }
     const half = Math.ceil(notes.length / 2);
     return [notes.slice(0, half), notes.slice(half)];
   }
@@ -125,7 +121,7 @@ export function readingsOf(
     readings.pop();
   }
 
-  return readings.length >= READINGS_REQUIRED ? readings : [];
+  return readings;
 }
 
 /**
@@ -160,7 +156,7 @@ export type ThroughLine = {
    * no step of a Compile rewords a Persona's own output.
    */
   statement: string;
-  /** How many separate readings surfaced it. Never fewer than {@link READINGS_REQUIRED}. */
+  /** How many separate readings surfaced it. */
   readings: number;
   /** Item `external_id`s it was traced to. What decides which answers it rides with. */
   items: string[];
@@ -168,22 +164,26 @@ export type ThroughLine = {
 
 export type ThroughLineSet = {
   through_lines: ThroughLine[];
-  /** How the Corpus was divided. Zero when there was not enough to read twice. */
+  /** How the Corpus was divided. One when it was too small to divide. */
   readings: number;
-  /** Entries that surfaced in exactly one reading. Not a failure — the rule working. */
-  dropped_single_reading: number;
+  /** Total candidates found before ranking. Zero when nothing was found. */
+  candidates: number;
 };
 
 /** An entry, with the readings that produced it carried alongside. */
 type Sighted = SynthesisedEntry & { readings: Set<number> };
 
 /**
- * Read the Corpus in separate readings and keep what appears in more than one.
+ * Read the Corpus in separate readings and return the best-supported through-lines, ranked.
  *
- * **The threshold is applied after the merge and never before it.** Two readings word the
- * same conviction differently, and *these two say the same thing* is the one judgement in
- * this file that needs a model — which is exactly what the merge already is. Counting first
- * would count wordings rather than convictions.
+ * **Ranked, not barred.** Recurrence first (more readings = higher), breadth second (more
+ * items = higher). The top four ship for everyone. A claim seen in one reading is outranked
+ * instead of deleted.
+ *
+ * The threshold is applied after the merge and never before it. Two readings word the same
+ * conviction differently, and *these two say the same thing* is the one judgement in this
+ * file that needs a model — which is exactly what the merge already is. Counting first would
+ * count wordings rather than convictions.
  */
 export async function compileThroughLines(
   notes: StoredNote[],
@@ -191,7 +191,7 @@ export async function compileThroughLines(
 ): Promise<ThroughLineSet> {
   const readings = readingsOf(notes);
   if (readings.length === 0) {
-    return { through_lines: [], readings: 0, dropped_single_reading: 0 };
+    return { through_lines: [], readings: 0, candidates: 0 };
   }
 
   const known = new Set(notes.map((note) => note.external_id));
@@ -210,21 +210,27 @@ export async function compileThroughLines(
       label: clearest.label,
       body: clearest.body,
       items: [...new Set(members.flatMap((member) => member.items))],
-      // The union braintrust performs itself. The merge is handed wording and answers with
-      // numbers; which readings an entry was seen in is arithmetic, and arithmetic has a
-      // right answer.
       readings: new Set(members.flatMap((member) => [...member.readings])),
     }),
     group: (digest) => synthesiser.group('through_lines', digest),
     budget: DIGEST_BUDGET_CHARS,
   });
 
-  const survived = folded.entries.filter((entry) => entry.readings.size >= READINGS_REQUIRED);
+  const candidates = folded.entries.length;
+
+  // Rank: recurrence first, breadth second. A candidate that appeared in one reading is
+  // ranked below one that recurred, never dropped for it.
+  const ranked = [...folded.entries].sort((a, b) => {
+    const readingsDiff = b.readings.size - a.readings.size;
+    if (readingsDiff !== 0) return readingsDiff;
+    return b.items.length - a.items.length;
+  });
+
+  // Cap at THROUGH_LINES_SHIPPED. A fixed-size ranked list cannot empty itself.
+  const shipped = ranked.slice(0, THROUGH_LINES_SHIPPED);
 
   return {
-    through_lines: survived.slice(0, MAX_ENTRIES).flatMap((entry) => {
-      // The same attribution rule the inferred layers have: an entry may name only Items
-      // that were in the Notes it was read from, and one left holding none is not published.
+    through_lines: shipped.flatMap((entry) => {
       const items = [...new Set(entry.items.filter((item) => known.has(item)))];
       if (items.length === 0) return [];
 
@@ -238,7 +244,7 @@ export async function compileThroughLines(
       ];
     }),
     readings: readings.length,
-    dropped_single_reading: folded.entries.length - survived.length,
+    candidates,
   };
 }
 

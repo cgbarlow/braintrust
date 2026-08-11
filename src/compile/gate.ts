@@ -33,13 +33,9 @@ import { SERVED_LAYERS } from './version.js';
  * the rule that rejected a Compile whose beliefs layer carried nothing is gone because
  * there is no such layer, not because emptiness became acceptable in one place.
  *
- * Nothing replaced it for through-lines. Under the survives-two-readings bar a great many
- * people legitimately have none — anyone whose work fits in a single reading, by
- * construction — so a floor here would refuse to publish good Personas for having a small
- * Corpus. **This is the collapse floor that was recommended and declined**, and the cost is
- * known: a Compile that came back empty because the synthesiser had a bad afternoon looks
- * exactly like one that came back empty because there was nothing to find, and it replaces
- * a Persona that had through-lines yesterday.
+ * Through-lines have their own check now via `through_lines_published`: a layer whose
+ * own rules emptied it is blocked from publication, and a layer that legitimately found
+ * no candidates publishes normally. The two silences are distinguishable.
  */
 export const CORE_LAYERS = SERVED_LAYERS;
 
@@ -101,6 +97,13 @@ export type GateFacts = {
   previous_positions: number;
   /** Positions this Compile put on the earlier side of a `revised` relation. */
   superseded_positions: number;
+  /**
+   * How many through-line candidates were found before ranking. Stored by the write path,
+   * read here to catch a layer whose own rules emptied it.
+   */
+  through_line_candidates: number;
+  /** How many through-lines were actually published this compile. */
+  through_lines_published: number;
   /**
    * The empty answer this Persona would serve, built by the same function the read path
    * calls, with this Compile's own floor in it.
@@ -253,6 +256,12 @@ export const GATE_CHECKS: GateCheckDefinition[] = [
     guarantees:
       'this rebuild has not retired so much of what someone holds that it describes the judge rather than the author',
     run: revisionsHaveNotSwept,
+  },
+  {
+    id: 'through_lines_published',
+    guarantees:
+      'no compile may publish a layer its own rules emptied — a layer that found candidates must publish at least one',
+    run: throughLinesPublished,
   },
 ];
 
@@ -622,6 +631,32 @@ function nothingMatchedCarriesNoProse(facts: GateFacts): GateCheckResult {
         ? 'an empty answer carries how close it came, why, and what is nearby — and no sentence'
         : `${offending.join(', ')} put words in an empty answer for a persona to recite, and a ` +
           'persona reciting braintrust is the generic voice this whole surface exists to avoid',
+  };
+}
+
+/**
+ * **No Compile may publish a layer its own rules emptied.**
+ *
+ * If braintrust found candidates for a layer and its own selection left none (e.g. all
+ * entries failed the item-attribution filter), the Compile is blocked rather than published
+ * thin. It separates the two silences that look identical today — *there was nothing to say*,
+ * which is allowed, from *a rule ate it*, which is a defect.
+ *
+ * Structural, no model call, no audience needed. A compile that legitimately found no
+ * candidates passes the check because the emptiness is the answer.
+ */
+function throughLinesPublished(facts: GateFacts): GateCheckResult {
+  const passed =
+    facts.through_line_candidates === 0 || facts.through_lines_published > 0;
+
+  return {
+    passed,
+    detail: passed
+      ? facts.through_line_candidates === 0
+        ? 'no through-line candidates were found — the layer is legitimately empty'
+        : `${facts.through_lines_published} through-line(s) published from ${facts.through_line_candidates} candidates`
+      : `${facts.through_line_candidates} candidate(s) were found and none survived selection — ` +
+        'a rule ate what braintrust found, and yesterday\'s persona stays live',
   };
 }
 

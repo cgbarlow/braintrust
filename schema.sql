@@ -369,6 +369,8 @@ create table if not exists braintrust_through_lines (
   unique (compile_id, slug)
 );
 
+alter table braintrust_compiles add column if not exists through_line_candidates int not null default 0;
+
 comment on table braintrust_through_lines is
   'A claim braintrust inferred, never one it can quote. It may never be the whole of '
   'an answer: speaking it flatly is affordable only because something checkable is '
