@@ -22,9 +22,11 @@
  * **No retrieval path of its own.** It rides with an answer that already matched rather than
  * competing for the top of one, which is why it needs no embedding and no gate.
  *
- * **Never the whole of an answer.** This is the load-bearing one: speaking a through-line
- * flatly, with no hedge and no attribution, is affordable only because something checkable is
- * always beside it. The two stand or fall together. See ../find.ts.
+ * **Never outnumbers the Positions beside it.** [#198](https://github.com/cgbarlow/braintrust/issues/198)
+ * enforces this as a proportion: an answer cannot carry more through-lines than Positions.
+ * When the cap bites, the through-lines kept are those touching the most of the answer's own
+ * Positions. Ties fall back to the Persona's standing order. An answer with no Positions
+ * carries no through-lines at all. See ../find.ts.
  *
  * **That flatness is now every sentence's, not this layer's alone.**
  * [#202](https://github.com/cgbarlow/braintrust/issues/202) took verbatim, item title and date
@@ -38,9 +40,9 @@
  * spoken confidently in someone's voice, and nothing a listener hears gives them anywhere to
  * go. Losing *they have held this a long time* is a real loss — duration is the most
  * interesting thing about a durable commitment and the one thing braintrust cannot honestly
- * measure. A claim seen in only one reading is now spoken flatly in someone's voice with
- * nothing a listener can point at. And one extra synthesis call per Persona is now paid for
- * a ranking signal rather than a rule.
+ * measure. A claim seen in only one reading is now spoken in someone's voice with nothing a
+ * listener can point at. And one extra synthesis call per Persona is now paid for a ranking
+ * signal rather than a rule.
  *
  * See docs/design/compiler.md and https://github.com/cgbarlow/braintrust/issues/167.
  */

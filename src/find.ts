@@ -930,6 +930,11 @@ function toCitation(row: {
  * compared to the question — a through-line travels because a Position that cites the same
  * Item matched, which is a fact about a lookup that already happened. It cannot crowd out the
  * top of an answer because it has no place in the ordering at all.
+ *
+ * **A through-line never outnumbers the Positions beside it.** When the cap bites, the
+ * through-lines kept are those touching the most of the answer's own Positions. Ties resolve
+ * to the Persona's standing order, so the same question returns the same through-lines on
+ * repeated reads.
  */
 async function ridingThroughLines(
   db: Db,
@@ -938,18 +943,23 @@ async function ridingThroughLines(
 ): Promise<ThroughLine[]> {
   if (shown.length === 0) return [];
 
-  const { rows } = await db.query<{ slug: string; statement: string }>(
-    `select distinct t.slug, t.statement
+  const { rows } = await db.query<{ slug: string; statement: string; position_count: string }>(
+    `select t.slug, t.statement, count(distinct pc.position_id)::text as position_count
        from braintrust_through_lines t
        join braintrust_through_line_items ti on ti.through_line_id = t.id
        join braintrust_position_citations pc on pc.item_id = ti.item_id
       where t.compile_id = $1
         and pc.position_id = any($2::uuid[])
-      order by t.slug`,
+      group by t.id, t.slug, t.statement
+      order by position_count desc, t.slug`,
     [compileId, shown.map((position) => position.id)],
   );
 
-  return rows.map((row) => ({ slug: row.slug, statement: row.statement, basis: 'inferred' }));
+  // Cap: never more through-lines than Positions. Rank by how many Positions each
+  // through-line touches; ties fall back to the Persona's standing order (slug).
+  const capped = rows.slice(0, shown.length);
+
+  return capped.map((row) => ({ slug: row.slug, statement: row.statement, basis: 'inferred' }));
 }
 
 /**
