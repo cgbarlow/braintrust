@@ -73,8 +73,8 @@ field from `braintrust_list_personas`, e.g. `nate-b-jones`.
 bt-nate-b-jones chat
 ```
 
-The first reply should open with a line like *"I'm a braintrust model of Nate B. Jones — not the person."*
-and then answer in voice, without repeating that line again for the rest of the session. If a source is
+The first reply should open with the disclosure, then a line like *"I'm a braintrust model of Nate B.
+Jones."*, and then answer in voice, without repeating either line again for the rest of the session. If a source is
 largely unread — a paywalled newsletter beside a public channel — the line names that scope too. If the
 opening line never appears, check that `braintrust_load_persona` appears in the profile's tool list — and
 read [Why `tool_search` is off](#why-tool_search-is-off), which is the usual reason it doesn't.

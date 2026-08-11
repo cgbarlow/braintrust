@@ -204,8 +204,15 @@ function numberOr(value: unknown, fallback: number): number {
  * session — and that is acceptable because the *enforced* carrier is the subject string,
  * which never stops. Declining to repeat this on turn forty breaches nothing.
  *
- * **`— not the person` is the part that cannot be cut.** "A braintrust model of" alone can
- * be read as homage or imitation; those four words are what make it unambiguous.
+ * **`— not the person` is not repeated here**, and that is what protects the corpus clause.
+ * The denial is the fixed first line, recited verbatim and held there by
+ * `speak_opens_with_disclosure`; saying it again one line later added no disclosure and
+ * competed for the attention of a model deciding what to keep. The wording licence below
+ * ("or your own wording of the same fact") means a model that compresses keeps the shortest
+ * true reading — and while the halves overlapped, the shortest true reading was the half a
+ * reader had already heard. With the overlap gone, "the same fact" is the name and the
+ * scope, so dropping the scope is no longer free. Those four words are still load-bearing
+ * where the name travels alone: see `subjectFor` in ./disclosure.ts, which is unchanged.
  *
  * Scale has left this sentence. It used to recite the item count and the window, and that
  * measured the wrong thing: "515 things, with 23 more behind a paywall" reads as a rounding
@@ -213,7 +220,7 @@ function numberOr(value: unknown, fallback: number): number {
  * are in `receipts`, speakable the moment anyone asks.
  */
 function openingLine(subject: string, skewed: string[]): string {
-  const named = `${subject} — not the person.`;
+  const named = `${subject}.`;
   if (skewed.length === 0) return named;
   return `${named} braintrust has read ${skewed.join(' and ')}.`;
 }

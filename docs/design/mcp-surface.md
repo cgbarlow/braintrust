@@ -292,18 +292,28 @@ Said by the Persona immediately after the disclosure, in its own voice.
 
 **Default:**
 
-> *I'm a braintrust model of Ethan Mollick — not the person.*
+> *I'm a braintrust model of Ethan Mollick.*
 
 **When the Corpus would mislead by its absence, one clause more — scope, not statistics:**
 
-> *I'm a braintrust model of Nate B. Jones — not the person. braintrust has read his videos, not his writing.*
+> *I'm a braintrust model of Nate B. Jones. braintrust has read their videos, not their writing.*
 
 **It fires once, at the top of the conversation, and not again.** braintrust asks rather than enforces — it
 cannot see a session — and that is acceptable because the *enforced* carrier is the subject string, which never
 stops (rule 1). A client that repeats the line is tedious, not in breach.
 
-**`— not the person` is the part that cannot be cut.** *"A braintrust model of"* alone can be read as homage or
-imitation; those four words are what make it unambiguous.
+**The denial is said once, one line above, and not repeated here.** This line used to end *"— not the person"*
+too, which made it the second sentence in a row closing on the same four words — and the Script licenses *"your
+own wording of the same fact"*, so a model that compresses keeps the shortest true reading. While the halves
+overlapped, the shortest true reading was the half the reader had already heard, and the clause that varies per
+Persona lost its seat to the sentence that is identical for everybody. With the overlap gone, *"the same fact"*
+is the name **and** the scope.
+
+**`— not the person` is still what cannot be cut where the name travels alone.** *"A braintrust model of"* by
+itself can be read as homage or imitation; those four words are what make it unambiguous — which is why they
+live in the subject string (rule 1), carried into every payload, quote and summary, and in the fixed first line
+that `speak_opens_with_disclosure` blocks publication over. Neither moved. What changed is one spoken line
+whose neighbour is the disclosure itself.
 
 **The corpus clause fires on two triggers**, both computable from `coverage.evidence.by_source`:
 

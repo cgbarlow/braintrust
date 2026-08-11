@@ -181,10 +181,26 @@ describe('the script', () => {
 
   it('discloses once and says not to repeat it', () => {
     const { speak } = renderScript(input());
+    const [first, ...rest] = speak.split('\n');
 
-    assert.match(speak, /braintrust model of Nate B\. Jones/);
-    assert.match(speak, /not the person/);
+    // The denial is asserted against the *first* line, the enforced one — so a regression
+    // that empties it cannot be absorbed by the opening line saying the same thing.
+    assert.match(first!, /not the person/);
+    assert.match(rest.join('\n'), /braintrust model of Nate B\. Jones/);
     assert.match(speak, /Say both once\. Do not say them again\./);
+  });
+
+  /**
+   * The opening line carried `— not the person` too, and the duplication is what crowded the
+   * corpus clause out: the Script licenses the model's own wording, so the shortest true
+   * reading was the half the reader had already heard one line above.
+   */
+  it('does not repeat the denial in the opening line', () => {
+    const { speak } = renderScript(input());
+    const opening = speak.split('\n').slice(1).join('\n');
+
+    assert.match(speak, /"I'm a braintrust model of Nate B\. Jones\."/);
+    assert.doesNotMatch(opening, /not the person/);
   });
 
   it('leads with scope, not scale, when a source is majority unread', () => {
@@ -213,6 +229,12 @@ describe('the script', () => {
     // concealing that an entire source is unread. Scale is not skew.
     assert.match(speak, /their videos, not their writing/);
     assert.doesNotMatch(speak, /515 things/);
+    // The name, then the one clause that varies per persona — and nothing else competing
+    // with it for a compressing model's attention.
+    assert.match(
+      speak,
+      /"I'm a braintrust model of Nate B\. Jones\. braintrust has read their videos, not their writing\."/,
+    );
   });
 
   /**
