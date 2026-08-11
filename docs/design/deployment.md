@@ -256,8 +256,9 @@ registration has to work against an empty database.
 | **Two deploys of one image** instead of one. | §2 |
 | **The shared secret lives in client config files and shell history**, and rotating it means re-registering every client. | §4 |
 | **braintrust leaves OB1's data-access path.** Direct Postgres rather than PostgREST and the service-role key. | §5 |
-| **Nothing is monitored.** A persistently failing compiler is silent, and this deployment does not change that. | §2 |
-| **A Persona serves behind the compiler for up to a day after a rules change.** The read-triggered rebuild is removed; the only trigger is the daily cron job. | §2 |
+| **A Persona serves behind the compiler for one cycle by design.** The read-triggered rebuild is removed; the only trigger is the daily cron job. | §2 |
+| **Behind by two cycles is the fault.** The stuck-rebuild ledger tracks consecutive cycles behind; two or more files a deduplicated issue and the persona speaks its own limit in voice. The check runs on braintrust's own rows, needs no model call, and cannot be unaskable. | §2, [issue #200](https://github.com/cgbarlow/braintrust/issues/200) |
+| **Nothing else is monitored.** The interrogation path and the compile gate are unmonitored; a persistently failing assertion is silent until it has outlived the day, and only the stuck-rebuild check files issues as a matter of course. | §2 |
 
 ## Deliberately not decided
 

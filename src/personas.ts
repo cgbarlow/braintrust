@@ -6,7 +6,7 @@
  * See docs/design/mcp-surface.md §1 and §2.
  */
 
-import { loadCurrent, personExists } from './compile/store.js';
+import { loadCurrent, personExists, stuckRebuildEvidenceFor } from './compile/store.js';
 import { COMPILER_VERSION, retiredLayers, withheldLayers } from './compile/version.js';
 import type { Db } from './db.js';
 import { subjectFor } from './disclosure.js';
@@ -361,7 +361,8 @@ export async function loadPersona(db: Db, person: string): Promise<LoadedPersona
   const loaded = await currentOrFail(db, slug);
   const subject = subjectFor(loaded.display_name);
   const withdrawn = withdrawnLayers(await escalatedFaults(db), slug);
-  const { speak, receipts } = renderScript(scriptInputFrom(subject, layersOf(loaded, withdrawn)));
+  const stuckRebuild = await stuckRebuildEvidenceFor(db, slug);
+  const { speak, receipts } = renderScript(scriptInputFrom(subject, layersOf(loaded, withdrawn), stuckRebuild));
 
   return {
     subject,

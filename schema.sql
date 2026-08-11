@@ -484,9 +484,34 @@ comment on column braintrust_silences.attempts is
   'running stops the clock rather than hiding behind it.';
 
 comment on column braintrust_silences.reported_at is
-  'Set on every row of one outage at once, because one outage files one issue '
-  'listing every assertion that went unchecked. A single reported row silences the '
+  'Set on every row of one outage at once, because one outage files one issue
+  'listing every assertion that went unchecked. A single reported row silences the
   'whole arm: braintrust files once and never re-files while the ledger stays open.';
+
+-- ---------------------------------------------------------------------------
+-- Stuck rebuilds: personas behind the compiler for two or more cycles
+--
+-- One cycle behind is the design (daily rebuild, up to one day lag), and says
+-- nothing. Two or more means the rebuild is not completing, which is a fault
+-- only a code change clears — an issue is filed, deduped so a persistently
+-- stuck persona does not file daily, and the persona speaks its own limit
+-- in voice through the Script.
+-- ---------------------------------------------------------------------------
+
+create table if not exists braintrust_stuck_rebuilds (
+  person_slug     text primary key,
+  first_stuck_at  timestamptz not null default now(),
+  cycles_behind   int not null default 1
+);
+
+comment on table braintrust_stuck_rebuilds is
+  'Tracked every cycle, and reset when the persona catches up. A cycle is one
+  'daily run of the scheduled job: one cycle behind by design (the build queue),
+  'two or more is a stuck rebuild that will not complete.';
+
+comment on column braintrust_stuck_rebuilds.first_stuck_at is
+  'When this persona was first observed behind. Never moved once set, so the
+  'fault clock runs from the real start, not from the most recent re-observation.';
 
 -- ---------------------------------------------------------------------------
 -- House style
@@ -520,7 +545,8 @@ begin
     'braintrust_through_line_items',
     'braintrust_interrogations',
     'braintrust_faults',
-    'braintrust_silences'
+    'braintrust_silences',
+    'braintrust_stuck_rebuilds'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);

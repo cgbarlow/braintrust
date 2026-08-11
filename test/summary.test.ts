@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { summarise, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
+import type { StuckRebuild } from '../src/compile/store.js';
 
 function report(overrides: Partial<CycleReport> = {}): CycleReport {
   return {
@@ -19,6 +20,7 @@ function report(overrides: Partial<CycleReport> = {}): CycleReport {
     blocked: 0,
     rebuild_pending: [],
     serving_behind: [],
+    stuck: [] as StuckRebuild[],
     stopped_early: false,
     corpus: {
       pending: 0,
@@ -312,6 +314,41 @@ describe('the run summary', () => {
 
       assert.match(idle, /nothing was due/);
       assert.match(idle, /serving behind the compiler: nate-b-jones/);
+    });
+  });
+
+  describe('a persona stuck behind the compiler for two or more cycles', () => {
+    const stuckReport = (cycles: number) =>
+      report({
+        serving_behind: ['nate-b-jones'],
+        stuck: [{ person_slug: 'nate-b-jones', first_stuck_at: '2026-08-08T09:00:00.000Z', cycles_behind: cycles }],
+      });
+
+    it('says nothing when nobody is stuck', () => {
+      assert.doesNotMatch(summarise(report()), /stuck behind/);
+    });
+
+    it('reports the stuck persona with the cycle count when two or more', () => {
+      const summary = summarise(stuckReport(2));
+
+      assert.match(summary, /stuck behind the compiler: nate-b-jones/);
+      assert.match(summary, /2\+ cycles/);
+      assert.match(summary, /issue filed/);
+    });
+
+    it('says so even on a run where nothing was due', () => {
+      const idle = summarise(
+        report({
+          sources: [],
+          notes: undefined,
+          compile: undefined,
+          serving_behind: [],
+          stuck: [{ person_slug: 'nate-b-jones', first_stuck_at: '2026-08-08T09:00:00.000Z', cycles_behind: 2 }],
+        }),
+      );
+
+      assert.match(idle, /nothing was due/);
+      assert.match(idle, /stuck behind/);
     });
   });
 });
