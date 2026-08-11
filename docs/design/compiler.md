@@ -964,28 +964,60 @@ A Persona behind the compiler is the first kind — it is rebuilt and nobody nee
 shown to be inventing claims is the second: the fault is in the compiler, equal across the fleet, and nothing
 braintrust can do on its own clears it.
 
-### The four assertions
+### The five assertions
 
 | Assertion | Scope | Withdrawn if unrepaired |
 |---|---|---|
 | `the_model_cannot_fake_this_individual` | persona | `reasoning` |
+| `the_persona_can_source_its_claims` | persona | `reasoning` |
 | `the_first_reply_carries_the_disclosure` | compiler | — |
 | `an_empty_answer_is_admitted_and_not_filled` | compiler | `reasoning` |
 | `a_persona_that_cannot_reach_the_record_says_so` | compiler | `reasoning` |
 
-**Three of the four are properties of the compiler rather than of the person**, so they run once per compiler
+**Three of the five are properties of the compiler rather than of the person**, so they run once per compiler
 version against one subject rather than once per Persona in the fleet — *whoever the base model knows best*,
-stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. Only *can the
-model fake this individual* is a fact about a person, and it runs per compile.
+stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The two
+persona-scoped assertions run per compile: one is a fact about a person, and the other hunts unknowns.
 
 **The schedule is compiler change plus a weekly sweep.** The version arm asks whether braintrust's own change
 broke something; the sweep exists because the synthesiser is a third party that moves with no version of
 braintrust's changing at all. The persona-scoped assertion has a **third trigger the other three do not: a
 rebuild** — it is judged against the claims braintrust holds for somebody, and a Compile changes those.
 
+### Receipt checking: the assertion that hunts unknowns
+
+[#204](https://github.com/cgbarlow/braintrust/issues/204)
+
+`the_persona_can_source_its_claims` is the fifth assertion and the only one that **hunts unknowns rather
+than checking known faults.** Every other assertion was written after a human found the failure it guards.
+This one files candidates — any sentence a persona cannot source when asked — and is chartered to catch the
+ninth failure, whatever it is, provided it is a persona saying something it cannot back.
+
+**It is not a better assertion and it never judges.** It asks a persona a question drawn from their own
+corpus, asks for receipts (the sources of each claim), and verifies each against the record. Every check
+is a count — `indexOf` against the item body — with no model call in the verification path. It is the
+same verifier the reader-facing `braintrust_verify_sources` already uses, pointed at a sweep instead of a
+reader.
+
+**Questions come from each Person's own corpus** — items braintrust holds. Free, never stale, no authoring
+burden, and it grows as a corpus grows: the benchmark is made of the job and cannot drift from it.
+
+**A sentence the persona cannot source produces a candidate.** It files a deduped issue on first sight,
+through the same fault ledger every other assertion uses. Flukes reach the maintainer, by decision, until
+the noise rate is known.
+
+**Three blind spots, recorded here:**
+1. **An unsupported real quote passes.** The verifier proves a quote exists, never that it supports the
+   sentence beside it — that remains [#155](https://github.com/cgbarlow/braintrust/issues/155)'s territory.
+2. **Tone is invisible.** The generic-voice breach stays invisible to this instrument entirely — it
+   detects unsourced claims, never tone or register.
+3. **Flukes reach the maintainer.** Every non-reproducible synthesiser fluke files an issue, by design,
+   until the noise rate is known. This is an accepted cost of hunting unknowns.
+
 **The judge is a model too**, and that is open — [#155](https://github.com/cgbarlow/braintrust/issues/155).
-One of the four needs no judge (the disclosure is a string comparison, never a regex), and the three that do
-state their rubric as a single yes/no about a reply that is kept on the record.
+One of the five needs no judge (the disclosure is a string comparison, never a regex), and the three that do
+state their rubric as a single yes/no about a reply that is kept on the record. The receipt-checking
+assertion needs no judge either — verification is a mechanical `indexOf`.
 
 ### What a failure does, and does not do
 
@@ -1003,6 +1035,16 @@ many runs re-observe it, and it clears on a **pass** rather than on the issue be
 counting attempts. Past it, the affected layer goes **absent** from what is served — silently, exactly like a
 layer withheld for a rules change, because there is no second kind of silence — and a second issue opens. A
 passing interrogation restores it with no rebuild.
+
+**The receipt-checking assertion costs roughly twenty model calls a week for the whole fleet.** One call per
+persona per sweep to ask the question; the verification path has no model call in it. This is the same
+budget that caught the last two failures by hand, now spent on a schedule instead of on a human noticing.
+
+**The sweep also counts whether the ask fires the tool at all.** braintrust is its own reader in the sweep,
+and a persona that does not reach for the cited item is detected at the parse step: no claim-source pairs
+in the reply means a candidate. Persistent failure files against braintrust's own tool description, naming
+no Person — it inherits the measured boundary that a model uses a tool it can reach, 21 of 21, and fails
+when the tool is deferred.
 
 **Nothing in this section writes to a Compile, a layer or a version.** That is what makes *keeps serving
 unchanged* checkable rather than merely intended: the interrogation has three tables of its own and touches

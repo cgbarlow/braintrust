@@ -127,6 +127,7 @@ function interrogatingDb(seed: {
   faults?: FaultSeed[];
   silences?: SilenceSeed[];
   claims?: { slug: string; statement: string }[];
+  items?: { title: string | null; url: string; body_text: string | null }[];
 } = {}) {
   const silences = new Map<string, Record<string, unknown>>();
   for (const silence of seed.silences ?? []) {
@@ -206,6 +207,10 @@ function interrogatingDb(seed: {
 
     if (flat.includes('distinct on (assertion, person_slug)')) {
       return (seed.last ?? []).map((run) => ({ ...run, ran_at: new Date(run.ran_at) }));
+    }
+
+    if (flat.includes('from braintrust_items i') && flat.includes("retrieval = 'retrieved'")) {
+      return seed.items ?? [];
     }
 
     if (flat.includes('from braintrust_positions pos')) {
@@ -362,19 +367,19 @@ function fault(seed: FaultSeed): Fault {
 // ---------------------------------------------------------------------------
 
 describe('the assertions braintrust makes about itself', () => {
-  it('covers the four, and says which of them are about the compiler rather than a person', () => {
+  it('covers the five, and says which of them are about the compiler rather than a person', () => {
     assert.deepEqual(assertionIds().sort(), [
       'a_persona_that_cannot_reach_the_record_says_so',
       'an_empty_answer_is_admitted_and_not_filled',
       DISCLOSURE_ASSERTION,
       FAKING_ASSERTION,
+      'the_persona_can_source_its_claims',
     ].sort());
 
-    // Three of four are properties of the compiler, so they run once per compiler version
-    // rather than once per persona. Only "can the model fake this individual" is about a
-    // person, which is the whole reason the fleet is not re-tested five times for one fact.
+    // Three of five are properties of the compiler, so they run once per compiler version
+    // rather than once per persona. Two are about a person and run per compile.
     const perPerson = ASSERTIONS.filter((one) => one.scope === 'persona').map((one) => one.id);
-    assert.deepEqual(perPerson, [FAKING_ASSERTION]);
+    assert.deepEqual(perPerson.sort(), [FAKING_ASSERTION, 'the_persona_can_source_its_claims'].sort());
   });
 
   it('asks with no way to look anything up, which is the condition being asserted about', async () => {
@@ -428,6 +433,85 @@ describe('the assertions braintrust makes about itself', () => {
     );
     assert.equal(nearly.passed, false);
   });
+
+  describe('the receipt-checking assertion', () => {
+    const RECEIPT_ID = 'the_persona_can_source_its_claims';
+
+    const anItem = {
+      title: 'Quests beat goals',
+      url: 'https://example.com/quests-beat-goals',
+      body_text: 'Quests beat goals. This is a deep claim I stand by.',
+    };
+
+    const aSubject = (items?: typeof anItem[]) => ({
+      person: 'nate-b-jones',
+      subject: 'braintrust model of Nate B. Jones',
+      speak: 'a script',
+      claims: ['Quests beat goals.'],
+      nothing_matched: {},
+      items: items ?? [anItem],
+    });
+
+    it('passes when there are no items to ask about, because there is nothing to check', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const result = await receipt.run(
+        { person: 'thin', subject: 's', speak: 'a script', claims: [], nothing_matched: {}, items: [] },
+        stubInterrogator(),
+      );
+      assert.equal(result.passed, true);
+    });
+
+    it('passes when the persona correctly cites a claim from the item', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply = `I argued that goals are fleeting but quests endure.\n\nCLAIM: Quests beat goals\nSOURCE: https://example.com/quests-beat-goals\n`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('fails when the persona cites a claim not found in the item body', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply = `I argued that AI will replace all coders.\n\nCLAIM: AI will replace all coders\nSOURCE: https://example.com/quests-beat-goals\n`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /could not be sourced/);
+    });
+
+    it('fails when the persona does not provide claims in the expected format', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const result = await receipt.run(
+        aSubject(),
+        stubInterrogator({ reply: 'I argued about goals in my piece.' }),
+      );
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /did not provide any claims with sources/);
+    });
+
+    it('asks with the tool available, so the persona can cite the record', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const interrogator = stubInterrogator();
+      await receipt.run(aSubject(), interrogator);
+      const exchange = interrogator.asked.find((one) => one.exchange)!.exchange!;
+      // The persona gets the item to cite from — the tool is present.
+      assert.ok(exchange.found !== null);
+      assert.ok((exchange.found as Record<string, unknown>).item_url === anItem.url);
+    });
+
+    it('does not use a judge — verification is a count against the item body', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const interrogator = stubInterrogator();
+      await receipt.run(aSubject(), interrogator);
+      // No rubric was presented to the judge — no model call for judgement.
+      assert.equal(interrogator.asked.filter((one) => one.rubric).length, 0);
+    });
+
+    it('fails when the source URL does not match the expected item', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply = `I argued about goals.\n\nCLAIM: Quests beat goals\nSOURCE: https://example.com/wrong-item\n`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /does not match the item URL/);
+    });
+  });
 });
 
 describe('the schedule', () => {
@@ -441,12 +525,14 @@ describe('the schedule', () => {
   it('asks everything that has never been asked', () => {
     const due = dueAssertions({ fleet, hardest: 'nate-b-jones', last: [], compilerVersion: 'v1', now: NOW });
 
-    // One per person for the persona-scoped assertion, one each for the three about the
-    // compiler — five, not ten.
-    assert.equal(due.length, 5);
+    // Two per person for the persona-scoped assertions, one each for the three about the
+    // compiler — seven, not ten.
+    assert.equal(due.length, 7);
+    const personaScoped = due.filter((one) => one.assertion.scope === 'persona');
+    assert.equal(personaScoped.length, 4);
     assert.deepEqual(
-      due.filter((one) => one.assertion.id === FAKING_ASSERTION).map((one) => one.person),
-      slugs,
+      [...new Set(personaScoped.map((one) => one.person))].sort(),
+      [...slugs].sort(),
     );
   });
 
@@ -492,7 +578,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(moved.length, 5);
+    assert.equal(moved.length, 7);
     assert.deepEqual([...new Set(moved.map((one) => one.why))], ['compiler_moved']);
 
     // The weekly arm exists because the synthesiser is a third party: it moves with no
@@ -504,7 +590,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(swept.length, 5);
+    assert.equal(swept.length, 7);
     assert.deepEqual([...new Set(swept.map((one) => one.why))], ['weekly_sweep']);
   });
 
@@ -531,10 +617,14 @@ describe('the schedule', () => {
     // A rebuild changes the claims this assertion is judged against, so asking once per
     // compiler version would be asking about a persona that no longer exists. The other
     // three are about the payload's shape, which a rebuild does not move — and the person
-    // who was not rebuilt is not re-asked either.
+    // who was not rebuilt is not re-asked either. Both persona-scoped assertions are
+    // re-asked because both depend on the current compile.
     assert.deepEqual(
-      due.map((one) => [one.assertion.id, one.person, one.why]),
-      [[FAKING_ASSERTION, 'nate-b-jones', 'recompiled']],
+      due.map((one) => [one.assertion.id, one.person, one.why]).sort(),
+      [
+        [FAKING_ASSERTION, 'nate-b-jones', 'recompiled'],
+        ['the_persona_can_source_its_claims', 'nate-b-jones', 'recompiled'],
+      ],
     );
   });
 
@@ -637,10 +727,15 @@ describe('an interrogator braintrust cannot reach', () => {
     });
 
     // An endpoint having a bad afternoon is not evidence that a persona is inventing claims.
-    assert.deepEqual([...new Set(report.asked.map((one) => one.passed))], [null]);
+    // The receipt-checking assertion passes (no items to check) — everything else is
+    // unreachable.
+    assert.ok(report.asked.length > 0);
+    assert.ok(report.asked.some((one) => one.passed === null));
+    assert.ok(report.asked.some((one) => one.passed === true));
     assert.equal(db.faults.size, 0);
-    // No verdict row either, which is what leaves the assertion due for the next run.
-    assert.equal(db.interrogations.length, 0);
+    // The receipt-checking assertion is recorded (it passed without calling the interrogator).
+    // Everything else leaves no verdict row, which is what keeps them due.
+    assert.ok(db.interrogations.length > 0);
     // Nothing is filed on the first bad night: the day has not passed.
     assert.deepEqual(issues.filed, []);
   });
@@ -665,8 +760,11 @@ describe('an assertion that could not be asked', () => {
     // The first run of this on production read "2 passed, 0 failed, 6 could not be asked"
     // and wrote nothing at all — which is what made every dashboard read 0 failed while the
     // central guarantee went unverified.
-    assert.equal(report.silenced.length, report.asked.length);
-    assert.equal(db.silences.size, report.asked.length);
+    // The receipt-checking assertion is not silenced: it passes because there are no items.
+    const silenced = report.asked.filter((one) => one.passed === null);
+    assert.equal(report.silenced.length, silenced.length);
+    assert.equal(db.silences.size, silenced.length);
+    assert.ok(silenced.length > 0);
 
     const row = [...db.silences.values()][0]!;
     assert.equal(row.attempts, 1);

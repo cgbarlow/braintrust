@@ -98,6 +98,39 @@ export async function claimsHeldFor(
   return rows;
 }
 
+/**
+ * Recent items from a person's corpus with enough to verify sources against.
+ *
+ * The receipt-checking assertion uses these to generate questions and verify
+ * claims. Only items that were actually retrieved and have body text are
+ * returned — an item nobody read is not something a persona can cite.
+ *
+ * Ten items is a floor for question variety, not a budget: the sweep runs once
+ * a week per person, and a single call is what is being spent here.
+ */
+export async function corpusItems(
+  db: Db,
+  person: string,
+): Promise<{ title: string | null; url: string; body_text: string | null }[]> {
+  const { rows } = await db.query<{
+    title: string | null;
+    url: string;
+    body_text: string | null;
+  }>(
+    `select i.title, i.url, i.body_text
+       from braintrust_items i
+       join braintrust_sources s on s.id = i.source_id
+       join braintrust_people p on p.id = s.person_id
+      where p.slug = $1
+        and i.retrieval = 'retrieved'
+        and i.body_text is not null
+      order by i.published_at desc nulls last, i.created_at desc
+      limit 10`,
+    [person],
+  );
+  return rows;
+}
+
 /** The newest run of each assertion against each fault key. What the schedule reads. */
 export async function lastInterrogations(db: Db): Promise<LastRun[]> {
   const { rows } = await db.query<{
