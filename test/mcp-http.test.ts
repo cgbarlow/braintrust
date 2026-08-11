@@ -153,6 +153,7 @@ describe('the MCP surface', () => {
       'braintrust_load_persona',
       'braintrust_recent_items',
       'braintrust_unfollow_person',
+      'braintrust_verify_sources',
     ]);
 
     const byName = new Map(tools.map((tool) => [tool.name, tool]));

@@ -40,9 +40,9 @@ reasoning behind each choice is in the resolution comments linked above — **th
 
 ---
 
-## Eight tools, split by what they are for
+## Nine tools, split by what they are for
 
-**Five read tools, two write tools, and one more spent deliberately.** The split is not incidental: the read
+**Six read tools, two write tools, and one more spent deliberately.** The split is not incidental: the read
 paths mirror the [bounded-core / growing-layer boundary](./compiler.md#2-six-layers-a-bounded-core-and-an-indexed-growing-layer),
 so the tool list itself teaches a client the distinction rather than hiding it behind a mode parameter.
 
@@ -53,13 +53,14 @@ so the tool list itself teaches a client the distinction rather than hiding it b
 | `braintrust_find_positions` | read | true |
 | `braintrust_recent_items` | read | true |
 | `braintrust_explain_persona` | read | true |
+| `braintrust_verify_sources` | read | true |
 | `braintrust_follow_person` | write, **human-gated** | false |
 | `braintrust_refresh_persona` | write, AI-callable | false |
 | `braintrust_unfollow_person` | write | false |
 
 All tools are prefixed `braintrust_`. **Nothing is named `search` or `fetch`** — OB1 reserves those.
 
-Five was set as a ceiling requiring a reason. Three are now spent, and all three are recorded:
+Six was set as a ceiling requiring a reason. Four are now spent, and all four are recorded:
 
 - `braintrust_unfollow_person` — the alternative was no path at all, and it sits unambiguously beside
   `follow_person`, so it adds none of the routing confusion the ceiling protects against.
@@ -74,8 +75,14 @@ Five was set as a ceiling requiring a reason. Three are now spent, and all three
   question whose whole content is *recent* has no topic to give them. It is not a mode of `find_positions`: a
   `sort` parameter would put a recency question through a semantic gate that has nothing to rank it by, which
   is precisely the failure that made this tool necessary.
+- `braintrust_verify_sources` — spent by
+  [#203](https://github.com/cgbarlow/braintrust/issues/203). No existing tool can answer *where did that come
+  from* because the thing being checked is what the persona just said — none of load, find, recent or explain
+  receives a sentence to verify. Making it a parameter of `find_positions` would let the model select which
+  sentence to submit, which is the selection being gated against (§9). A tool sits beside every other read tool
+  because the record is now produced on ask rather than in the payload.
 
-**The read tools now answer four different questions, and the split is the point:**
+**The read tools now answer five different questions, and the split is the point:**
 
 | Question | Tool | Evidence about |
 |---|---|---|
@@ -83,9 +90,11 @@ Five was set as a ceiling requiring a reason. Three are now spent, and all three
 | *What did they say about X?* | `find_positions` | the **Person** |
 | *What have they published lately?* | `recent_items` | the **Corpus** |
 | *How does braintrust know any of this?* | `explain_persona` | **braintrust** |
+| *Where did that come from?* | `verify_sources` | **the record** |
 
-**The fourth row is the one the surface was missing.** The first three all ask *about what*; none of them can
-answer *about when*. See §4.
+**The fifth row answers a different question from the other four.** The first three ask *about what*; the fourth
+asks *about braintrust*. This one asks *check what was said against what was stored* — a verification the
+persona cannot perform itself, because the thing being checked is what it just said.
 
 **Collapsing the read tools into one `ask_persona` was considered and rejected** — it makes *"give me a cited
 fact, not a synthesis"* impossible to express.
@@ -1038,8 +1047,82 @@ strictly less exposure, and it is fully reversible because nothing is deleted.
 as a field alongside counts of what was kept — because the thing most likely to be misread here is what the
 word *unfollow* covers, and a sentence in a doc nobody has open is not where that gets settled.
 
-It is idempotent: unfollowing twice reports the pause it already set rather than moving the timestamp, which
+**It is idempotent:** unfollowing twice reports the pause it already set rather than moving the timestamp, which
 would rewrite when the user actually decided.
+
+### 9. `braintrust_verify_sources`
+
+**`(person, reply, sentences)`**
+
+A listener asks where that came from, and braintrust — not the persona — answers. Every sentence comes back
+**sourced**, **unsourced** or **never claimed**, in braintrust's own words. This is the door
+[#194](https://github.com/cgbarlow/braintrust/issues/194) decided on: the record is reachable on the next turn,
+and nothing braintrust ships tells a listener they may ask.
+
+```jsonc
+{ "subject": "braintrust model of Nate B. Jones",
+  "results": [
+    { "sentence": "Most people should pick one of two assistants…",
+      "verdict": "sourced" },
+    { "sentence": "The paid models are already better at planning.",
+      "verdict": "unsourced",
+      "detail": "The item exists and braintrust holds its body, but the sentence is not in it. …" },
+    { "sentence": "Agents change how work gets done.",
+      "verdict": "never_claimed",
+      "detail": "braintrust has no item matching the one you named for this person. …" }
+  ] }
+```
+
+**The ask is a verification, not a recitation.** The client hands braintrust the persona's **whole reply**,
+plus — per sentence — the source the persona claims for it. braintrust checks each claim against the row and
+returns the record in its own words, never in the person's voice.
+
+**Three verdicts, and the design follows from them:**
+
+- **sourced** — the sentence is in the item body. braintrust found it.
+- **unsourced** — the item exists but the sentence is not in its body. The persona attributed text the source
+  does not contain. braintrust refutes, and never repeats the persona's words back.
+- **never claimed** — the persona offered no source for this sentence, or named an item braintrust does not
+  hold for this person. braintrust says the item does not exist rather than repeating the attribution.
+
+**The model proposes; braintrust refutes.** A persona that authors a title still authors it, and braintrust
+says the item does not exist rather than repeating it.
+
+**Three branches were closed by that shape:**
+
+- **Re-read or reconstruct? Neither.** Both put the citation's words in the model's mouth — the exact place the
+  forgery came from, *after* retrieving. The words are braintrust's.
+- **The whole reply, not the claim asked about.** The sentence most likely to be invented is the one least
+  likely to be volunteered, so letting the model choose what to submit hands the selection to the thing being
+  checked. Every sentence comes back sourced, unsourced or never claimed, and the reader trips over the third
+  category rather than having to suspect it.
+- **braintrust ranking sentences to items is rejected.** A persona paraphrases by design now, so a substring
+  tie is dead and the only server-side tie available is the embedding instrument at 80–82% — roughly one
+  sentence in five cited to the wrong item. A distance floor is permitted under the ranking rule and is still
+  not worth 20%.
+
+**Every check is a count against the record** — `indexOf` on the Item body, the same objective verifier
+`npm run eval` earns its no-model rule from. No judge, no model call, no opinion.
+
+**On failure the reader is told and the maintainer is filed.** braintrust states plainly, in its own words,
+that the persona cited something the item does not say. A deduped issue opens in the fault ledger, and **the
+persona keeps serving unchanged** — the fault is the compiler's, and one live call to a non-reproducible
+synthesiser is evidence rather than proof.
+
+**Costs, named.** A reader who never thinks to ask never learns the record exists — the destination's *a reader
+can tell the difference from the payload alone* holds on the payload, and for the reader it now means *a reader
+who asks*. braintrust sees only the answers somebody asked about. Reader-triggered flukes reach the maintainer.
+And the persona still authors the tie it claims: braintrust refutes, it does not attribute, so a sentence with
+no claim attached comes back *never claimed*, which is a weaker tell than a refutation.
+
+**No invitation ships.** Not in the fixed disclosure line, not in the self-identification line, not as a
+trailing offer. A listener who asks gets the record, in any wording, at any turn. A listener who never thinks
+to ask never learns it is there.
+
+**One measurement fact this rests on.** `hermes -z` is one-shot because it is scriptable, which is why probes
+reach for it; a reader runs `hermes chat`, with `--continue` and `--resume` besides, and this map's other live
+client is multi-turn too. The genuinely turnless deployments have no human in front of them to ask anything,
+so nothing is owed there. **Any test or probe touching the record runs multi-turn.**
 
 ---
 
