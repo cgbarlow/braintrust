@@ -8,7 +8,6 @@
  * See docs/design/deployment.md §2.
  */
 
-import { createSynthesiser, SYNTHESIS_TIMEOUT_MS } from '../compile/index.js';
 import { ConfigError, loadConfig } from '../config.js';
 import { createDb } from '../db.js';
 import { createApp, HEALTH_PATH, MCP_PATH } from '../http/app.js';
@@ -45,17 +44,12 @@ async function main(): Promise<void> {
   const readiness = await retrieval.check();
   if (!readiness.ready) console.warn(`${SERVER_NAME}: retrieval is unavailable. ${readiness.reason}`);
 
-  // The web service can now do the expensive half too, for one person at a time, because
-  // `braintrust_refresh_persona` runs the same cycle the job does. It is still the job
-  // that does the sweeping: a refresh is bounded and asked for, where the daily run is
-  // unattended and allowed to take half an hour.
+  // A refresh fetches and reads new items. Compiles are not started from the web
+  // process — they run on the cron deployment — so a refresh prepares work that the
+  // next daily compile picks up.
   const extractor = createExtractor(config.extractor, createFetcher({ timeoutMs: EXTRACTOR_TIMEOUT_MS }));
-  const synthesiser = createSynthesiser(
-    config.extractor,
-    createFetcher({ timeoutMs: SYNTHESIS_TIMEOUT_MS }),
-  );
 
-  const app = createApp({ db, mcpKey: config.mcpKey, retrieval, embedder, extractor, synthesiser });
+  const app = createApp({ db, mcpKey: config.mcpKey, retrieval, embedder, extractor });
 
   const server = app.listen(config.port, () => {
     console.log(
@@ -64,8 +58,8 @@ async function main(): Promise<void> {
         `  health  ${HEALTH_PATH}\n` +
         `  embeddings: ${config.embeddings.model}, ${dimension} dimensions, at ${embedder.url}\n` +
         `  retrieval: ${readiness.ready ? 'ready' : 'unavailable until the corpus is embedded'}\n` +
-        `  refresh: reading as ${extractor.generation}, compiling as ${synthesiser.generation}, ` +
-        `via ${extractor.url}`,
+        `  refresh: reading as ${extractor.generation}, via ${extractor.url}. ` +
+        `Compiles run on the cron deployment.`,
     );
   });
 

@@ -12,7 +12,6 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
-import type { Synthesiser } from '../compile/index.js';
 import type { TransactionalDb } from '../db.js';
 import { createConfirmTokenStore, type ConfirmTokenStore } from '../follow/tokens.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from '../mcp.js';
@@ -51,12 +50,12 @@ export type AppDeps = {
   retrieval?: QueryGate;
   embedder?: Embedder;
   /**
-   * What `braintrust_refresh_persona` needs. Absent together means the tool is not
-   * registered — the same posture retrieval takes, for the same reason: a refresh that
-   * cannot rebuild would report a success that left the persona exactly as stale.
+   * What `braintrust_refresh_persona` needs: something to read new items with. Absent
+   * means the tool is not registered. Compiles are not started from the web process —
+   * they run on the cron deployment — so a refresh that fetches without rebuilding is
+   * honest: the next daily compile picks up what it prepared.
    */
   extractor?: Extractor;
-  synthesiser?: Synthesiser;
 };
 
 export function createApp({
@@ -67,7 +66,6 @@ export function createApp({
   retrieval,
   embedder,
   extractor,
-  synthesiser,
 }: AppDeps): Express {
   const confirmTokens = tokens ?? createConfirmTokenStore();
   const sourceFetcher = fetcher ?? createFetcher();
@@ -113,7 +111,7 @@ export function createApp({
       // embedded, which is precisely when a search would be answering nonsense.
       ...(embedder ? { embedder } : {}),
       ...(embedder && retrieval ? { retrieval } : {}),
-      ...(extractor && synthesiser ? { extractor, synthesiser } : {}),
+      ...(extractor ? { extractor } : {}),
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 

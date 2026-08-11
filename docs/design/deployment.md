@@ -36,23 +36,27 @@ host. That is a real regression in *composes cleanly with a user's OB1*, and it 
 
 **The MCP server and the daily job are separate deployments of the same code.**
 
-- **A web service** — always on, answers questions, tiny.
+- **A web service** — always on, answers questions, tiny. Never starts a Compile.
 - **A scheduled job** — wakes daily, runs
   [the cycle](./ingestion.md#the-cycle-in-order) (poll → gap check → drain the Backlog → rebuild), exits.
+  **This is the only path that starts a Compile.**
 
 They share a database and nothing else. No queue, no IPC, no shared memory.
 
 1. **A 26-minute backfill can never slow a question.** Separate processes, separate resource ceilings.
-2. **The platform schedules it.** An in-process timer only fires while the process is up, and a web service
+2. **A deploy cannot kill a rebuild mid-flight.** Compiles run on the cron deployment, which the platform
+   schedules and which does not receive deploys while running. The web service is the deploy target; the
+   cron instance is replaced only when the next run starts.
+3. **The platform schedules it.** An in-process timer only fires while the process is up, and a web service
    that sleeps on idle — which most cheap tiers do — would silently never ingest. That is precisely the
    invisible failure [the daily-clock decision](./ingestion.md#3-one-daily-job-and-everything-expensive-is-a-backlog)
    exists to prevent, reintroduced by the deployment.
-3. **Being killed mid-run costs nothing.** The Backlog is rows, so a deploy, a restart or a platform timeout
+4. **Being killed mid-run costs nothing.** The Backlog is rows, so a deploy, a restart or a platform timeout
    during the backfill loses time and no data.
 
 **Concurrency needs nothing from the deployment.** One rebuild per Person is enforced by a partial unique
-index in the database, so braintrust does not need a guarantee of exactly one instance to stay correct. The
-deployment is free to restart, overlap, or run two web instances.
+index in the database (`unique … where status = 'running'`), so braintrust does not need a guarantee of
+exactly one instance to stay correct. The deployment is free to restart, overlap, or run two web instances.
 
 **Cost:** two deploys of one image instead of one. The job bills only while awake — ~26 minutes once, then
 seconds a day.
@@ -253,6 +257,7 @@ registration has to work against an empty database.
 | **The shared secret lives in client config files and shell history**, and rotating it means re-registering every client. | §4 |
 | **braintrust leaves OB1's data-access path.** Direct Postgres rather than PostgREST and the service-role key. | §5 |
 | **Nothing is monitored.** A persistently failing compiler is silent, and this deployment does not change that. | §2 |
+| **A Persona serves behind the compiler for up to a day after a rules change.** The read-triggered rebuild is removed; the only trigger is the daily cron job. | §2 |
 
 ## Deliberately not decided
 

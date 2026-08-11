@@ -1,18 +1,16 @@
 /**
- * `braintrust_refresh_persona`: the daily cycle, aimed at one Person, right now.
+ * `braintrust_refresh_persona`: the daily cycle's fetch-and-read, aimed at one Person,
+ * right now. Compiles are not started from the web process — they run on the cron
+ * deployment — so a refresh fetches what is new, chunks it, and reads notes, then
+ * the next daily compile picks up everything it prepared.
  *
- * **This module runs no ingest logic of its own.** It resolves a slug, refuses the two
- * cases that should be refused, calls `runCycle` with a scope, and describes what came
- * back. Everything that decides what a poll or a rebuild *is* lives in the cycle, which
- * is the point of "one code path, three triggers" — a refresh that reimplemented the
- * steps would drift from the schedule and nobody would notice until a Persona built by
- * one disagreed with a Persona built by the other.
+ * **This module runs no ingest logic of its own.** It resolves a slug, refuses the
+ * case that should be refused (a paused person), calls `runCycle` with a scope, and
+ * describes what came back. Everything that decides what a poll or a backlog drain
+ * *is* lives in the cycle, which is the point of "one code path, three triggers".
  *
- * Two refusals, and they are the interesting part:
+ * Two refusals, and the paused one is the only one that remains here.
  *
- * - **A rebuild is already running** — the second return shape the spec names. The
- *   database enforces it (`unique … where status = 'running'`), so the refusal is a fact
- *   rather than a courtesy, and that is what makes an ungated, AI-callable refresh safe.
  * - **The Person is paused.** Refreshing them would resume fetching somebody's work
  *   without the handshake that exists to authorise exactly that, so a refresh is not a
  *   way around it. Re-following is.
@@ -20,7 +18,6 @@
  * See docs/design/mcp-surface.md §5 and docs/design/ingestion.md §3.
  */
 
-import { backlogOwed, runningCompile, type Synthesiser } from './compile/index.js';
 import type { TransactionalDb } from './db.js';
 import { subjectFor } from './disclosure.js';
 import { BraintrustError } from './errors.js';
@@ -40,9 +37,6 @@ import type { Embedder } from './retrieval/embed.js';
  * be the spacing. So the fetch half is time-boxed and the answer says what is left — which
  * costs nothing, because the Backlog is rows: the work this call did is on disk, and
  * the next run (or the next refresh) continues from it rather than starting again.
- *
- * The rebuild is not inside the budget. It only happens when the Backlog is empty, so
- * a call that hits this limit does not reach it anyway.
  */
 export const REFRESH_BUDGET_MS = 30_000;
 
@@ -51,9 +45,11 @@ export type RefreshArgs = { person: string };
 export type RefreshDeps = {
   db: TransactionalDb;
   fetcher: Fetcher;
-  /** Required, unlike in the cycle: a refresh that cannot read or rebuild is not a refresh. */
+  /**
+   * Required: a refresh that cannot read new Items is not a refresh. The compile itself
+   * happens on the daily run, so no synthesiser is needed here.
+   */
   extractor: Extractor;
-  synthesiser: Synthesiser;
   embedder?: Embedder | undefined;
   now?: (() => Date) | undefined;
   budgetMs?: number | undefined;
@@ -82,9 +78,6 @@ export type Refreshed = {
   polled: RefreshedSource[];
   discovered: number;
   retrieved: number;
-  /** Items this Person still owes before a rebuild can honestly happen. */
-  still_owed: number;
-  rebuilt: boolean;
   compiled_at: string | null;
   compiler_version: string | null;
   /**
@@ -96,16 +89,15 @@ export type Refreshed = {
    * one is refused outright, above.
    */
   blocked?: BlockedSource[];
-  /** Why there was no rebuild. Absent when there was one. */
-  not_rebuilt?: string;
   took_seconds: number;
   /** True when the fetch budget ran out. The rows written are the progress. */
   stopped_early: boolean;
 };
 
-export type RefreshResponse =
-  | { refreshed: Refreshed; next: string }
-  | { already_running: { person: string; subject: string; started_at: string }; next: string };
+export type RefreshResponse = {
+  refreshed: Refreshed;
+  next: string;
+};
 
 export async function refreshPersona(
   { person: slug }: RefreshArgs,
@@ -136,24 +128,6 @@ export async function refreshPersona(
     );
   }
 
-  // Asked before the cycle rather than left to the compiler, because the answer is the
-  // whole reason this tool has a second return shape: 26 minutes of duplicated work is a
-  // worse answer than one sentence saying somebody else is already doing it.
-  const running = await runningCompile(deps.db, person.id);
-  if (running) {
-    return {
-      already_running: {
-        person: person.slug,
-        subject: subjectFor(person.display_name),
-        started_at: running.started_at,
-      },
-      next:
-        'Nothing was started. One rebuild per person at a time is enforced by the database, so ' +
-        'this call could not have duplicated it even by accident. That rebuild is either the ' +
-        'daily job or another client; wait for it to finish and load the persona then.',
-    };
-  }
-
   const started = now();
   const deadline = started.getTime() + (deps.budgetMs ?? REFRESH_BUDGET_MS);
 
@@ -161,7 +135,6 @@ export async function refreshPersona(
     db: deps.db,
     fetcher: deps.fetcher,
     extractor: deps.extractor,
-    synthesiser: deps.synthesiser,
     embedder: deps.embedder,
     only: { id: person.id, slug: person.slug },
     now,
@@ -170,7 +143,6 @@ export async function refreshPersona(
     ...(deps.log ? { log: deps.log } : {}),
   });
 
-  const owed = await backlogOwed(deps.db, person.id, deps.extractor.generation);
   const after = await personBySlug(deps.db, person.slug);
   const blocked = (await allSourcesForPerson(deps.db, person.id))
     .filter((source) => source.blocked_at !== null)
@@ -182,13 +154,12 @@ export async function refreshPersona(
 
   return {
     refreshed: describe(person.slug, person.display_name, report, {
-      still_owed: owed.to_retrieve + owed.to_chunk + owed.to_read,
       compiled_at: after?.compiled_at ?? null,
       compiler_version: after?.compiler_version ?? null,
       took_seconds: Math.round((now().getTime() - started.getTime()) / 1000),
       blocked,
     }),
-    next: nextStep(report, owed.to_retrieve + owed.to_chunk + owed.to_read),
+    next: nextStep(report),
   };
 }
 
@@ -197,23 +168,12 @@ function describe(
   displayName: string,
   report: CycleReport,
   extra: {
-    still_owed: number;
     compiled_at: string | null;
     compiler_version: string | null;
     took_seconds: number;
     blocked: BlockedSource[];
   },
 ): Refreshed {
-  const rebuilt = report.compile?.compiled.includes(slug) ?? false;
-
-  // Waiting, rejected and failed are three different sentences and one field. The
-  // person reading this wants to know why their persona is not newer, and "the backlog
-  // is not empty" and "it was built and refused" are not the same news.
-  const held =
-    report.compile?.waiting.find((one) => one.person === slug) ??
-    report.compile?.rejected.find((one) => one.person === slug) ??
-    report.compile?.failed.find((one) => one.person === slug);
-
   const refreshed: Refreshed = {
     person: slug,
     subject: subjectFor(displayName),
@@ -232,8 +192,6 @@ function describe(
     })),
     discovered: report.sources.reduce((total, source) => total + source.discovered, 0),
     retrieved: report.sources.reduce((total, source) => total + source.retrieved, 0),
-    still_owed: extra.still_owed,
-    rebuilt,
     compiled_at: extra.compiled_at,
     compiler_version: extra.compiler_version,
     took_seconds: extra.took_seconds,
@@ -241,31 +199,29 @@ function describe(
     ...(extra.blocked.length > 0 ? { blocked: extra.blocked } : {}),
   };
 
-  if (!rebuilt) {
-    refreshed.not_rebuilt = held
-      ? held.reason
-      : 'nothing has arrived that this persona has not already read';
-  }
-
   return refreshed;
 }
 
-function nextStep(report: CycleReport, owed: number): string {
-  if (report.stopped_early || owed > 0) {
+function nextStep(report: CycleReport): string {
+  if (report.stopped_early) {
     return (
-      `${owed} item(s) are still owed, so nothing was rebuilt — a persona measured over half a ` +
-      'corpus is the mistake the wait exists to prevent. The rows this call wrote are on disk ' +
-      'and nothing repeats work: the daily job continues from here, or call this again to ' +
-      'spend another minute on it.'
+      'The fetch budget ran out. The rows this call wrote are on disk and nothing repeats ' +
+      'work: the daily job continues from here, or call this again to spend another minute ' +
+      'on it. Compiles happen on the daily run, so the persona serves what it already has ' +
+      'until then.'
     );
   }
 
-  if (report.compile?.compiled.length) {
-    return 'The persona was rebuilt and is now the one answering. braintrust_load_persona has it.';
+  if (report.sources.length > 0 && report.sources.some((s) => s.discovered > 0 || s.retrieved > 0)) {
+    return (
+      'New content was fetched and read. The next daily compile will rebuild the persona from ' +
+      'everything it now holds. In the meantime, the persona that was answering is still live ' +
+      'and still current — what changed is what the next one will be compiled from.'
+    );
   }
 
   return (
-    'Nothing arrived that this persona has not already read, so nothing was rebuilt — new ' +
-    'content triggers a rebuild, not the asking. The persona that was answering is current.'
+    'Nothing arrived that this persona has not already read, so nothing to compile from. The ' +
+    'persona that was answering is current.'
   );
 }
