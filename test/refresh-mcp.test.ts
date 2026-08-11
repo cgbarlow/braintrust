@@ -20,7 +20,6 @@ import { createApp } from '../src/http/app.js';
 import { createExtractor } from '../src/notes/index.js';
 import { fakeDb, type Answer } from './support/fake-db.js';
 import { fakeExtractor, testExtractorConfig } from './support/notes.js';
-import { fakeSynthesiser } from './support/synthesiser.js';
 import { fakeFetcher, natesRoutes } from './support/sources.js';
 
 const KEY = 'test-shared-secret';
@@ -57,7 +56,6 @@ before(async () => {
     mcpKey: KEY,
     fetcher: fakeFetcher(natesRoutes()),
     extractor: createExtractor(testExtractorConfig, fakeExtractor().fetcher),
-    synthesiser: fakeSynthesiser(),
   });
   http = await new Promise<Server>((resolve) => {
     const listening = app.listen(0, () => resolve(listening));
@@ -109,9 +107,8 @@ describe('the maintenance half of the surface', () => {
 
     assert.match(description, /Call this freely/);
     assert.match(description, /No human needs to approve it/);
-    // The two answers that are not "it worked", both of which are normal.
-    assert.match(description, /`already_running`/);
-    assert.match(description, /New content is what triggers a rebuild, not the asking/);
+    // The daily compile, not the refresh, rebuilds.
+    assert.match(description, /Compiles happen on the daily run/);
     assert.match(description, /paused person is refused/i);
     await client.close();
   });

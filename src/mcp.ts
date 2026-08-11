@@ -11,7 +11,6 @@ import { z } from 'zod';
 import type { TransactionalDb } from './db.js';
 import { DISCLOSURE } from './disclosure.js';
 import { BraintrustError } from './errors.js';
-import type { Synthesiser } from './compile/index.js';
 import { findPositions, MAX_LIMIT, type FindArgs } from './find.js';
 import { followPerson, type FollowArgs } from './follow/index.js';
 import type { ConfirmTokenStore } from './follow/tokens.js';
@@ -20,7 +19,6 @@ import type { Fetcher } from './net/fetch.js';
 import type { Extractor } from './notes/index.js';
 import { explainPersona, listPersonas, loadPersona } from './personas.js';
 import { recentItems, MAX_RECENT, type RecentArgs } from './recent.js';
-import { createRebuildQueue } from './rebuild.js';
 import { refreshPersona, type RefreshArgs } from './refresh.js';
 import type { Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
@@ -44,13 +42,11 @@ export type ServerDeps = {
   embedder?: Embedder | undefined;
   retrieval?: QueryGate | undefined;
   /**
-   * What a refresh needs to finish the job it starts: something to read new items with
-   * and something to rebuild from the notes. Both together or neither — a refresh that
-   * could fetch but never recompile would report success while the persona stayed
-   * exactly as stale as it was, which is worse than a tool the client cannot see.
+   * What a refresh needs: something to read new items with. A refresh no longer triggers
+   * a compile — compiles run on the cron deployment — so a refresh that fetches and reads
+   * without rebuilding is honest: the next daily run picks up the work.
    */
   extractor?: Extractor | undefined;
-  synthesiser?: Synthesiser | undefined;
 };
 
 /**
@@ -109,35 +105,11 @@ export function buildServer({
   embedder,
   retrieval,
   extractor,
-  synthesiser,
 }: ServerDeps): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: DISCLOSURE },
   );
-
-  const rebuilds =
-    extractor && synthesiser
-      ? createRebuildQueue({
-          db,
-          extractor: extractor.generation,
-          synthesiser,
-          ...(embedder ? { embedder } : {}),
-        })
-      : undefined;
-
-  /**
-   * **Queued behind the reader, never in front.** The payload has already been built when
-   * this runs and nothing awaits the rebuild — a read call must never have the most
-   * expensive action in the product sitting behind it. What the reader actually gets from
-   * the version comparison happened inside the load: a tightened gate, and no prose from a
-   * part that moved.
-   */
-  function rebuildIfBehind(payload: { subject: string; compiler_version: string }, person: string): void {
-    void rebuilds?.requestIfBehind(person.trim(), payload.compiler_version).catch(() => {
-      // Deciding whether to rebuild must never fail a read. The daily sweep asks again.
-    });
-  }
 
   server.registerTool(
     'braintrust_list_personas',
@@ -180,7 +152,6 @@ export function buildServer({
     async ({ person }: { person: string }) => {
       try {
         const payload = await loadPersona(db, person);
-        rebuildIfBehind(payload, person);
         return text(payload);
       } catch (error) {
         if (error instanceof BraintrustError) return failure(error.message);
@@ -283,7 +254,6 @@ export function buildServer({
     async ({ person }: { person: string }) => {
       try {
         const payload = await explainPersona(db, person);
-        rebuildIfBehind(payload, person);
         return text(payload);
       } catch (error) {
         if (error instanceof BraintrustError) return failure(error.message);
@@ -451,31 +421,26 @@ export function buildServer({
     },
   );
 
-  if (extractor && synthesiser) {
+  if (extractor) {
     server.registerTool(
       'braintrust_refresh_persona',
       {
         title: 'Refresh a persona now',
         description:
-          'Pull whatever this person has published since braintrust last looked, and rebuild ' +
-          'their persona from it. The same cycle the daily job runs, aimed at one person.\n\n' +
+          'Pull whatever this person has published since braintrust last looked. The same ' +
+          'fetch-and-read cycle the daily job runs, aimed at one person. Compiles happen on ' +
+          'the daily run, so a refreshed persona serves what it already has until then — ' +
+          'the next compile picks up everything this call fetched.\n\n' +
           '**Call this freely.** No human needs to approve it: the decision that mattered — ' +
           'following this person — was already made by one, nothing new is introduced, and a ' +
           'persona that keeps up with what someone is publishing is the entire point of ' +
           'braintrust over a written-once prompt. Reach for it when an answer needs to reflect ' +
           'something recent, or when braintrust_list_personas shows a compile date older than ' +
           'the question deserves.\n\n' +
-          '**New content is what triggers a rebuild, not the asking.** If nothing has arrived ' +
-          'that the persona has not already read, `rebuilt` comes back false with `not_rebuilt` ' +
-          'saying so, and that is a normal answer rather than a failure — the persona already ' +
-          'reflects everything braintrust holds.\n\n' +
           'Fetching is time-boxed, because a first backfill is around half an hour of polite ' +
           'spacing and this is one request. A call that runs out returns what it did ' +
           'and how much is `still_owed`; nothing is wasted, and the daily job continues from ' +
           'the same rows.\n\n' +
-          'It has a second answer — **`already_running`, with the time that rebuild started** — ' +
-          'because one rebuild per person at a time is enforced by the database. That is why ' +
-          'calling this is safe: two clients seconds apart cannot produce two rebuilds.\n\n' +
           'A paused person is refused. Refreshing them would start downloading their work ' +
           'again, and that decision belongs to the handshake in braintrust_follow_person.',
         inputSchema: {
@@ -493,7 +458,7 @@ export function buildServer({
       },
       async (args: RefreshArgs) => {
         try {
-          return text(await refreshPersona(args, { db, fetcher, extractor, synthesiser, embedder }));
+          return text(await refreshPersona(args, { db, fetcher, extractor, embedder }));
         } catch (error) {
           if (error instanceof BraintrustError) return failure(error.message);
           console.error('braintrust: braintrust_refresh_persona failed', error);

@@ -530,21 +530,29 @@ compiler's, and what that comparison changes is immediate and happens *for the r
 retrieval gate tightens — a floor measured under rules that have since changed is not a measurement any more,
 so it takes [the unmeasured value](./mcp-surface.md#an-unmeasured-quantity-takes-its-most-conservative-value)
 — and prose written by a part that moved is withheld. **So the staleness window is zero for anyone actually
-reading.** Nobody is ever served a Persona built under rules braintrust has since changed.
+reading.** Nobody is ever served a Persona built under rules braintrust has since changed. The read no longer
+queues or starts a rebuild — that path was removed, because a deploy landing mid-compile would kill the work.
 
-**The rebuild is queued behind them, never in front.** It starts after the answer has been handed over and
-nothing awaits it: a read call must never have the most expensive action in the product sitting behind it. A
-reader who triggers a rebuild pays nothing for it and does not see it. **At most one rebuild is in flight per
-Persona**, so a burst of readers on a behind-version Persona cannot stampede the compiler — a process-local
-guard, and the database's own `unique … where status = 'running'` as the real one, which is what makes it hold
-across the two deployments that share the database.
+**Compiles run on the cron deployment, which the platform schedules and which a deploy does not land on
+mid-flight.** The only trigger path is the scheduled job, once a day. Every cycle asks two questions of every
+Person (`has_unseen`, `stale_compiler`) and rebuilds on either. A daily sweep rebuilds the Personas nobody
+asked for, so staleness is not only fixed for popular people. Every cycle then asks a **scheduled check** —
+*is any serving Persona carrying a version behind the compiler's?* — after the run rather than before it, and
+reports the answer in the summary whether or not anyone is looking. It is a post-condition rather than a
+trigger: what rebuilds a Persona is `stale_compiler`; what this asserts is that the run left nobody behind.
+A paused Person is not counted — a pause is the user freezing their Persona.
 
-**And a daily sweep rebuilds the Personas nobody asked for**, so staleness is not only fixed for popular
-people. Every cycle then asks a **scheduled check** — *is any serving Persona carrying a version behind the
-compiler's?* — after the run rather than before it, and reports the answer in the summary whether or not
-anyone is looking. It is a post-condition rather than a trigger: what rebuilds a Persona is `stale_compiler`;
-what this asserts is that the run left nobody behind. A paused Person is not counted — a pause is the user
-freezing their Persona.
+**At most one Compile is in flight per Persona**, enforced by the database's `unique … where status = 'running'`
+index rather than by process-local state, so two concurrent schedulers cannot double-compile. The `running`
+row outlives whichever process created it, so a deploy that kills the scheduler mid-run does not create a
+second compile — `STALE_COMPILE_MS` clears the old row on the next daily run.
+
+**Accepted cost: a Persona serves behind the compiler for up to a day after a rules change, by design.** The
+read-triggered design read as though that window were zero; it is now named and accepted. Five Personas do not
+need an ordering advantage, and a second trigger path is a second thing to keep honest. A whole-persona
+rebuild is 13–15 minutes and barely tracks Corpus size, and nothing fans a rules change out to the fleet, so
+eleven merges landing in a day already coalesce into at most one rebuild per Persona. No batching mechanism is
+required.
 
 **Prose governed by a part that has moved is absent, not stale.** A number has a conservative direction and
 takes it; a paragraph a model already wrote does not, so the only honest options are to serve it or not to —
@@ -1064,6 +1072,7 @@ was. This changes no behaviour; it makes the behaviour the decision rather than 
 | **Genuine revisions are rare.** One clean supersession in fourteen months; if Persona value depends on capturing revisions, the Corpus needs to be years deep. | §4 |
 | **About a fifth of what the extractor proposes is thrown away**, measured at 291 of 1,093 on the first real corpus. 87 of those differ from the body only in punctuation and case and are dropped anyway; the rest quote words that are not there. Stated rather than engineered around: the alternative is a Persona citing a model. | §1 |
 | **A quote drawn from an Item's title is always dropped.** The model is shown `Title: …` above the body and verified against the body alone, so a title quote has nowhere to resolve to. Small, and not worth a Corpus re-read to remove on its own. | §1 |
+| **A Persona serves behind the compiler for up to a day after a rules change, by design.** The daily rebuild cadence means eleven merges landing in a day coalesce into at most one rebuild per Persona, but the first reader after a deploy sees the old rules until the next daily run. | §3 |
 
 ## Deliberately not decided
 

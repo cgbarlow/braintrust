@@ -1,10 +1,10 @@
 /**
- * The other two triggers, against real Postgres.
+ * braintrust_refresh_persona and braintrust_unfollow_person, against real Postgres.
  *
- * The daily clock has its own file. This one is about the claim that there is only one
- * cycle: that `braintrust_refresh_persona` reaches the same rows by the same route and
- * differs only in scope, that the database — not politeness — is what stops two rebuilds,
- * and that unfollowing is a pause rather than a delete no matter how it is described.
+ * braintrust_refresh_persona now fetches and reads only — compiles happen on the cron
+ * deployment. This file tests that a refresh reaches the same rows by the same route as
+ * the daily cycle, differs only in scope, and that unfollowing is a pause rather than a
+ * delete no matter how it is described.
  *
  * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
  *
@@ -27,7 +27,6 @@ import { runCycle } from '../src/ingest/cycle.js';
 import { createExtractor } from '../src/notes/index.js';
 import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { refreshPersona, type RefreshResponse, type Refreshed } from '../src/refresh.js';
-import { fakeSynthesiser } from './support/synthesiser.js';
 import { fakeExtractor, testExtractorConfig } from './support/notes.js';
 import { NOW, SUBSTACK_HOST, fakeFetcher, natesRoutes, type FakeFetcher } from './support/sources.js';
 
@@ -93,18 +92,12 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
         db,
         fetcher: options.fetcher ?? fakeFetcher(natesRoutes()),
         extractor: createExtractor(testExtractorConfig, quoting().fetcher),
-        synthesiser: fakeSynthesiser(),
         now: options.now ?? (() => NOW),
         pause: async () => {},
         log: () => {},
         ...(options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs }),
       },
     );
-  }
-
-  function refreshed(response: RefreshResponse): Refreshed {
-    assert.ok('refreshed' in response, 'expected a refresh, not a refusal');
-    return response.refreshed;
   }
 
   async function count(sql: string, params: unknown[] = []): Promise<number> {
@@ -120,12 +113,11 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
   }
 
   describe('braintrust_refresh_persona', () => {
-    it('runs the whole cycle for one person and hands back a compiled persona', async () => {
+    it('runs the fetch-and-read cycle for one person', async () => {
       await follow();
 
-      const outcome = refreshed(await refresh());
+      const outcome = (await refresh()).refreshed;
 
-      // Poll, drain, rebuild — the daily job's four steps, reached through one call.
       assert.equal(outcome.person, NATE);
       assert.equal(outcome.subject, 'braintrust model of Nate B. Jones');
       assert.deepEqual(
@@ -134,28 +126,14 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       );
       assert.ok(outcome.discovered > 0, 'the feeds were polled');
       assert.ok(outcome.retrieved > 0, 'bodies were fetched');
-      assert.equal(outcome.still_owed, 0);
-      assert.equal(outcome.rebuilt, true);
-      assert.ok(outcome.compiled_at, 'the persona has a compile date');
 
-      // And it is the persona a client would now be served, not a report about one.
-      const persona = await explainPersona(db, NATE);
-      assert.deepEqual(Object.keys(persona.layers).sort(), ['coverage', 'reasoning', 'voice']);
-    });
-
-    it('rebuilds nothing when nothing has arrived that the persona has not read', async () => {
-      await follow();
-      const first = refreshed(await refresh());
-      assert.equal(first.rebuilt, true);
-
-      const again = refreshed(await refresh());
-
-      // New content triggers a rebuild; asking does not. The same persona is serving,
-      // and the compile date is the proof rather than the claim.
-      assert.equal(again.rebuilt, false);
-      assert.match(again.not_rebuilt!, /has not already read/);
-      assert.equal(again.compiled_at, first.compiled_at);
-      assert.equal(await count('select count(*) from braintrust_compiles'), 1);
+      // A refresh fetches and reads; the compile happens on the daily run.
+      assert.equal(
+        await count('select count(*) from braintrust_chunks'),
+        0,
+        'chunks are written by the cycle but not by refresh',
+      );
+      assert.equal(await count('select count(*) from braintrust_compiles'), 0, 'no compile from refresh');
     });
 
     it('polls a source the daily job would leave until tomorrow', async () => {
@@ -165,34 +143,13 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       // `last_checked_at` is now NOW, so nothing here is due on the daily clock. A
       // refresh is somebody asking now, so the interval has nothing to decide.
       const fetcher = fakeFetcher(natesRoutes());
-      const outcome = refreshed(await refresh({ fetcher }));
+      const outcome = (await refresh({ fetcher })).refreshed;
 
       assert.equal(outcome.polled.length, 2);
       assert.ok(
         fetcher.requests.some((request) => request.includes('/feed')),
         'the substack feed was fetched again',
       );
-    });
-
-    it('refuses a second rebuild and says when the running one started', async () => {
-      await follow();
-      await db.query(
-        `insert into braintrust_compiles (person_id, compiler_version, status, started_at)
-         values ($1, 'test', 'running', now())`,
-        [await personId()],
-      );
-
-      const response = await refresh();
-
-      // The second return shape the spec names — and the reason an ungated, AI-callable
-      // refresh is safe: the database refuses this, not the caller's good manners.
-      assert.ok('already_running' in response, 'expected a refusal');
-      assert.equal(response.already_running.person, NATE);
-      assert.ok(response.already_running.started_at, 'the caller is told when it started');
-      assert.match(response.next, /one rebuild per person/i);
-
-      // And nothing was fetched: the refusal comes before the cycle, not after it.
-      assert.equal(await count('select count(*) from braintrust_items'), 0);
     });
 
     it('spends its minutes on the person it was asked about and nobody else', async () => {
@@ -213,7 +170,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       );
       await db.query(
         `insert into braintrust_items (source_id, external_id, url, audience, retrieval, body_text,
-                                       published_at)
+                                        published_at)
          values ($1, 'other-1', 'https://other.test/1', 'everyone', 'retrieved',
                  'Something the other person published, at length and in prose.', '2025-05-01')`,
         [source.rows[0]!.id],
@@ -234,7 +191,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
         0,
         'and not read, which is the expensive half',
       );
-      assert.equal(await count('select count(*) from braintrust_compiles'), 1);
+      assert.equal(await count('select count(*) from braintrust_compiles'), 0);
     });
 
     it('leaves a blocked source alone, because a refresh is not evidence it came back', async () => {
@@ -243,7 +200,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
         `update braintrust_sources set blocked_at = now() where platform = 'youtube'`,
       );
 
-      const outcome = refreshed(await refresh());
+      const outcome = (await refresh()).refreshed;
 
       assert.deepEqual(
         outcome.polled.map((source) => source.platform),
@@ -265,12 +222,9 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       let ticks = 0;
       const now = () => new Date(NOW.getTime() + (ticks++ > 3 ? 60 * 60 * 1000 : 0));
 
-      const outcome = refreshed(await refresh({ now }));
+      const outcome = (await refresh({ now })).refreshed;
 
       assert.equal(outcome.stopped_early, true);
-      assert.ok(outcome.still_owed > 0, 'the backlog is named rather than hidden');
-      assert.equal(outcome.rebuilt, false);
-      assert.match(outcome.not_rebuilt!, /still owed/);
 
       // Nothing was wasted: what it fetched is on disk, and the next run continues.
       assert.ok(await count('select count(*) from braintrust_items'), 'rows survive the stop');
@@ -285,11 +239,10 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
 
       let ticks = 0;
       const now = () => new Date(NOW.getTime() + (ticks++ > 3 ? 60 * 60 * 1000 : 0));
-      const outcome = refreshed(await refresh({ now }));
+      const outcome = (await refresh({ now })).refreshed;
 
       assert.equal(outcome.polled.length, 1);
       assert.equal(outcome.stopped_early, true);
-      assert.ok(outcome.still_owed > 0);
     });
 
     it('refuses a paused person rather than resuming them behind the handshake', async () => {
@@ -328,7 +281,7 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       await follow();
       await refresh();
       const before = await corpusSize();
-      assert.ok(before.items > 0 && before.chunks > 0 && before.notes > 0);
+      assert.ok(before.items > 0);
 
       const response = await unfollowPerson({ person: NATE }, { db });
 
@@ -339,17 +292,16 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       assert.equal(response.kept.items, before.items);
       assert.equal(response.kept.persona?.still_queryable, true);
       assert.deepEqual(await corpusSize(), before);
-      assert.equal(await count('select count(*) from braintrust_compiles'), 1);
+      assert.equal(await count('select count(*) from braintrust_compiles'), 0);
     });
 
     it('leaves the persona answering, frozen at its last compile', async () => {
       await follow();
-      const outcome = refreshed(await refresh());
+      const outcome = (await refresh()).refreshed;
       await unfollowPerson({ person: NATE }, { db });
 
-      const persona = await explainPersona(db, NATE);
-      assert.equal(persona.subject, 'braintrust model of Nate B. Jones');
-      assert.equal(persona.compiled_at, outcome.compiled_at);
+      // No compile happened, so explainPersona should throw — never compiled.
+      await assert.rejects(explainPersona(db, NATE), BraintrustError);
     });
 
     it('shows the pause in the listing, so nobody reads a frozen answer as a current one', async () => {
