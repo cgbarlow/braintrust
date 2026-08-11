@@ -25,6 +25,7 @@ import { refreshPersona, type RefreshArgs } from './refresh.js';
 import type { Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
 import { VERSION } from './version.js';
+import { verifySources, type ClaimCheck } from './verify/index.js';
 
 export const SERVER_NAME = 'braintrust';
 export const SERVER_VERSION = VERSION;
@@ -505,6 +506,75 @@ export function buildServer({
       },
     );
   }
+
+  server.registerTool(
+    'braintrust_verify_sources',
+    {
+      title: 'Check where a persona got its claims',
+      description:
+        'A listener asks where that came from, and braintrust — not the persona — ' +
+        'answers. braintrust checks each sentence the persona wrote against the item ' +
+        'the persona claimed for it, and returns the record in its own words.\n\n' +
+        'Every sentence comes back **sourced**, **unsourced**, or **never claimed**. ' +
+        '"sourced" means the sentence is in the item body. "unsourced" means the item ' +
+        'exists but the sentence is not in it. "never claimed" means the persona offered ' +
+        'no source for that sentence, or the item it named does not exist.\n\n' +
+        'Send the persona\'s **whole reply** plus — per sentence — the source the ' +
+        'persona claimed for it. braintrust does not select which sentences to check: ' +
+        'the sentence most likely to be invented is the one least likely to be ' +
+        'volunteered, so letting the model choose what to submit hands the selection ' +
+        'to the thing being checked.\n\n' +
+        '**No model call, no judge, no opinion.** Verification is a single `indexOf` ' +
+        'against the stored item body — the same objective check the eval suite uses.\n\n' +
+        '**A failed check opens a deduped issue and the persona keeps serving unchanged.** ' +
+        'The fault is the compiler\'s, not the persona\'s, and one live call to a ' +
+        'non-reproducible synthesiser is evidence rather than proof.\n\n' +
+        'braintrust answers in its own voice, never in the persona\'s, and never ranks ' +
+        'a sentence to an item it was not given. Nothing invites a listener to ask — ' +
+        'that asking works is a guarantee, never an offer.',
+      inputSchema: {
+        person: z
+          .string()
+          .min(1)
+          .describe('The slug from braintrust_list_personas, e.g. "nate-b-jones".'),
+        reply: z
+          .string()
+          .min(1)
+          .describe('The persona\'s whole reply, exactly as they said it.'),
+        sentences: z
+          .array(
+            z.object({
+              text: z.string().min(1).describe('One sentence from the reply.'),
+              claimed_item: z
+                .string()
+                .nullable()
+                .describe(
+                  'The URL of the item the persona claimed this sentence came from, ' +
+                    'or null if no source was claimed.',
+                ),
+            }),
+          )
+          .min(1)
+          .describe(
+            'Every sentence in the reply, each with the source the persona claimed ' +
+              'for it. null means no source was claimed.',
+          ),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args: { person: string; reply: string; sentences: ClaimCheck[] }) => {
+      try {
+        return text(await verifySources(args.person, args.reply, args.sentences, { db }));
+      } catch (error) {
+        if (error instanceof BraintrustError) return failure(error.message);
+        console.error('braintrust: braintrust_verify_sources failed', error);
+        return failure(
+          'braintrust_verify_sources failed for a reason braintrust did not expect. ' +
+            'The server log has the detail.',
+        );
+      }
+    },
+  );
 
   server.registerTool(
     'braintrust_unfollow_person',
