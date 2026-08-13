@@ -390,6 +390,7 @@ describe('walking the author feed', () => {
     poll_interval_hours: 24,
     last_checked_at: null,
     blocked_at: null,
+    consecutive_failures: 0,
   };
 
   const walk = async (options: Partial<Parameters<typeof walkAuthorFeed>[1]> = {}) => {

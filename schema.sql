@@ -66,6 +66,14 @@ alter table braintrust_sources drop constraint if exists braintrust_sources_plat
 alter table braintrust_sources add constraint braintrust_sources_platform_check
   check (platform in ('substack', 'youtube', 'blog', 'bluesky'));
 
+-- The column must exist before the comment, same ordering rule as lastmod below.
+alter table braintrust_sources add column if not exists consecutive_failures integer not null default 0;
+
+comment on column braintrust_sources.consecutive_failures is
+  'How many distinct Items have failed in a row, carried across runs. '
+  'Reset by any Item that comes back, including a paywall or a video with no captions. '
+  'Below BLOCK_AFTER_FAILURES it opens a fault; at BLOCK_AFTER_FAILURES it sets a block.';
+
 comment on column braintrust_sources.handle is
   'Whatever cannot be two people on that platform. A publication host, a UC… channel id, '
   'a blog hostname — and on Bluesky the DID, never the handle, because Bluesky handles are '
@@ -74,7 +82,7 @@ comment on column braintrust_sources.handle is
 
 comment on column braintrust_sources.blocked_at is
   'The source refused braintrust — measured as consecutive failures across distinct '
-  'items, never inferred from a response code. Suppresses this source''s backlog.';
+  'items and across runs, never inferred from a response code. Suppresses this source''s backlog.';
 
 comment on column braintrust_sources.poll_interval_hours is
   'Does not create a second scheduler. One daily job; this decides whether a source is due.';

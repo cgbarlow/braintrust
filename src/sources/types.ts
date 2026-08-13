@@ -233,10 +233,9 @@ export function audienceKnownBeforeFetch(platform: Platform): boolean {
  * against different Items came back with nothing usable.
  *
  * Distinct Items is the whole protection. One Item that fails five times proves the
- * Item is broken; five different Items failing in a row is the Source. And the count is
- * per run and in memory — a Source whose Backlog is smaller than this never reaches it,
- * which is correct, because a `failed` Item is terminal and a small Backlog exhausts
- * itself rather than looping.
+ * Item is broken; five different Items failing in a row is the Source. The count is
+ * held in a column and survives between runs, so a Source whose daily backlog is one
+ * or two Items still reaches the threshold.
  *
  * Five is a constant, deliberately left to tuning against real behaviour. It is the
  * number the spec declines to fix, and nothing else in braintrust depends on its value.

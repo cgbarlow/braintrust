@@ -21,7 +21,7 @@ import {
   stuckRebuilds,
   type StuckRebuild,
 } from '../compile/store.js';
-import { openFault } from '../interrogate/store.js';
+import { clearFault, openFault } from '../interrogate/store.js';
 import { faultKey } from '../interrogate/schedule.js';
 import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
@@ -55,6 +55,8 @@ import {
   allSourcesForPerson,
   blockSource,
   clearBlock,
+  incrementConsecutiveFailures,
+  resetConsecutiveFailures,
   completeBackfill,
   corpusCounts,
   dueSources,
@@ -445,6 +447,17 @@ function discoveryName(source: SourceRow): string {
   return `the feed for ${source.handle}`;
 }
 
+/**
+ * The fault assertion for one Source's run-spanning failures.
+ *
+ * **Scoped by source id, not by person.** A Person has many Sources, and a fault is
+ * about one Source's streak — Substack failing must not open a fault named by whatever
+ * YouTube happened to fail last, and Substack coming back must not clear YouTube's.
+ */
+function consecutiveFailuresAssertion(source: SourceRow): string {
+  return `source_consecutive_failures:${source.id}`;
+}
+
 type SourceDeps = CycleDeps & {
   now: () => Date;
   log: (line: string) => void;
@@ -741,6 +754,7 @@ async function probeSource(
   }
 
   await clearBlock(deps.db, source.id);
+  await clearFault(deps.db, consecutiveFailuresAssertion(source), source.person);
   report.unblocked = true;
   deps.log(
     `braintrust: ${source.platform} ${source.handle} answered. The block set on ` +
@@ -981,12 +995,11 @@ async function retrieveBodies(
     },
   };
   let paced = 0;
-  // Consecutive failures across *distinct* Items. Reset by anything that comes back —
-  // a body, a caption track, even a paywall, because a Source that says no is a Source
-  // that answered. Held in memory rather than a column: a run is the only span over
-  // which "consecutive" means anything, and a `failed` Item is never retried, so a
-  // Backlog too short to reach the threshold exhausts itself instead of looping.
-  let inARow = 0;
+  // Consecutive failures across *distinct* Items, carried across runs in the column.
+  // Reset by anything that comes back — a body, a caption track, even a paywall —
+  // because a Source that says no is a Source that answered. Persisted so a Source
+  // whose daily Backlog is smaller than BLOCK_AFTER_FAILURES still reaches it.
+  let inARow = source.consecutive_failures;
 
   for (const item of pending) {
     if (deps.stopping()) return;
@@ -1038,12 +1051,16 @@ async function retrieveBodies(
         await retrieveYoutubeItem(source, item, counted, report);
       }
       inARow = 0;
+      await resetConsecutiveFailures(deps.db, source.id);
+      await clearFault(deps.db, consecutiveFailuresAssertion(source), source.person);
     } catch (error) {
       if (error instanceof PaywallChanged) {
         await markSkippedPaywall(deps.db, item.id);
         report.skipped_paywall += 1;
         deps.log(`braintrust: ${item.external_id} — ${error.message}`);
         inARow = 0;
+        await resetConsecutiveFailures(deps.db, source.id);
+        await clearFault(deps.db, consecutiveFailuresAssertion(source), source.person);
         continue;
       }
       await markFailed(deps.db, item.id);
@@ -1065,9 +1082,19 @@ async function retrieveBodies(
       // had refused braintrust, and then probed once a day forever.
       if (error instanceof NoCaptions) {
         inARow = 0;
+        await resetConsecutiveFailures(deps.db, source.id);
+        await clearFault(deps.db, consecutiveFailuresAssertion(source), source.person);
         continue;
       }
       inARow += 1;
+      await incrementConsecutiveFailures(deps.db, source.id);
+      if (inARow >= 1) {
+        await openFault(deps.db, {
+          assertion: consecutiveFailuresAssertion(source),
+          person: source.person,
+          detail: `${source.platform} ${source.handle} has had ${inARow} consecutive retrieval failures`,
+        });
+      }
 
       // The measurement, and the only place a block is ever set. braintrust has not
       // classified a single response to get here — it has counted requests against
