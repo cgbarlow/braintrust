@@ -33,6 +33,7 @@ const ITEMS = {
   skipped_short: 1,
   skipped_window: 2,
   skipped_not_a_post: 0,
+  skipped_no_captions: 0,
   failed: 0,
   pending: 0,
 };

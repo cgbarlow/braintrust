@@ -80,8 +80,15 @@ paywalled content, which braintrust never ingests; a Short, which braintrust's o
 older than the window braintrust was asked to read; and a URL in an archive that turned out not to be a post
 at all. A Skipped Item is still recorded, so Coverage can name what was not read. **The line the word draws is
 whose decision it was** — everything braintrust decided is Skipped, carrying what would have to change and
-reopened when it changes, while a Source declining or failing to answer is Failed and stays that way.
+reopened when it changes. A failed fetch is retried up to a bounded number of attempts; a Source declining
+or failing to answer at all is Blocked.
 _Avoid_: excluded, filtered, ignored
+
+**No Captions**:
+A video whose player response arrived intact and carried no usable caption track. Terminal — a fact about
+the video that no amount of retrying changes, recorded in its own state so braintrust never asks again.
+Distinct from Failed, which is about a moment and about the network.
+_Avoid_: failed, unreadable
 
 ### The persona
 

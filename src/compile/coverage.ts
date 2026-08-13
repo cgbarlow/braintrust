@@ -35,6 +35,7 @@ export type SourceCoverage = {
   skipped_short: number;
   skipped_window: number;
   skipped_not_a_post: number;
+  skipped_no_captions: number;
   failed: number;
   pending: number;
   words_retrieved: number;
@@ -64,6 +65,7 @@ export type CoverageEvidence = {
   skipped_short: number;
   skipped_window: number;
   skipped_not_a_post: number;
+  skipped_no_captions: number;
   failed: number;
   pending: number;
   words_retrieved: number;
@@ -159,6 +161,12 @@ function describe(evidence: CoverageEvidence): string {
         'left them out; nothing failed.',
     );
   }
+  if (evidence.skipped_no_captions > 0) {
+    gaps.push(
+      `${evidence.skipped_no_captions} video${evidence.skipped_no_captions === 1 ? ' has' : 's have'} ` +
+        'no caption track braintrust can read. That is a fact about the video, not a fetch to retry.',
+    );
+  }
   if (evidence.failed > 0) {
     gaps.push(
       `${evidence.failed} item${evidence.failed === 1 ? '' : 's'} could not be retrieved at all.`,
@@ -200,6 +208,7 @@ function describe(evidence: CoverageEvidence): string {
       if (source.skipped_short > 0) parts.push(`${source.skipped_short} short`);
       if (source.skipped_window > 0) parts.push(`${source.skipped_window} outside the window`);
       if (source.skipped_not_a_post > 0) parts.push(`${source.skipped_not_a_post} not posts`);
+      if (source.skipped_no_captions > 0) parts.push(`${source.skipped_no_captions} no captions`);
       if (source.failed > 0) parts.push(`${source.failed} failed`);
       if (source.pending > 0) parts.push(`${source.pending} pending`);
       lines.push(`- \`${source.platform}:${source.handle}\` — ${parts.join(', ')}.`);

@@ -199,7 +199,7 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
       const { report, fetcher } = await run({ fetcher: fakeFetcher(routesWhereBodies(refusing(403))) });
 
       const substack = of(report, 'substack');
-      assert.equal(substack.failed, BLOCK_AFTER_FAILURES);
+      assert.equal(substack.failed, 0, 'every failed item is retried, none is terminal');
       assert.ok(substack.blocked_since, 'the source is recorded as having stopped answering');
       assert.equal(
         bodyRequests(fetcher).length,
@@ -307,11 +307,12 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
       const { report } = await run({ fetcher: fakeFetcher(routesWhereBodies(refusing(403))) });
       assert.ok(of(report, 'substack').blocked_since);
 
-      // Nothing is deleted and nothing is invented. The refused items are `failed` rows,
-      // the ones never reached are still `pending` rows, and the paywalled ones are still
-      // the skips they were — all of which Coverage counts as a shortfall the persona names.
-      assert.equal(await items('substack', 'failed'), BLOCK_AFTER_FAILURES);
-      assert.ok((await items('substack', 'pending')) > 0, 'the rest of the backlog is left alone');
+      // Nothing is deleted and nothing is invented. The refused items are `pending` rows
+      // waiting for retry (none exhausted MAX_RETRY_ATTEMPTS yet), the ones never reached
+      // are still `pending` rows, and the paywalled ones are still the skips they were —
+      // all of which Coverage counts as a shortfall the persona names.
+      assert.equal(await items('substack', 'failed'), 0, 'no item exhausted its retries');
+      assert.ok((await items('substack', 'pending')) > BLOCK_AFTER_FAILURES, 'the backlog includes the retries');
       assert.equal(await items('substack', 'skipped_paywall'), SUBSTACK_PAYWALLED);
       assert.ok((await items('youtube', 'retrieved')) > 0, 'and the other source is untouched');
     });
@@ -406,12 +407,12 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
       });
 
       // No backoff, no rotation, no user-agent change: there is one host and one address
-      // and nothing to rotate. The probe is the same endpoint, asked the same way, for
-      // the next item in the backlog the refused ones are still sitting in.
+      // and nothing to rotate. The probe retries an item that was refused yesterday — the
+      // fetch did not complete and the system retries it rather than leaving it failed.
       assert.equal(bodyRequests(fetcher).length, 1);
       const probe = bodyRequests(fetcher)[0]!;
       assert.ok(probe.startsWith(BODY_ENDPOINT));
-      assert.ok(!refused.includes(probe), 'a refused item is failed, and nothing retries it');
+      assert.ok(refused.includes(probe), 'a refused item is retried, not abandoned');
       assert.deepEqual(
         fetcher.sent.filter((request) => request.url === probe),
         [{ url: probe }],

@@ -172,6 +172,7 @@ type CoverageRow = {
   skipped_short: string;
   skipped_window: string;
   skipped_not_a_post: string;
+  skipped_no_captions: string;
   failed: string;
   pending: string;
   words_retrieved: string;
@@ -212,9 +213,10 @@ export async function measureCoverage(
             count(c.id) filter (where c.retrieval = 'skipped_paywall')::text  as skipped_paywall,
             count(c.id) filter (where c.retrieval = 'skipped_short')::text    as skipped_short,
             count(c.id) filter (where c.retrieval = 'skipped_window')::text   as skipped_window,
-            count(c.id) filter (where c.retrieval = 'skipped_not_a_post')::text as skipped_not_a_post,
-            count(c.id) filter (where c.retrieval = 'failed')::text           as failed,
-            count(c.id) filter (where c.retrieval = 'pending')::text          as pending,
+             count(c.id) filter (where c.retrieval = 'skipped_not_a_post')::text  as skipped_not_a_post,
+             count(c.id) filter (where c.retrieval = 'skipped_no_captions')::text as skipped_no_captions,
+             count(c.id) filter (where c.retrieval = 'failed')::text              as failed,
+             count(c.id) filter (where c.retrieval = 'pending')::text             as pending,
             coalesce(sum(c.words) filter (where c.retrieval = 'retrieved'), 0)::text
                                                                               as words_retrieved,
             count(c.id) filter (where c.retrieval = 'retrieved' and c.words >= $2)::text
@@ -242,6 +244,7 @@ export async function measureCoverage(
     skipped_short: 0,
     skipped_window: 0,
     skipped_not_a_post: 0,
+    skipped_no_captions: 0,
     failed: 0,
     pending: 0,
     words: 0,
@@ -266,6 +269,7 @@ export async function measureCoverage(
       skipped_short: Number(row.skipped_short),
       skipped_window: Number(row.skipped_window),
       skipped_not_a_post: Number(row.skipped_not_a_post),
+      skipped_no_captions: Number(row.skipped_no_captions),
       failed: Number(row.failed),
       pending: Number(row.pending),
       words_retrieved: Number(row.words_retrieved),
@@ -281,6 +285,7 @@ export async function measureCoverage(
     totals.skipped_short += source.skipped_short;
     totals.skipped_window += source.skipped_window;
     totals.skipped_not_a_post += source.skipped_not_a_post;
+    totals.skipped_no_captions += source.skipped_no_captions;
     totals.failed += source.failed;
     totals.pending += source.pending;
     totals.words += source.words_retrieved;
@@ -307,6 +312,7 @@ export async function measureCoverage(
     skipped_short: totals.skipped_short,
     skipped_window: totals.skipped_window,
     skipped_not_a_post: totals.skipped_not_a_post,
+    skipped_no_captions: totals.skipped_no_captions,
     failed: totals.failed,
     pending: totals.pending,
     words_retrieved: totals.words,
@@ -428,9 +434,10 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
        count(*) filter (where i.retrieval = 'skipped_paywall')::text as skipped_paywall,
        count(*) filter (where i.retrieval = 'skipped_short')::text   as skipped_short,
        count(*) filter (where i.retrieval = 'skipped_window')::text  as skipped_window,
-       count(*) filter (where i.retrieval = 'skipped_not_a_post')::text as skipped_not_a_post,
-       count(*) filter (where i.retrieval = 'failed')::text          as failed,
-       count(*) filter (where i.retrieval = 'pending')::text         as pending
+       count(*) filter (where i.retrieval = 'skipped_not_a_post')::text  as skipped_not_a_post,
+       count(*) filter (where i.retrieval = 'skipped_no_captions')::text as skipped_no_captions,
+       count(*) filter (where i.retrieval = 'failed')::text              as failed,
+       count(*) filter (where i.retrieval = 'pending')::text             as pending
        from braintrust_items i
        join braintrust_sources s on s.id = i.source_id
       where s.person_id = $1`,
@@ -498,6 +505,7 @@ export async function gateFacts(db: Db, personId: string, compileId: string): Pr
       skipped_short: Number(counts.skipped_short),
       skipped_window: Number(counts.skipped_window),
       skipped_not_a_post: Number(counts.skipped_not_a_post),
+      skipped_no_captions: Number(counts.skipped_no_captions),
       failed: Number(counts.failed),
       pending: Number(counts.pending),
     },

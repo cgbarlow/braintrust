@@ -18,6 +18,7 @@
 
 import type { Db } from '../db.js';
 import {
+  MAX_RETRY_ATTEMPTS,
   audienceKnownBeforeFetch,
   SHORT_MAX_SECONDS,
   SHORT_MAX_WORDS,
@@ -534,6 +535,44 @@ export async function markSkippedNotAPost(
   );
 }
 
+/**
+ * A video whose player response carried no usable caption track.
+ *
+ * This is terminal — braintrust determined this fact from a response that arrived
+ * intact, and no amount of retrying changes it. It is a Skipped-shaped state of its
+ * own, carrying nothing that could change (there is no companion setting to toggle),
+ * and is never retried.
+ */
+export async function markSkippedNoCaptions(db: Db, itemId: string): Promise<void> {
+  await db.query(
+    `update braintrust_items set retrieval = 'skipped_no_captions' where id = $1 and retrieval = 'pending'`,
+    [itemId],
+  );
+}
+
+/**
+ * A fetch that did not complete. Record the attempt and decide: retry or terminal.
+ *
+ * Increments `attempt_count` and sets `retrieval` to `pending` if the item has
+ * attempts remaining, or `failed` if it has exhausted `MAX_RETRY_ATTEMPTS`.
+ * Returns `true` when the item is terminal (no more retries).
+ */
+export async function recordRetryableFailure(db: Db, itemId: string): Promise<boolean> {
+  const { rows } = await db.query<{ attempt_count: number }>(
+    `update braintrust_items
+        set attempt_count = attempt_count + 1,
+            retrieval = case
+              when attempt_count + 1 < $2 then 'pending'
+              else 'failed'
+            end
+      where id = $1 and retrieval = 'pending'
+      returning attempt_count`,
+    [itemId, MAX_RETRY_ATTEMPTS],
+  );
+  const attempt = rows[0]?.attempt_count ?? 0;
+  return attempt >= MAX_RETRY_ATTEMPTS;
+}
+
 /** One URL braintrust decided was not a post, and the `<lastmod>` it decided on. */
 export type NotAPostRow = { id: string; external_id: string; lastmod: Date | null };
 
@@ -678,19 +717,21 @@ export type CorpusCounts = {
   skipped_short: number;
   skipped_window: number;
   skipped_not_a_post: number;
+  skipped_no_captions: number;
   failed: number;
 };
 
 /** What a run has to show for itself, counted from the rows themselves. */
 export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCounts> {
   const { rows } = await db.query<Record<keyof CorpusCounts, string>>(
-    `select count(*) filter (where retrieval = 'pending')         as pending,
-            count(*) filter (where retrieval = 'retrieved')       as retrieved,
-            count(*) filter (where retrieval = 'skipped_paywall') as skipped_paywall,
-            count(*) filter (where retrieval = 'skipped_short')   as skipped_short,
-            count(*) filter (where retrieval = 'skipped_window')  as skipped_window,
-            count(*) filter (where retrieval = 'skipped_not_a_post') as skipped_not_a_post,
-            count(*) filter (where retrieval = 'failed')          as failed
+    `select count(*) filter (where retrieval = 'pending')             as pending,
+            count(*) filter (where retrieval = 'retrieved')           as retrieved,
+            count(*) filter (where retrieval = 'skipped_paywall')     as skipped_paywall,
+            count(*) filter (where retrieval = 'skipped_short')       as skipped_short,
+            count(*) filter (where retrieval = 'skipped_window')      as skipped_window,
+            count(*) filter (where retrieval = 'skipped_not_a_post')  as skipped_not_a_post,
+            count(*) filter (where retrieval = 'skipped_no_captions') as skipped_no_captions,
+            count(*) filter (where retrieval = 'failed')              as failed
        from braintrust_items
       where ($1::uuid is null or source_id = $1::uuid)`,
     [sourceId ?? null],
@@ -704,6 +745,7 @@ export async function corpusCounts(db: Db, sourceId?: string): Promise<CorpusCou
     skipped_short: Number(row.skipped_short),
     skipped_window: Number(row.skipped_window),
     skipped_not_a_post: Number(row.skipped_not_a_post),
+    skipped_no_captions: Number(row.skipped_no_captions),
     failed: Number(row.failed),
   };
 }

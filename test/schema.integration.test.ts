@@ -113,7 +113,8 @@ describe('schema.sql against real Postgres', { skip }, () => {
          check (platform in ('substack', 'youtube'));
        alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
        alter table braintrust_items add constraint braintrust_items_retrieval_check
-         check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'failed'));`,
+         check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'skipped_short',
+                              'skipped_window', 'skipped_not_a_post', 'failed'));`,
     );
 
     // The paste, exactly as a user makes it.
@@ -141,6 +142,7 @@ describe('schema.sql against real Postgres', { skip }, () => {
         where conname = 'braintrust_items_retrieval_check'`,
     );
     assert.match(retrievals[0]!.check, /skipped_not_a_post/);
+    assert.match(retrievals[0]!.check, /skipped_no_captions/);
   });
 
   it('creates every table the design specifies, with RLS enabled on each', async () => {

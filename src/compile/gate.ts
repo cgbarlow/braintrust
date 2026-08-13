@@ -78,6 +78,7 @@ export type ItemCounts = {
   skipped_short: number;
   skipped_window: number;
   skipped_not_a_post: number;
+  skipped_no_captions: number;
   failed: number;
   pending: number;
 };

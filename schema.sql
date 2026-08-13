@@ -99,7 +99,9 @@ create table if not exists braintrust_items (
   retrieval     text not null default 'pending'
                   check (retrieval in ('pending', 'retrieved', 'skipped_paywall',
                                        'skipped_short', 'skipped_window',
-                                       'skipped_not_a_post', 'failed')),
+                                       'skipped_not_a_post', 'skipped_no_captions',
+                                       'failed')),
+  attempt_count integer not null default 0,
   body_text     text,                 -- null until retrieved; null forever if skipped
   body_raw      jsonb,                -- caption events, feed entry — whatever the platform actually gave
   lastmod       timestamptz,          -- the sitemap's, at the moment braintrust decided. never a publish date
@@ -113,12 +115,14 @@ comment on column braintrust_items.audience is
   '''everyone'' is paid, because live Substack values include only_paid and founding.';
 
 comment on column braintrust_items.retrieval is
-  'failed means the source declined or could not answer. Everything braintrust decided is '
-  'skipped_<reason> — a row of its own carrying what would have to change, reopened when it '
-  'changes. skipped_paywall is a row rather than an absence so a persona can state its own '
-  'blind spots; skipped_short is undone by turning exclude_shorts off; skipped_window is '
-  'undone by widening window_months, which is what makes the backfill window a setting '
-  'rather than a one-way door; skipped_not_a_post is undone by the sitemap''s lastmod moving.';
+  'A fetch that did not complete is retried, up to attempt_count. skipped_no_captions is '
+  'terminal — a video with no words is a fact about that video. Everything braintrust '
+  'decided is skipped_<reason> — a row of its own carrying what would have to change, '
+  'reopened when it changes. skipped_paywall is a row rather than an absence so a persona '
+  'can state its own blind spots; skipped_short is undone by turning exclude_shorts off; '
+  'skipped_window is undone by widening window_months, which is what makes the backfill '
+  'window a setting rather than a one-way door; skipped_not_a_post is undone by the '
+  'sitemap''s lastmod moving.';
 
 -- `create table if not exists` leaves an existing table alone, so a database created
 -- before skipped_short existed would reject the value. Re-stating the constraint is
@@ -127,7 +131,21 @@ comment on column braintrust_items.retrieval is
 alter table braintrust_items drop constraint if exists braintrust_items_retrieval_check;
 alter table braintrust_items add constraint braintrust_items_retrieval_check
   check (retrieval in ('pending', 'retrieved', 'skipped_paywall', 'skipped_short',
-                       'skipped_window', 'skipped_not_a_post', 'failed'));
+                       'skipped_window', 'skipped_not_a_post', 'skipped_no_captions',
+                       'failed'));
+
+-- The column and its comment, same ordering rule as lastmod above.
+alter table braintrust_items add column if not exists attempt_count integer not null default 0;
+
+comment on column braintrust_items.attempt_count is
+  'How many times braintrust has tried to retrieve this Item. Reset to 0 on success. '
+  'At MAX_RETRY_ATTEMPTS a failed Item stays failed rather than being retried.';
+
+-- Data migration: existing `failed` rows were terminal under the old schema, but any
+-- whose failure was a transient fetch (rather than an unknowable audience) are now
+-- retried. Guarded by attempt_count being the freshly-added default, so the migration
+-- fires exactly once per row.
+update braintrust_items set retrieval = 'pending' where retrieval = 'failed' and attempt_count = 0;
 
 -- And the column that state's reopen trigger reads, for the same reason.
 --

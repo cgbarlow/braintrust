@@ -31,6 +31,7 @@ import { indexCorpus, type Embedder, type IndexReport } from '../retrieval/index
 import { readAuthorFeed } from '../sources/bluesky.js';
 import { documentKind } from '../sources/blog.js';
 import {
+  MAX_RETRY_ATTEMPTS,
   audienceKnownBeforeFetch,
   BLOCK_AFTER_FAILURES,
   requestSpacingMs,
@@ -63,6 +64,7 @@ import {
   insertDiscovered,
   latestStoredDay,
   markFailed,
+  markSkippedNoCaptions,
   markSkippedNotAPost,
   markSkippedPaywall,
   markSkippedShort,
@@ -72,6 +74,7 @@ import {
   recordCatalogued,
   recordPoll,
   recordPublished,
+  recordRetryableFailure,
   reopenShorts,
   reopenWindow,
   sourcesForPerson,
@@ -160,6 +163,11 @@ export type SourceReport = {
    * apart from `failed` because the source answered — this is braintrust checking.
    */
   skipped_not_a_post: number;
+  /**
+   * A video whose player response arrived intact and carried no usable caption track.
+   * Terminal — never retried, distinct from `failed` which is a moment rather than a fact.
+   */
+  skipped_no_captions: number;
   failed: number;
   backfill_complete: boolean;
   gap_detected: boolean;
@@ -476,6 +484,7 @@ async function runSource(source: SourceRow, deps: SourceDeps): Promise<SourceRep
     skipped_short: 0,
     skipped_window: 0,
     skipped_not_a_post: 0,
+    skipped_no_captions: 0,
     failed: 0,
     backfill_complete: source.backfill_complete,
     gap_detected: false,
@@ -747,8 +756,8 @@ async function probeSource(
         // A probe that leaves its Item pending asks the identical question every day, and
         // a Source whose whole backlog answers this way could never clear — which is how a
         // channel of uncaptioned videos stayed blocked permanently.
-        await markFailed(deps.db, askable[0].id);
-        report.failed += 1;
+        await markSkippedNoCaptions(deps.db, askable[0].id);
+        report.skipped_no_captions += 1;
       }
     }
   }
@@ -1063,28 +1072,40 @@ async function retrieveBodies(
         await clearFault(deps.db, consecutiveFailuresAssertion(source), source.person);
         continue;
       }
-      await markFailed(deps.db, item.id);
-      report.failed += 1;
-      deps.log(
-        `braintrust: ${item.external_id} failed — ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
 
-      // **A video with no caption track is the source answering, not declining.** It is
-      // still `failed` — the words could not be retrieved and nothing an operator changes
-      // brings them back — but it is not evidence that the platform has stopped serving
-      // braintrust, because the player response it was read from arrived perfectly. The
-      // same reasoning that resets the counter on a paywall: a Source that says *there is
-      // nothing here* is a Source that answered.
+      // **A video with no caption track is the source answering, not declining.** The
+      // player response arrived intact — which is the whole question of whether the
+      // source is serving braintrust — and carried no usable captions. That is a fact
+      // about the video, not a fetch to retry, so it gets its own terminal state.
       //
       // Found live. A channel of five uncaptioned videos in a row was blocked as though it
       // had refused braintrust, and then probed once a day forever.
       if (error instanceof NoCaptions) {
+        await markSkippedNoCaptions(deps.db, item.id);
+        report.skipped_no_captions += 1;
+        deps.log(`braintrust: ${item.external_id} — ${error.message}`);
         inARow = 0;
         await resetConsecutiveFailures(deps.db, source.id);
         await clearFault(deps.db, consecutiveFailuresAssertion(source), source.person);
         continue;
+      }
+
+      // A transient failure: the fetch did not complete. Retry across separate runs up
+      // to MAX_RETRY_ATTEMPTS. Only terminal (exhausted) failures count in the report.
+      const terminal = await recordRetryableFailure(deps.db, item.id);
+      if (terminal) {
+        report.failed += 1;
+        deps.log(
+          `braintrust: ${item.external_id} failed after ${MAX_RETRY_ATTEMPTS} attempts — ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      } else {
+        deps.log(
+          `braintrust: ${item.external_id} failed, will retry — ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
       inARow += 1;
       await incrementConsecutiveFailures(deps.db, source.id);
@@ -1331,6 +1352,7 @@ export function summarise(report: CycleReport): string {
     if (source.reopened_window) parts.push(`${source.reopened_window} reopened (window widened)`);
     if (source.reopened_not_posts) parts.push(`${source.reopened_not_posts} reopened (lastmod moved)`);
     if (source.dated > 0) parts.push(`${source.dated} dated`);
+    if (source.skipped_no_captions > 0) parts.push(`${source.skipped_no_captions} no captions`);
     if (source.failed > 0) parts.push(`${source.failed} failed`);
     if (!source.backfill_complete) parts.push('backfill incomplete');
     // Three states worth their own words, because "blocked" alone reads as the user's
@@ -1342,12 +1364,21 @@ export function summarise(report: CycleReport): string {
     return `  ${source.person} / ${source.platform} ${source.handle}: ${parts.join(', ')}`;
   });
 
-  const { pending, retrieved, skipped_paywall, skipped_short, skipped_window, skipped_not_a_post, failed } =
-    report.corpus;
+  const {
+    pending,
+    retrieved,
+    skipped_paywall,
+    skipped_short,
+    skipped_window,
+    skipped_not_a_post,
+    skipped_no_captions,
+    failed,
+  } = report.corpus;
   lines.push(
     `  corpus: ${retrieved} retrieved, ${skipped_paywall} skipped (paywall), ` +
       `${skipped_short} skipped (short), ${skipped_window} skipped (outside window), ` +
-      `${skipped_not_a_post} not posts, ${pending} pending, ${failed} failed`,
+      `${skipped_not_a_post} not posts, ${skipped_no_captions} no captions, ` +
+      `${pending} pending, ${failed} failed`,
   );
 
   const indexed = [`${index.items_chunked} items chunked`, `${index.chunks_written} chunks`];
