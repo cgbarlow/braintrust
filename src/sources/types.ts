@@ -96,6 +96,7 @@ export type Retrieval =
   | 'skipped_short'
   | 'skipped_window'
   | 'skipped_not_a_post'
+  | 'skipped_no_captions'
   | 'failed';
 
 /**
@@ -221,6 +222,15 @@ export const SHORT_MAX_WORDS = 40;
 export function audienceKnownBeforeFetch(platform: Platform): boolean {
   return platform !== 'blog';
 }
+
+/**
+ * How many times a failed Item is retried before it becomes terminal.
+ *
+ * Three attempts across separate runs is enough to survive a bad afternoon and short
+ * enough that a genuinely dead Item settles within days. Unbounded retries would route
+ * around Blocked, which is the mechanism that exists to stop braintrust asking forever.
+ */
+export const MAX_RETRY_ATTEMPTS = 3;
 
 /**
  * How many consecutive retrieval failures, across *distinct* Items of one Source, mean

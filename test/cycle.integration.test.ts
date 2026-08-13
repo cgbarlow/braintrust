@@ -65,8 +65,8 @@ const FEED_ITEMS = 20;
  * the rest are read.
  */
 const YT_SHORTS = 2;
-const YT_FAILED = 1;
-const YT_RETRIEVED = YOUTUBE_LISTING_IN_WINDOW - YT_SHORTS - YT_FAILED;
+const YT_NO_CAPTIONS = 1;
+const YT_RETRIEVED = YOUTUBE_LISTING_IN_WINDOW - YT_SHORTS - YT_NO_CAPTIONS;
 
 /** The 55 the listing found beyond the feed's 15-entry window, each dated by a fetch. */
 const YT_DATED = YOUTUBE_LISTING_IN_WINDOW - YOUTUBE_FEED_ENTRIES;
@@ -239,7 +239,8 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.equal(youtube.catalogued, YOUTUBE_LISTING_IN_WINDOW);
     assert.equal(youtube.retrieved, YT_RETRIEVED);
     assert.equal(youtube.skipped_short, YT_SHORTS);
-    assert.equal(youtube.failed, YT_FAILED);
+    assert.equal(youtube.skipped_no_captions, YT_NO_CAPTIONS);
+    assert.equal(youtube.failed, 0, 'no-captions videos are not failures');
     assert.equal(youtube.skipped_paywall, 0, 'YouTube has no paywall to respect');
     assert.equal(youtube.backfill_complete, true);
 
@@ -340,12 +341,12 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.equal(short.body_text, captionText(YOUTUBE_SHORT_IN_LISTING));
   });
 
-  it('records a video with no captions as failed, not as something to retry', async () => {
+  it('records a video with no captions as skipped_no_captions, never retried', async () => {
     await follow();
     await run();
 
     const row = (await items('i.external_id = $1', [videoId(YOUTUBE_NO_CAPTIONS)]))[0]!;
-    assert.equal(row.retrieval, 'failed');
+    assert.equal(row.retrieval, 'skipped_no_captions');
 
     // Terminal: the next run leaves it alone rather than asking again forever.
     const { fetcher } = await run({ now: new Date(NOW.getTime() + 25 * 3600_000) });
@@ -358,8 +359,8 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
    * Found live: five uncaptioned videos in a row blocked a real channel as though it had
    * refused, and a block costs that source one request a day forever. The player response
    * the refusal is read from arrived perfectly every time — so the source answered, and
-   * *there is nothing here* is an answer. The Items stay `failed`, because the words could
-   * not be retrieved and nothing an operator changes brings them back.
+   * *there is nothing here* is an answer. The Items are recorded as `skipped_no_captions`,
+   * never retried, and never counted as consecutive failures.
    */
   it('never blocks a channel for videos that simply have no captions', async () => {
     await follow();
@@ -379,8 +380,9 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     const { report } = await run({ fetcher: fakeFetcher(silent) });
     const youtube = report.sources.find((source) => source.platform === 'youtube')!;
 
-    assert.ok(youtube.failed > BLOCK_AFTER_FAILURES, `${youtube.failed} failures is well past the line`);
+    assert.ok(youtube.skipped_no_captions > BLOCK_AFTER_FAILURES, `${youtube.skipped_no_captions} no-captions videos`);
     assert.equal(youtube.blocked_since, undefined, 'the channel answered every request it was sent');
+    assert.equal(youtube.failed, 0, 'no-captions is not a failure');
 
     const { rows } = await db.query<{ blocked_at: Date | null }>(
       "select blocked_at from braintrust_sources where platform = 'youtube'",
@@ -425,7 +427,7 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
        update braintrust_items set retrieval = 'pending'
         where id = (select i.id from braintrust_items i
                       join braintrust_sources s on s.id = i.source_id
-                     where s.platform = 'youtube' and i.retrieval = 'failed' limit 1)`,
+                     where s.platform = 'youtube' and i.retrieval = 'skipped_no_captions' limit 1)`,
     );
 
     const { report } = await run({
@@ -819,7 +821,8 @@ describe('the ingest cycle, against real Postgres', { skip }, () => {
     assert.equal(report.corpus.retrieved, SUBSTACK_FREE + YT_RETRIEVED);
     assert.equal(report.corpus.skipped_paywall, SUBSTACK_PAYWALLED);
     assert.equal(report.corpus.skipped_short, YT_SHORTS);
-    assert.equal(report.corpus.failed, YT_FAILED);
+    assert.equal(report.corpus.skipped_no_captions, YT_NO_CAPTIONS);
+    assert.equal(report.corpus.failed, 0);
     // Nothing left over: one run drains the Backlog it opened.
     assert.equal(report.corpus.pending, 0);
   });
