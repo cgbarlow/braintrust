@@ -105,11 +105,21 @@ describe('compiling the core, against real Postgres', { skip }, () => {
 
   /** Retrieved, chunked and read — an item with nothing left owed on it. */
   async function addItem(externalId: string, text: string, published: string): Promise<string> {
+    return addItemTo(sourceId, externalId, text, published);
+  }
+
+  /** The same, onto a Source other than the seeded Substack. */
+  async function addItemTo(
+    source: string,
+    externalId: string,
+    text: string,
+    published: string,
+  ): Promise<string> {
     const item = await db.query<{ id: string }>(
       `insert into braintrust_items (source_id, external_id, url, audience, retrieval, body_text,
                                      published_at)
        values ($1, $2, $3, 'everyone', 'retrieved', $4, $5) returning id`,
-      [sourceId, externalId, `https://example.test/${externalId}`, text, published],
+      [source, externalId, `https://example.test/${externalId}`, text, published],
     );
     const itemId = item.rows[0]!.id;
 
@@ -263,6 +273,45 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     assert.equal(evidence.skipped_paywall, 1);
     assert.equal(evidence.skipped_short, 1);
     assert.equal(evidence.by_source['substack:nate.substack.com']!.retrieved, ITEMS);
+  });
+
+  /**
+   * The union bug this ticket was filed over: one live Source's later date extends a window
+   * that belongs to a dead one, so the receipts vouch for the videos being read past the
+   * day the channel went silent. The single window is the overlap every Source supports —
+   * it ends where the channel stopped, not where the Substack kept going — and `by_source`
+   * keeps each Source's own window whole.
+   */
+  it("does not let one source's window vouch for a dead one", async () => {
+    await addItem('substack-latest', body(2), '2026-01-20');
+
+    const youtube = await db.query<{ id: string }>(
+      `insert into braintrust_sources (person_id, platform, handle, discovery_url, backfill_floor,
+                                       backfill_complete)
+       values ($1, 'youtube', 'UC0C', 'https://example.test/feed', current_date - 365, true)
+       returning id`,
+      [personId],
+    );
+    const youtubeId = youtube.rows[0]!.id;
+    await addItemTo(youtubeId, 'video-earliest', body(3), '2024-12-01');
+    await addItemTo(youtubeId, 'video-latest', body(4), '2026-01-10');
+
+    await compile();
+
+    const coverage = (await explainPersona(db, 'nate')).layers.coverage!.evidence as {
+      window: [string, string] | null;
+      by_source: Record<string, { window: [string, string] | null }>;
+    };
+
+    // The overlap, not the union: had it been the union it would run to 2026-01-20, the
+    // Substack's newer post, and whisper that the channel was read past 2026-01-10.
+    assert.deepEqual(coverage.window, ['2025-01-01', '2026-01-10']);
+
+    assert.deepEqual(coverage.by_source['substack:nate.substack.com']!.window, [
+      '2025-01-01',
+      '2026-01-20',
+    ]);
+    assert.deepEqual(coverage.by_source['youtube:UC0C']!.window, ['2024-12-01', '2026-01-10']);
   });
 
   it('splits coverage by form at the same floor voice measures over', async () => {

@@ -250,7 +250,12 @@ export async function measureCoverage(
     short_items: 0,
     short_words: 0,
   };
-  const dates: string[] = [];
+  // The top-line window is the overlap every Source supports ([latest start, earliest end]),
+  // never the union. A union ends on the newest item across all Sources, whichever one it came
+  // from — so one live Source's later date would vouch for a dead one being read that recently.
+  // Where the windows disagree so far that the overlap is empty, no single window is offered at all.
+  const starts: string[] = [];
+  const ends: string[] = [];
 
   for (const row of rows) {
     const source: SourceCoverage = {
@@ -283,13 +288,20 @@ export async function measureCoverage(
     totals.long_words += Number(row.long_form_words);
     totals.short_items += Number(row.short_form_items);
     totals.short_words += Number(row.short_form_words);
-    if (source.window) dates.push(source.window[0], source.window[1]);
+    if (source.window) {
+      starts.push(source.window[0]);
+      ends.push(source.window[1]);
+    }
   }
 
-  dates.sort();
+  starts.sort();
+  ends.sort();
 
   return {
-    window: dates.length > 0 ? [dates[0]!, dates[dates.length - 1]!] : null,
+    window:
+      starts.length > 0 && starts[starts.length - 1]! <= ends[0]!
+        ? [starts[starts.length - 1]!, ends[0]!]
+        : null,
     retrieved: totals.retrieved,
     skipped_paywall: totals.skipped_paywall,
     skipped_short: totals.skipped_short,
