@@ -161,6 +161,38 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
     return new Date(NOW.getTime() + 86_400_000);
   }
 
+  /** A body request braintrust has not yet asked for, put in the backlog. */
+  async function addPending(platform: string, externalId: string): Promise<void> {
+    const { rows } = await db.query<{ id: string }>(
+      'select id from braintrust_sources where platform = $1',
+      [platform],
+    );
+    await db.query(
+      `insert into braintrust_items (source_id, external_id, url, title, published_at, audience)
+       values ($1, $2, 'https://x/y', $2, current_date, 'everyone')`,
+      [rows[0]!.id, externalId],
+    );
+  }
+
+  /** The counter and the block, read off the row the loop is supposed to keep straight. */
+  async function sourceState(
+    platform: string,
+  ): Promise<{ consecutive_failures: number; blocked_at: Date | null }> {
+    const { rows } = await db.query<{ consecutive_failures: number; blocked_at: Date | null }>(
+      'select consecutive_failures, blocked_at from braintrust_sources where platform = $1',
+      [platform],
+    );
+    return rows[0]!;
+  }
+
+  /** Every open fault. One row is the whole deduplication story. */
+  async function faults(): Promise<{ assertion: string; person_slug: string | null; detail: string }[]> {
+    const { rows } = await db.query<{ assertion: string; person_slug: string | null; detail: string }>(
+      'select assertion, person_slug, detail from braintrust_faults',
+    );
+    return rows;
+  }
+
   describe('measuring a block', () => {
     it('stops after N consecutive failures and never asks for the item after them', async () => {
       await follow();
@@ -437,6 +469,105 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
         'a refresh skips a blocked source entirely; the daily job finds out for itself',
       );
       assert.ok(await blockedAt());
+    });
+  });
+
+  /**
+   * The count is a column now, so the thing that used to reset to zero every night —
+   * a daily backlog of one or two Items — is what finally reaches the threshold. And
+   * the fault that reports the streak is deduplicated per source, not per run.
+   */
+  describe('the run-spanning failure count', () => {
+    it('reaches the block one item a day, and opens exactly one fault across the episode', async () => {
+      await follow();
+      await run({ fetcher: fakeFetcher(natesRoutes()) });
+
+      // One fresh item each day, each refused: the steady state a backfill never has.
+      for (let day = 1; day <= BLOCK_AFTER_FAILURES; day += 1) {
+        await addPending('substack', `day-${day}`);
+        const { report } = await run({
+          fetcher: fakeFetcher(routesWhereBodies(refusing(403))),
+          now: await nextDay(),
+        });
+        const state = await sourceState('substack');
+        assert.equal(state.consecutive_failures, day, 'the count survives the run boundary');
+        assert.equal((await faults()).length, 1, 'one fault, however many failures observed it');
+        if (day < BLOCK_AFTER_FAILURES) {
+          assert.equal(of(report, 'substack').blocked_since, undefined, `not yet blocked at ${day}`);
+          assert.equal(state.blocked_at, null);
+        }
+      }
+
+      const blocked = await sourceState('substack');
+      assert.ok(blocked.blocked_at, 'reached the block on the day the count did');
+      assert.equal(blocked.consecutive_failures, BLOCK_AFTER_FAILURES);
+
+      // A blocked source is probed once a day; a refusal changes nothing, so the fault
+      // stays the one fault and reads at its highest count.
+      await addPending('substack', 'day-after');
+      await run({
+        fetcher: fakeFetcher(routesWhereBodies(refusing(403))),
+        now: await nextDay(),
+      });
+      assert.equal((await faults()).length, 1, 'still one fault, not one per run');
+      const [fault] = await faults();
+      assert.match(fault!.detail, /5 consecutive retrieval failures/);
+    });
+
+    it('keeps the fault for the source that failed, not the person and not another source', async () => {
+      await follow();
+      await run({ fetcher: fakeFetcher(natesRoutes()) });
+
+      await addPending('substack', 'only-substack-fails');
+      await run({
+        fetcher: fakeFetcher(routesWhereBodies(refusing(403))),
+        now: await nextDay(),
+      });
+
+      const { rows } = await db.query<{ id: string }>(
+        "select id from braintrust_sources where platform = 'substack'",
+      );
+      const [fault] = await faults();
+      assert.equal(fault!.assertion, `source_consecutive_failures:${rows[0]!.id}`);
+      assert.equal(fault!.person_slug, 'nate-b-jones');
+      // YouTube stayed healthy all along — no second fault with the same streak behind it.
+      assert.equal((await faults()).length, 1);
+      assert.match(fault!.detail, /substack/);
+    });
+
+    it('clears the fault the day an item comes back, exactly as the counter resets', async () => {
+      await follow();
+      await run({ fetcher: fakeFetcher(natesRoutes()) });
+
+      await addPending('substack', 'bad-day');
+      await run({
+        fetcher: fakeFetcher(routesWhereBodies(refusing(403))),
+        now: await nextDay(),
+      });
+      assert.equal((await sourceState('substack')).consecutive_failures, 1);
+      assert.equal((await faults()).length, 1);
+
+      await addPending('substack', 'good-day');
+      await run({ fetcher: fakeFetcher(natesRoutes()), now: await nextDay() });
+      assert.equal((await sourceState('substack')).consecutive_failures, 0);
+      assert.equal((await faults()).length, 0, 'an answer retires the fault');
+    });
+
+    it('opens no fault for a source that simply published nothing', async () => {
+      await follow();
+      await run({ fetcher: fakeFetcher(natesRoutes()) });
+
+      const { report } = await run({
+        fetcher: fakeFetcher(routesWhereBodies(refusing(403))),
+        now: await nextDay(),
+      });
+
+      assert.equal(report.corpus.failed, 0, 'nothing was asked, so nothing could fail');
+      assert.equal((await faults()).length, 0, 'silence is not failure');
+      assert.deepEqual(await sourceState('substack'), {
+        consecutive_failures: 0,
+        blocked_at: null,
+      });
     });
   });
 

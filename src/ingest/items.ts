@@ -42,13 +42,15 @@ export type SourceRow = {
   poll_interval_hours: number;
   last_checked_at: Date | null;
   blocked_at: Date | null;
+  consecutive_failures: number;
 };
 
 const SOURCE_COLUMNS = `
   s.id, s.person_id, p.slug as person, p.display_name,
   s.platform, s.handle, s.discovery_url, s.cursor_published_at,
   s.backfill_floor::text as backfill_floor, s.backfill_complete,
-  s.exclude_shorts, s.poll_interval_hours, s.last_checked_at, s.blocked_at
+  s.exclude_shorts, s.poll_interval_hours, s.last_checked_at, s.blocked_at,
+  s.consecutive_failures
 `;
 
 /**
@@ -126,9 +128,38 @@ export async function blockSource(db: Db, sourceId: string, at: Date): Promise<v
  *
  * There is no backoff to reset and no identity to rotate: braintrust asked the same
  * question it was refused, from the same address, and got an answer.
+ *
+ * The consecutive-failure counter is reset too. An answer resets the measurement,
+ * whether or not a block was set — a Source that comes back clears the run and
+ * starts over.
  */
 export async function clearBlock(db: Db, sourceId: string): Promise<void> {
-  await db.query('update braintrust_sources set blocked_at = null where id = $1', [sourceId]);
+  await db.query(
+    'update braintrust_sources set blocked_at = null, consecutive_failures = 0 where id = $1',
+    [sourceId],
+  );
+}
+
+/**
+ * One more Item failed. The counter lives on the row so it survives the run — a Source
+ * whose daily backlog is one or two Items can still reach the threshold.
+ */
+export async function incrementConsecutiveFailures(db: Db, sourceId: string): Promise<void> {
+  await db.query(
+    'update braintrust_sources set consecutive_failures = consecutive_failures + 1 where id = $1',
+    [sourceId],
+  );
+}
+
+/**
+ * An Item came back — body, paywall, captionless video. The streak is broken and the
+ * counter resets, matching today's in-memory behaviour exactly.
+ */
+export async function resetConsecutiveFailures(db: Db, sourceId: string): Promise<void> {
+  await db.query(
+    'update braintrust_sources set consecutive_failures = 0 where id = $1',
+    [sourceId],
+  );
 }
 
 /** Every Source of one Person, blocked ones included. Used to report, not to fetch. */

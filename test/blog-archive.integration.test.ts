@@ -91,6 +91,7 @@ describe('walking a blog archive, against real Postgres', { skip }, () => {
       poll_interval_hours: 24,
       last_checked_at: null,
       blocked_at: null,
+      consecutive_failures: 0,
     };
   });
 
