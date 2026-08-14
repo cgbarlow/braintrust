@@ -366,6 +366,34 @@ describe('the ingest cycle, against real Postgres', () => {
     assert.equal(again.retrieval, 'skipped_no_captions');
   });
 
+  /** A video that has words, so that emptying its row afterwards is the only thing wrong. */
+  const EMPTIED = 1;
+
+  it('brings back an item that says it was read and holds nothing', async () => {
+    await follow();
+    await run();
+    assert.equal((await items('i.external_id = $1', [videoId(EMPTIED)]))[0]!.retrieval, 'retrieved');
+
+    // A row that is self-contradictory rather than unlucky: coverage counts it among the
+    // items braintrust has read, and braintrust holds none of it. No other reopen on this
+    // map can move a read Item, so without this it is stuck at any age — and a reader
+    // cannot see the gap, because a persona says nothing about an item it has no words for.
+    await db.query(
+      `update braintrust_items set body_text = '' where external_id = $1`,
+      [videoId(EMPTIED)],
+    );
+
+    const { report } = await run({ now: new Date(NOW.getTime() + 25 * 3600_000) });
+
+    // Two: this row, and the genuinely caption-less video the window arm re-asks anyway.
+    assert.equal(of(report, 'youtube').reopened_captions, 2);
+
+    // No operator did anything and no row was hand-edited: the ordinary daily run repaired it.
+    const row = (await items('i.external_id = $1', [videoId(EMPTIED)]))[0]!;
+    assert.equal(row.retrieval, 'retrieved');
+    assert.equal(row.body_text, captionText(EMPTIED));
+  });
+
   it('stops asking once the video is old enough that silence is its own', async () => {
     await follow();
     await run();
