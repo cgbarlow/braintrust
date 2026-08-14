@@ -85,7 +85,9 @@ comment on column braintrust_sources.blocked_at is
   'items and across runs, never inferred from a response code. Suppresses this source''s backlog.';
 
 comment on column braintrust_sources.poll_interval_hours is
-  'Does not create a second scheduler. One daily job; this decides whether a source is due.';
+  'Does not create a second scheduler. One daily job; this decides whether a source is due. '
+  'The due test accepts a source up to one hour past its exact boundary, so a run that reaches '
+  'a source a moment early still polls what it polled yesterday.';
 
 create table if not exists braintrust_items (
   id            uuid primary key default gen_random_uuid(),

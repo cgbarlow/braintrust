@@ -1354,10 +1354,16 @@ export function summarise(report: CycleReport): string {
   const stuck = stuckBehindLine(report);
 
   if (report.sources.length === 0 && idleIndex && idleNotes && idleCompile) {
+    // **Named as an outcome, not a quiet success.** A scheduled run that polled nothing is
+    // the every-other-day skip wearing a healthy mask — found live when `0 of 9 sources due`
+    // read exactly like an idle run and a Corpus slipped a day, then two, without a line
+    // that said so. The magnitude is the alarm: "0 of 2" says how many Sources the clock
+    // holds back, which is the number nobody can read from today's logs once the run is over.
+    const none = `braintrust: nothing was due — 0 of ${
+      report.not_due + report.paused + report.sources.length
+    } source${report.not_due + report.paused + report.sources.length === 1 ? '' : 's'} were polled.`;
     const extras = [behind, stuck].filter((line): line is string => line !== null);
-    return extras.length > 0
-      ? `braintrust: nothing was due.\n${extras.join('\n')}`
-      : 'braintrust: nothing was due.';
+    return extras.length > 0 ? `${none}\n${extras.join('\n')}` : none;
   }
 
   // A run where no Source was due can still have real work to report: an endpoint that
