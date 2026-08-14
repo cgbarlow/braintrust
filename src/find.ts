@@ -41,12 +41,19 @@
  * and urls all still ship, and a reader can still tell the difference from the payload
  * alone. **Nothing here may be trimmed on the grounds that it is no longer spoken.**
  *
- * **An empty answer names what it could not read.** When braintrust_find_positions matches
- * nothing, the payload names Items braintrust holds for that Person, on that topic, which it
- * has not read — with the reason and the existing `say` line. A title match is weaker than
- * a Chunk match, so this appears only when the answer is otherwise empty: the alternative
- * there is a bare denial, which is worse than an imperfect pointer. It never reorders or
- * dilutes a real answer. Every not-read reason is covered, not only `failed`.
+ * **An empty answer names what it could not read, and names the gap it still cannot see.**
+ * #232 paid off the accepted cost that an empty answer was silent about unread paid posts:
+ * the payload now names Items braintrust holds for that Person, on that topic, which it has
+ * not read — with the reason and a `say` line. A title match is weaker than a Chunk match,
+ * so `unread` appears only when the answer is otherwise empty: the alternative there is a
+ * bare denial, which is worse than an imperfect pointer. It never reorders or dilutes a
+ * real answer. Every not-read reason is covered, not only `failed`.
+ *
+ * **What is still owed: a title keyword is a heuristic.** A question whose keywords do not
+ * appear in any unread Item's title still produces the bare denial. And braintrust knows
+ * the Item's title and URL, not its contents — it can name the gap but not fill it. The
+ * full Coverage picture (how much was never read, what failed, what was paywalled) remains
+ * in the Coverage layer, which `braintrust_explain_persona` returns whole.
  *
  * See docs/design/mcp-surface.md §3.
  */
@@ -349,18 +356,19 @@ export type FindPayload = {
 };
 
 /**
- * An empty answer, as **facts and no sentence**.
+ * An empty answer, as facts with a **`say` line when it knows the gap**.
  *
- * **`say` used to ship here and no Persona ever said it.** It read *"This is outside what
- * braintrust has read of this person."* — third person, about braintrust, calling the person
- * *this person* — against its own field comment promising the opposite. Measured across ~80
- * replies: every arm rewrote it into its own first person, and braintrust's exact words came
- * out only when a Script section told the Persona to use them. So the sentence is the
- * Persona's and braintrust supplies only what it knows. That is what keeps *never fall back
- * to a generic voice* at **one** exception — the fixed disclosure, which is braintrust
- * speaking as itself.
+ * **`say` used to ship here and no Persona ever said it, so it moved to `unread[]`.**
+ * The original `say` read *"This is outside what braintrust has read of this person."* —
+ * third person, about braintrust, calling the person *this person* — against its own field
+ * comment promising the opposite. Measured across ~80 replies: every arm rewrote it into its
+ * own first person, and braintrust's exact words came out only when a Script section told the
+ * Persona to use them. So the sentence is the Persona's and braintrust supplies only what it
+ * knows. That is what keeps *never fall back to a generic voice* at **one** exception — the
+ * fixed disclosure, which is braintrust speaking as itself. `unread[]` inherited the `say`
+ * field on each Item, where the Persona can name the specific thing it could not read.
  *
- * **And an empty answer offers rather than stops.** Nothing was broken about the honesty: a
+ * **An empty answer offers rather than stops.** Nothing was broken about the honesty: a
  * Persona handed an empty answer admits it and does not fill, 24 of 24, every arm and every
  * seed. What was wrong was the shape of a dead end — *"I don't have a view on central bank
  * interest rate policy."* and no next move, on the first question a reader asks. Handed the
