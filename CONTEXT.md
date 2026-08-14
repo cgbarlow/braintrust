@@ -85,10 +85,14 @@ or failing to answer at all is Blocked.
 _Avoid_: excluded, filtered, ignored
 
 **No Captions**:
-A video whose player response arrived intact and carried no usable caption track. Terminal — a fact about
-the video that no amount of retrying changes, recorded in its own state so braintrust never asks again.
-Distinct from Failed, which is about a moment and about the network.
-_Avoid_: failed, unreadable
+A video whose player response arrived intact and carried no usable caption track. **A fact about the
+response, never about the video** — the words may exist and braintrust may simply not have been given
+them. Measured: videos recorded this way return full transcripts when the identical request goes out
+from a domestic connection rather than from the datacenter the scheduled job runs in, so the absence is
+a property of who asked. braintrust therefore says it ran into trouble getting the captions, and never
+that a video has none. Distinct from Failed, which is about a moment and about the network.
+_Avoid_: failed, unreadable, "has no captions" (a claim about somebody's published work that braintrust
+cannot support)
 
 ### The persona
 

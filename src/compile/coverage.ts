@@ -163,8 +163,10 @@ function describe(evidence: CoverageEvidence): string {
   }
   if (evidence.skipped_no_captions > 0) {
     gaps.push(
-      `${evidence.skipped_no_captions} video${evidence.skipped_no_captions === 1 ? ' has' : 's have'} ` +
-        'no caption track braintrust can read. That is a fact about the video, not a fetch to retry.',
+      `braintrust ran into trouble getting the captions for ${evidence.skipped_no_captions} ` +
+        `video${evidence.skipped_no_captions === 1 ? '' : 's'}. Whether those videos are ` +
+        'captioned is not something braintrust can tell from a request that came back without ' +
+        'them — what it can say is that it did not get the words.',
     );
   }
   if (evidence.failed > 0) {

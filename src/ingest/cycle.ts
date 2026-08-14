@@ -591,8 +591,8 @@ async function pollFeedSource(
     if (reopenedCaptions > 0) {
       report.reopened_captions = reopenedCaptions;
       deps.log(
-        `braintrust: ${reopenedCaptions} video(s) of ${source.handle} had no captions when ` +
-          `braintrust asked and were published since ${floor}, so it is asking again.`,
+        `braintrust: ${reopenedCaptions} video(s) of ${source.handle} did not give up their ` +
+          `captions when braintrust asked and were published since ${floor}, so it is asking again.`,
       );
     }
   }

@@ -153,12 +153,26 @@ describe('recent items', () => {
     }
   });
 
-  it('says a captionless video has no words rather than that braintrust failed', async () => {
+  /**
+   * **This assertion is the inverse of the one it replaces, and the reversal was measured.**
+   *
+   * It used to require the say line to state the video had no captions, on the reasoning
+   * that this was a fact about the video and nothing braintrust could have done differently.
+   * That reasoning was wrong. Videos in this state return full transcripts — 86, 4,265 and
+   * 5,052 words — when the identical request goes out from a domestic connection rather than
+   * the datacenter the scheduled job runs in. The caption track is withheld from some
+   * networks and served to others, so what braintrust recorded was its own failed attempt.
+   *
+   * Which makes the old line a claim about somebody's published work that braintrust cannot
+   * support, spoken in that person's own voice. The rule braintrust holds everywhere else
+   * applies here too: say what braintrust did, never what the person did or did not publish.
+   */
+  it('says braintrust could not get the captions, never that the video has none', async () => {
     const payload = await recentItems(
       { person: 'ethan-mollick' },
       dbWith([
         {
-          title: 'A video with nothing to transcribe',
+          title: 'A video whose captions never arrived',
           url: 'https://www.youtube.com/watch?v=abc',
           published_at: '2026-08-01',
           platform: 'youtube',
@@ -171,9 +185,14 @@ describe('recent items', () => {
 
     const item = payload.items[0]!;
     assert.equal(item.not_read!.reason, 'skipped_no_captions');
-    // A fact about the video. Nothing here reads as a failure, a refusal, or a paywall,
-    // and nothing invites a listener to think braintrust could have tried harder.
-    assert.match(item.not_read!.say, /no captions/);
-    assert.doesNotMatch(item.not_read!.say, /failed|could not|paywall/);
+
+    // The claim braintrust is entitled to make: something went wrong on its side.
+    assert.match(item.not_read!.say, /braintrust/);
+    assert.match(item.not_read!.say, /trouble|could not get|did not get/);
+
+    // The claim it is not entitled to make. A persona saying a video "has no captions" is
+    // asserting an absence in the person's own work, which braintrust cannot see from a
+    // response that merely came back without them.
+    assert.doesNotMatch(item.not_read!.say, /has no captions|with no captions|no captions on/);
   });
 });

@@ -123,6 +123,25 @@ describe('the coverage layer', () => {
     assert.doesNotMatch(descriptive_md, /could not be retrieved/);
   });
 
+  it('reports captions it could not get as its own trouble, never as videos without captions', () => {
+    const { descriptive_md } = coverageLayer(
+      evidence({
+        by_source: {
+          'youtube:UC0': source({ platform: 'youtube', handle: 'UC0', skipped_no_captions: 3 }),
+        },
+      }),
+    );
+
+    // This sentence used to read "3 videos have no caption track braintrust can read. That
+    // is a fact about the video, not a fetch to retry." Measured false: the same videos
+    // return full transcripts when the request goes out from a domestic connection rather
+    // than the datacenter the job runs in. Coverage names what braintrust did not get; an
+    // absence in somebody's published work is not a thing it can see from here.
+    assert.match(descriptive_md, /ran into trouble getting the captions for 3 videos/);
+    assert.match(descriptive_md, /it did not get the words/);
+    assert.doesNotMatch(descriptive_md, /have no caption|fact about the video/);
+  });
+
   it('reports items not yet read as work outstanding rather than as a gap', () => {
     const { descriptive_md } = coverageLayer(
       evidence({ by_source: { 'youtube:UC0C': source({ pending: 12 }) } }),
