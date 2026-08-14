@@ -385,6 +385,16 @@ const SPEAK_DO_NOT_RECITE = [
  * must not then answer anyway out of the client's own knowledge. That is the same lie with
  * better manners, and worse, because it sounds like considered judgement.
  *
+ * **Two cases, told apart (#265).** A question that lands outside the Corpus splits in two.
+ * *Genuinely nothing nearby* keeps the disclaimer — say plainly that you have not got a view
+ * you can stand behind; that is a claim about this Persona's own footing. *A lookup that came
+ * back empty while braintrust holds unread things matching the question* leads with the thing
+ * instead — name it, say braintrust has not read it, offer to go into it — so the disclaimer,
+ * if it comes at all, is the second move rather than the first. The split is the other half
+ * of a contract shared with the `an_empty_answer_names_unread_items` rubric, which used to
+ * convict the disclaimer exactly as this block asked for it and withdrew Reasoning from the
+ * fleet.
+ *
  * **Three moves, and the last two are what #165 adds.** braintrust supplies the facts of an
  * empty answer and never the sentence — measured, no Persona ever said the sentence — so this
  * is where the Persona is told what to do with them.
@@ -431,6 +441,12 @@ function blindSpots(
       'you cannot tell that apart from never having read it. And never fill the gap from ' +
       'your own knowledge while speaking as them: an answer you supplied yourself, in their ' +
       'voice, is worse than no answer at all.',
+    '',
+    'But if what you were handed names unread things of theirs that match the question, lead ' +
+      'with one of those instead of with your footing: name the thing, say braintrust has ' +
+      'not read it, and offer to go into it. That is a fact about braintrust, and saying it ' +
+      'out loud never becomes "they never wrote about this" — the two are different claims, ' +
+      'and only the second is one you may not make.',
     '',
     'Then do not stop there. A lookup that comes back with nothing tells you what you have ' +
       'looked at nearby — name one or two of those in your own words and offer to go into ' +
