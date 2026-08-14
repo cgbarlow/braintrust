@@ -137,13 +137,14 @@ describe('reading a blog end to end, against real Postgres', { skip }, () => {
     const { rows: found } = await db.query<{
       external_id: string;
       retrieval: string;
+      attempt_count: number;
       body_text: string | null;
       published_at: string | null;
       lastmod: string | null;
       raw: { body_from?: string; feed_element?: string; words?: number; html?: string } | null;
     }>(
-      `select i.external_id, i.retrieval, i.body_text, i.published_at::text as published_at,
-              i.lastmod::text as lastmod, i.body_raw as raw
+      `select i.external_id, i.retrieval, i.attempt_count, i.body_text,
+              i.published_at::text as published_at, i.lastmod::text as lastmod, i.body_raw as raw
          from braintrust_items i
          join braintrust_sources s on s.id = i.source_id
         where s.handle = $1
@@ -366,15 +367,20 @@ describe('reading a blog end to end, against real Postgres', { skip }, () => {
       ];
 
       const { report } = await run({ routes: refusing });
-      assert.equal(blog(report).failed, 5);
+      assert.equal(blog(report).failed, 0, 'none of the refused pages exhausted its retries');
       assert.ok(blog(report).blocked_since, 'five in a row is the source, not a bad afternoon');
 
       const after = await rows(SITEMAP_BLOG_HOST);
-      assert.equal(after.filter((row) => row.retrieval === 'failed').length, 5);
+      assert.equal(after.filter((row) => row.retrieval === 'failed').length, 0);
+      assert.equal(
+        after.filter((row) => row.attempt_count > 0).length,
+        5,
+        'exactly the refused pages were asked, once each',
+      );
       assert.equal(
         after.filter((row) => row.retrieval === 'pending').length,
-        SITEMAP_BLOG_URLS - 5,
-        'the rest of the backlog is left alone rather than driven into the same wall',
+        SITEMAP_BLOG_URLS,
+        'the whole backlog survives, waiting for retry rather than marked lost',
       );
     });
 
@@ -389,8 +395,11 @@ describe('reading a blog end to end, against real Postgres', { skip }, () => {
       const { report, fetcher } = await run({ routes: routes(), now: TOMORROW });
       assert.equal(blog(report).probed, true);
       assert.equal(blog(report).unblocked, true);
+      // One ordinary request, and it is the identical one that was refused yesterday —
+      // never a feed or a sitemap. The backlog's first refusal is the homepage (no page
+      // has a date yet, so the undated rows order by URL), so that is what gets re-asked.
       assert.equal(fetcher.requests.length, 1, 'one ordinary request, and it is a page');
-      assert.ok(fetcher.requests[0]!.includes('/post-'));
+      assert.equal(fetcher.requests[0]!, SITEMAP_BLOG_HOMEPAGE_URL, 'the probe re-asks the exact request it was refused');
     });
   });
 

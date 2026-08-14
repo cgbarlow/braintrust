@@ -30,7 +30,7 @@ import { runCycle, type CycleReport, type SourceReport } from '../src/ingest/cyc
 import { createExtractor } from '../src/notes/index.js';
 import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
-import { BLOCK_AFTER_FAILURES } from '../src/sources/types.js';
+import { BLOCK_AFTER_FAILURES, MAX_RETRY_ATTEMPTS } from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeExtractor, testExtractorConfig } from './support/notes.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
@@ -71,6 +71,12 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
 
   beforeEach(async () => {
     await db.query('truncate braintrust_people cascade');
+    // The fault and stuck-rebuild ledgers are not foreign-keyed to `braintrust_people`,
+    // so `truncate ... cascade` leaves them holding the previous test's rows — and this
+    // file's whole point is that *one* fault means exactly that. Every test measures its
+    // own episode against an empty ledger.
+    await db.query('truncate braintrust_faults');
+    await db.query('truncate braintrust_stuck_rebuilds');
   });
 
   async function follow(): Promise<void> {
@@ -110,6 +116,24 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
   }
 
   const refusing = (status: number, body = '<html>are you a robot?</html>') => () => ({ status, body });
+
+  /**
+   * The body endpoint answering for every slug — the unknown ones the test injects as
+   * pending rows included. This is what an answering day looks like after the source was
+   * refusing: the request it was refused yesterday is served today.
+   */
+  const servingBodies: Route[] = [
+    {
+      match: (request: string) => request.startsWith(BODY_ENDPOINT),
+      respond: (request: string) => {
+        const known = substackPost(slugOf(request));
+        return known.status === 200
+          ? known
+          : { status: 200, body: JSON.stringify({ slug: slugOf(request), audience: 'everyone', body_html: '<p>Back.</p>' }) };
+      },
+    },
+    ...natesRoutes(),
+  ];
 
   async function run(
     options: { fetcher?: FakeFetcher; now?: Date; extract?: boolean } = {},
@@ -211,32 +235,57 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
 
     it('measures across distinct items, so one broken item never blocks a source', async () => {
       await follow();
-      // The same post fails every time it is asked for; every other post is served.
-      const { report, fetcher } = await run({
-        fetcher: fakeFetcher(
-          routesWhereBodies((slug) => (slug === 'post-0' ? { status: 500, body: '' } : 'ok')),
-        ),
-      });
+      // The same post fails every time it is asked for; every other post is served. On the
+      // first run it is refused once and stays pending — a retry, not a lost item — while
+      // the whole backlog still runs.
+      const broken = routesWhereBodies((slug) => (slug === 'post-0' ? { status: 500, body: '' } : 'ok'));
+      const first = await run({ fetcher: fakeFetcher(broken) });
 
-      const substack = of(report, 'substack');
-      assert.equal(substack.failed, 1);
-      assert.equal(substack.blocked_since, undefined, 'one bad item is an item, not a source');
+      assert.equal(of(first.report, 'substack').failed, 0, 'one refusal is a retry, not a lost item');
+      assert.equal(of(first.report, 'substack').blocked_since, undefined, 'one bad item is an item, not a source');
       assert.equal(await blockedAt(), null);
-      assert.ok(bodyRequests(fetcher).length > BLOCK_AFTER_FAILURES, 'the rest of the backlog ran');
+      assert.ok(bodyRequests(first.fetcher).length > BLOCK_AFTER_FAILURES, 'the rest of the backlog ran');
+
+      // It is the only thing left to ask, and it keeps failing — so on the run that
+      // spends its last retry, whatever the retry budget is, it is the one terminal item
+      // that run reports. The streak never once came close to a block.
+      let terminal: { report: CycleReport; fetcher: FakeFetcher } | undefined;
+      for (let attempt = 1; attempt < MAX_RETRY_ATTEMPTS; attempt += 1) {
+        terminal = await run({ fetcher: fakeFetcher(broken), now: await nextDay() });
+      }
+      assert.equal(of(terminal!.report, 'substack').failed, 1, 'the one broken item, once its retries are spent');
+      assert.equal(of(terminal!.report, 'substack').blocked_since, undefined, 'one bad item is an item, not a source');
+      assert.equal(await blockedAt(), null);
     });
 
     it('counts consecutive failures, so a source that keeps answering is never blocked', async () => {
       await follow();
-      // Every other post fails: far more than the threshold in total, never in a row.
+      // Every other post fails: far more than the threshold in total, never in a row. None
+      // is asked twice yet, so none has exhausted its retries — the refusals are measured
+      // as pending rows carrying an attempt, and there are far more of those than the
+      // threshold while the streak never once ran away.
       let seen = 0;
       const { report } = await run({
         fetcher: fakeFetcher(routesWhereBodies(() => (seen++ % 2 === 0 ? { status: 403, body: '' } : 'ok'))),
       });
 
       const substack = of(report, 'substack');
-      assert.ok(substack.failed > BLOCK_AFTER_FAILURES, 'plenty of failures');
+      assert.equal(substack.failed, 0, 'plenty of refusals, none of them exhausting a retry');
       assert.equal(substack.blocked_since, undefined);
       assert.equal(await blockedAt(), null);
+
+      const attempted = await db.query<{ count: string }>(
+        `select count(*)::text as count
+           from braintrust_items i
+           join braintrust_sources s on s.id = i.source_id
+          where s.platform = 'substack'
+            and i.retrieval = 'pending'
+            and i.attempt_count > 0`,
+      );
+      assert.ok(
+        Number(attempted.rows[0]!.count) > BLOCK_AFTER_FAILURES,
+        'the run really observed far more refusals than the threshold, never in a row',
+      );
     });
 
     it('treats a paywall as an answer, because a source that says no is a source that spoke', async () => {
@@ -483,25 +532,41 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
       await follow();
       await run({ fetcher: fakeFetcher(natesRoutes()) });
 
-      // One fresh item each day, each refused: the steady state a backfill never has.
-      for (let day = 1; day <= BLOCK_AFTER_FAILURES; day += 1) {
+      // One fresh item each day, each refused — but the steady-state Backlog is not one
+      // item: yesterday's refusal is still pending until it exhausts its retries, so the
+      // run re-asks it and the count accrues faster than the calendar. What the column
+      // has to prove is that the streak survives the run boundary at all.
+      let reached = 0;
+      let blocked: { blocked_at: Date | null; consecutive_failures: number } | undefined;
+      const DIET_CAP = BLOCK_AFTER_FAILURES + MAX_RETRY_ATTEMPTS;
+      for (let day = 1; day <= DIET_CAP; day += 1) {
         await addPending('substack', `day-${day}`);
         const { report } = await run({
           fetcher: fakeFetcher(routesWhereBodies(refusing(403))),
           now: await nextDay(),
         });
         const state = await sourceState('substack');
-        assert.equal(state.consecutive_failures, day, 'the count survives the run boundary');
-        assert.equal((await faults()).length, 1, 'one fault, however many failures observed it');
-        if (day < BLOCK_AFTER_FAILURES) {
-          assert.equal(of(report, 'substack').blocked_since, undefined, `not yet blocked at ${day}`);
-          assert.equal(state.blocked_at, null);
+        if (!blocked) {
+          assert.ok(
+            state.consecutive_failures > reached,
+            'the count survives the run boundary rather than resetting each night',
+          );
+          reached = state.consecutive_failures;
+          if (state.blocked_at) {
+            blocked = state;
+          } else if (day < BLOCK_AFTER_FAILURES) {
+            assert.equal(of(report, 'substack').blocked_since, undefined, `not yet blocked at ${day}`);
+            assert.equal(state.blocked_at, null);
+          }
         }
+        assert.equal((await faults()).length, 1, 'one fault, however many failures observed it');
       }
 
-      const blocked = await sourceState('substack');
-      assert.ok(blocked.blocked_at, 'reached the block on the day the count did');
-      assert.equal(blocked.consecutive_failures, BLOCK_AFTER_FAILURES);
+      assert.ok(blocked, 'a one-item-a-day diet still reaches the block');
+      // The counter is incremented one failure at a time and the block fires the first
+      // time it reaches the threshold, so the row that set `blocked_at` reads exactly
+      // the threshold.
+      assert.equal(blocked!.consecutive_failures, BLOCK_AFTER_FAILURES, 'the block fired on the count, not a guess');
 
       // A blocked source is probed once a day; a refusal changes nothing, so the fault
       // stays the one fault and reads at its highest count.
@@ -548,8 +613,10 @@ describe('a source that stops answering, against real Postgres', { skip }, () =>
       assert.equal((await sourceState('substack')).consecutive_failures, 1);
       assert.equal((await faults()).length, 1);
 
+      // The day an item comes back — the same request that was refused yesterday, served
+      // today — the streak breaks and the fault goes with it.
       await addPending('substack', 'good-day');
-      await run({ fetcher: fakeFetcher(natesRoutes()), now: await nextDay() });
+      await run({ fetcher: fakeFetcher(servingBodies), now: await nextDay() });
       assert.equal((await sourceState('substack')).consecutive_failures, 0);
       assert.equal((await faults()).length, 0, 'an answer retires the fault');
     });
