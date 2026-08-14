@@ -937,6 +937,79 @@ describe('an interrogator braintrust cannot reach', () => {
   });
 });
 
+describe('the shape each interrogation request declares', () => {
+  /** Every request the interrogator sends, in order, with the field this is about. */
+  const recordRequests = async (): Promise<{ system: string; format: unknown }[]> => {
+    const sent: { system: string; format: unknown }[] = [];
+    const fetcher: Fetcher = async (_url, init) => {
+      const body = init!.json as {
+        messages: { content: string }[];
+        response_format?: unknown;
+      };
+      sent.push({ system: body.messages[0]!.content, format: body.response_format });
+      const judging = body.messages[0]!.content.includes('checking whether one statement is true');
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: judging
+                    ? '{"holds": true, "why": "it does"}'
+                    : `${SPOKEN_DISCLOSURE}\n\nI have no way to look anything up.`,
+                },
+              },
+            ],
+          });
+        },
+      };
+    };
+
+    await runInterrogation({
+      db: interrogatingDb(),
+      interrogator: createInterrogator(
+        { baseUrl: 'https://judge.invalid/v1', model: 'a-model', apiKey: undefined },
+        fetcher,
+      ),
+      issues: recordingFiler(),
+      now: NOW,
+      log: () => {},
+    });
+    return sent;
+  };
+
+  it('asks the judge for one JSON object on the request, not only in the prompt', async () => {
+    // Found live. Asked for JSON in words alone, this endpoint's model answered through
+    // gpt-oss's constrained-JSON channel and the server failed to parse its own output —
+    // HTTP 500, four times in five. Intermittent, so it read as a flaky endpoint rather
+    // than a missing field, and a 500 scores as *could not be asked*: a day of that and
+    // the `reasoning` layer is withdrawn from every persona at once.
+    const judged = (await recordRequests()).filter((one) =>
+      one.system.includes('checking whether one statement is true'),
+    );
+
+    assert.ok(judged.length > 0);
+    for (const request of judged) {
+      assert.deepEqual(request.format, { type: 'json_object' });
+    }
+  });
+
+  it('leaves the persona unconstrained, because a persona is asked for prose', async () => {
+    // The same field on this call would be a harness braintrust invented: the assertions
+    // are about what a persona says in its own voice, and JSON is not a voice.
+    const spoken = (await recordRequests()).filter(
+      (one) => !one.system.includes('checking whether one statement is true'),
+    );
+
+    assert.ok(spoken.length > 0);
+    for (const request of spoken) {
+      assert.equal(request.format, undefined);
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // #201 — a check that cannot be asked is counted, and after a day somebody is told
 // ---------------------------------------------------------------------------
