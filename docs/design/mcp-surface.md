@@ -742,6 +742,17 @@ weaker-sounding carve-out was where the receipt sweep kept losing. They are one 
 voice, with the asking as the whole difference; the anti-forgery property above is unchanged, because what
 changed is only what happens *when asked*.
 
+**A handover is described, and the ledger is excluded from every answer** —
+[#266](https://github.com/cgbarlow/braintrust/issues/266). Measured end-to-end, four of five Personas
+failed the record guarantee three different ways, including reciting the tool's raw payload at a reader.
+The Script now says what a handover *is* — the quotation as it was written or said, and where it came from,
+the piece it is in — and forbids reading braintrust's own bookkeeping — slugs, similarity scores, grades,
+`held_until`, counts, timestamps — out at a reader, in any answer. The record stays a guarantee, never an
+offer: still produced only when asked, nothing serves first, and no sentence in the Script invites the ask.
+And the receipt-checking assertion names the two failures apart: a reply that recites the payload fails as
+**recitation** (a voice breach) rather than as forgery, so a Fault says which fault it is. `ethan-mollick`,
+the one Persona that already passed, passed with exactly the shape the Script now describes.
+
 #### A through-line never outnumbers the Positions beside it — [#198](https://github.com/cgbarlow/braintrust/issues/198)
 
 The cap that enforces *never the whole of an answer* as a **proportion**: an answer cannot carry more

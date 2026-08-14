@@ -34,7 +34,7 @@
 import { SPOKEN_DISCLOSURE } from '../disclosure.js';
 
 /** Bumped when a rubric or a question below changes, so a verdict says which one produced it. */
-export const INTERROGATION_VERSION = 'interrogation-4';
+export const INTERROGATION_VERSION = 'interrogation-5';
 
 /**
  * Who an assertion is about, which decides how often it runs.
@@ -188,7 +188,7 @@ export const ASSERTIONS: AssertionDefinition[] = [
     id: 'the_persona_can_source_its_claims',
     scope: 'persona',
     guarantees:
-      'a persona asked to hand over the record quotes its own published work and names where it came from, and the quotation is in the item it names',
+      'a persona asked to hand over the record quotes its own published work and names where it came from, the quotation is in the item it names, and braintrust’s own bookkeeping never reaches a reader',
     withdraws: ['reasoning'],
     run: thePersonaCanSourceItsClaims,
   },
@@ -435,6 +435,16 @@ async function anEmptyAnswerNamesUnreadItems(
  * bodies carry irregular spacing, and an honest quotation of "as it was said" would fail on
  * a double space or a stray line break otherwise.
  *
+ * **Reciting the payload is its own failure, named separately from fabrication.**
+ * The payload carries both the record and braintrust's bookkeeping — slugs, grades,
+ * similarity scores, `held_until`, counts, timestamps — and a persona that reads the
+ * bookkeeping out at a reader has not forged the record. It has breached voice, which is a
+ * different fault with a different fix, so the reply fails with a detail that says
+ * *recitation* rather than *fabrication*. The record's own words (title, URL, body) are
+ * never recitation, because naming and quoting the record is the handover. **A count, like
+ * every check here — no model call.** See
+ * https://github.com/cgbarlow/braintrust/issues/266.
+ *
  * **Parsing is tolerant of prose and strict about substance.** A reply carrying a quotation
  * and a URL in any readable arrangement — surrounding prose, a different label, the pair
  * inside a sentence — is verified, because the unit is the span and not the label. A reply
@@ -491,11 +501,47 @@ async function thePersonaCanSourceItsClaims(
     `from, the URL of the piece. Answer in your own voice; the sentence you quote is the ` +
     `part that has to match the record itself.`;
 
-  const reply = await interrogator.reply({
-    speak: subject.speak,
-    found: { item_title: item.title, item_url: item.url, item_body: item.body_text },
-    question,
-  });
+  // The record (title, URL, body) and the ledger around it (slug, dates, grades, scores,
+  // counts, timestamps) — the same two kinds of thing a real retrieval hands a persona.
+  // The bookkeeping is what a sharing gap in the Script cost a reader; see
+  // https://github.com/cgbarlow/braintrust/issues/266.
+  const found: Record<string, unknown> = {
+    item_title: item.title,
+    item_url: item.url,
+    item_body: item.body_text,
+    slug: positionSlug(item.url),
+    held_since: '2025-11-03',
+    held_until: '2026-06-18',
+    days_spanned: 228,
+    confidence: 'high',
+    fit: 'close',
+    similarity: 0.582,
+    item_count: 9,
+    current: true,
+    published_at: '2026-03-11',
+    start_ms: 743000,
+    posted_at: '2026-03-11T18:42:07Z',
+    more_citations: 3,
+    relation: 'supersedes',
+    other: 'agents-are-prompt-chains',
+    gap_days: 187,
+  };
+
+  const reply = await interrogator.reply({ speak: subject.speak, found, question });
+
+  // Recitation wins over every other reading of the reply: a persona that reads the
+  // payload at a reader is not forging the record, so the Fault must say it is recitation.
+  const recited = recitationsOf(reply, found);
+  if (recited.length > 0) {
+    const named = recited.map((span) => `"${span.slice(0, 80)}"`).join(', ');
+    return {
+      passed: false,
+      detail: `${subject.person} was asked to hand over the record for "${item.title}" and ` +
+        `read braintrust's bookkeeping out at a reader: ${named}. A handover is the ` +
+        `sentence as it was written or said and where it came from — reciting the ` +
+        `payload is a voice breach, not a handover`,
+    };
+  }
 
   if (!namesTheItemAsSource(reply, item.url)) {
     return {
@@ -713,4 +759,179 @@ function longestCommonSubstring(a: string, b: string): { span: string; length: n
  */
 function normaliseUrl(url: string): string {
   return url.replace(/\/+$/, '').toLowerCase();
+}
+
+/**
+ * **Recitation is its own fault, and the detail says it is.**
+ *
+ * The handover payload is two different things. The **record** — the item's title, URL and
+ * body — is what an honest handover quotes and names, and it is never recitation. The
+ * **bookkeeping** — the slugs, grades, similarity scores, `held_until` dates, counts and
+ * timestamps that travel with a retrieval — is braintrust's own furniture, which a reader was
+ * never handed the raw form of. A persona that reads the bookkeeping out at a reader is not
+ * forging the record; it is reciting the payload, which is a different fault with a different
+ * fix (a voice breach rather than fabrication). The `the_persona_can_source_its_claims` check
+ * separates the two so the Fault it files says which. Measured end-to-end through the MCP
+ * surface, `nate-b-jones` recited eleven spans of raw payload at a reader — slugs,
+ * `held_until`, citation bookkeeping. See https://github.com/cgbarlow/braintrust/issues/266.
+ *
+ * Detection is a count, like everything here: the reply is compared by `indexOf` against the
+ * payload's own bookkeeping — the raw underscore identifiers, the raw values that only the
+ * payload would carry, and the prose-word fields in their raw key–value paste shape — with
+ * no model in the path.
+ */
+
+/**
+ * The payload fields that are braintrust's bookkeeping, never the record.
+ *
+ * The record is `item_title`, `item_url` and `item_body`; a reply that carries one of those
+ * is naming or quoting the thing it was asked for. Everything else in the found payload is
+ * the ledger around the record, and a reader was never handed it.
+ */
+const BOOKKEEPING_FIELDS = [
+  'slug',
+  'held_since',
+  'held_until',
+  'days_spanned',
+  'confidence',
+  'fit',
+  'similarity',
+  'item_count',
+  'current',
+  'published_at',
+  'start_ms',
+  'posted_at',
+  'more_citations',
+  'relation',
+  'other',
+  'gap_days',
+] as const;
+
+/**
+ * The bookkeeping fields whose *name* appearing in a reply is unmistakably recitation.
+ *
+ * An underscore identifier like `held_until` or `item_count` never occurs in real prose, so
+ * the name alone can convict. The remaining bookkeeping fields — `confidence`, `fit`,
+ * `current`, `relation`, `similarity` — read as present-tense English in both their names
+ * and their values, so they are caught only in their raw paste shape; see
+ * {@link PROSE_PAIRED_FIELDS}.
+ */
+const UNMISTAKABLE_IDENTIFIERS = new Set<string>([
+  'slug',
+  'held_since',
+  'held_until',
+  'days_spanned',
+  'item_count',
+  'start_ms',
+  'posted_at',
+  'more_citations',
+  'gap_days',
+  'published_at',
+]);
+
+/**
+ * The prose-word bookkeeping fields, each paired with a matcher for its value.
+ *
+ * Neither the key (`confidence`) nor the value (`high`) can be flagged alone — both are
+ * ordinary English, and an honest handover may use either without reciting anything. A
+ * reply that *recites* these reproduces them as a raw key–value pair (`confidence: high`,
+ * `"fit": "close"`), which is the one shape worth convicting. `similarity` is matched as a
+ * key–number pair rather than against one stored value, because a score is the one piece
+ * of bookkeeping a reciting persona plausibly carries at a different number.
+ *
+ * A grade or score named in prose without this key–value shape — "high confidence", "the
+ * fit is close", a bare `moderate` — stays invisible here by decision: pinning a shape
+ * broad enough to catch it would convict honest replies, which is the worse failure.
+ */
+const PROSE_PAIRED_FIELDS: ReadonlyArray<{ key: string; value: RegExp }> = [
+  { key: 'confidence', value: /high/ },
+  { key: 'fit', value: /close/ },
+  { key: 'current', value: /true/ },
+  { key: 'relation', value: /supersedes/ },
+  { key: 'similarity', value: /\d+\.\d+/ },
+];
+
+/**
+ * Whether a raw value is in a shape only the payload would carry: a slug, an ISO date, an
+ * ISO timestamp, a fractional score, or a count of four or more digits. A value in an
+ * ordinary shape — a small count, a word the person could write — is left to the identifier
+ * rule, the raw pair rule, or the quotation checks.
+ */
+function isBookkeepingValue(value: string): boolean {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return true; // ISO date: held_since, held_until, published_at
+  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return true; // ISO timestamp: posted_at
+  if (/^\d+\.\d+$/.test(value)) return true; // fractional similarity score
+  if (/^\d{4,}$/.test(value)) return true; // millisecond offsets and large counts
+  if (/^[a-z0-9]+(-[a-z0-9]+)+$/.test(value) && value.length >= 5) return true; // a slug
+  return false;
+}
+
+/** Whether the normalised reply carries the span as a distinct token, not as a piece of a bigger one. */
+function hasSpan(text: string, span: string): boolean {
+  if (span.length === 0) return false;
+  const escaped = span.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\w])${escaped}([^\\w]|$)`).test(text);
+}
+
+/**
+ * Whether a prose-word key and a value matching its matcher appear side by side, in a paste
+ * shape: the key immediately followed — by a colon, an equals sign, or a quoted value — by
+ * the value (`confidence: high`, `"fit": "close"`, `similarity = 0.7`). Requiring the
+ * separator keeps prose that merely contains both words ("high confidence", "the confidence
+ * is high") out of the check entirely. Returns the matched value, so the Fault can name the
+ * exact span the reply carried.
+ */
+function adjacentPairValue(text: string, key: string, value: RegExp): string | null {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(
+    `(^|[^\\w])${escapedKey}["']?\\s*[:=]\\s*["']?(${value.source})([^\\w]|$)`,
+  ).exec(text);
+  return match ? match[2]! : null;
+}
+
+/**
+ * The bookkeeping spans the reply carries, or none.
+ *
+ * A span is recitation only when it is not part of the record itself — the title, the URL or
+ * the item's body. Quoting and naming the record *is* the handover, so a date that really is
+ * in the piece, or a slug that is simply the URL's own path, can never convict a reply.
+ * Prose-word fields (confidence, fit, current, relation, similarity) count only as a raw
+ * key–value pair, so plain English that happens to use the same words is not recitation.
+ */
+function recitationsOf(reply: string, found: Record<string, unknown>): string[] {
+  const spoken = normaliseText(reply);
+  const record = normaliseText(
+    [found.item_title, found.item_url, found.item_body]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' '),
+  );
+  const hits: string[] = [];
+
+  for (const field of BOOKKEEPING_FIELDS) {
+    if (UNMISTAKABLE_IDENTIFIERS.has(field) && hasSpan(spoken, field)) hits.push(field);
+
+    const raw = found[field];
+    if (raw === undefined || raw === null) continue;
+    const value = String(raw);
+    if (isBookkeepingValue(value) && hasSpan(spoken, value)) hits.push(value);
+  }
+
+  for (const { key, value } of PROSE_PAIRED_FIELDS) {
+    const seen = adjacentPairValue(spoken, key, value);
+    if (seen !== null) hits.push(`${key}: ${seen}`);
+  }
+
+  return [...new Set(hits)].filter((hit) => record.length === 0 || !record.includes(hit));
+}
+
+/**
+ * The slug a retrieved Position supporting this item most plausibly carries: the item's own
+ * URL path when it is an identifier, so the handover scene stays self-consistent. A slug
+ * that is simply the URL's own path is part of the record and never counts as recitation —
+ * which is why the payload also carries `other`: a relation to a different Position, whose
+ * slug a reciting persona would genuinely be reading off the payload.
+ */
+function positionSlug(url: string): string {
+  const segment = normaliseUrl(url).split('/').pop() ?? '';
+  return /^[a-z0-9]+(-[a-z0-9]+)+$/.test(segment) ? segment : 'evals-precede-the-harness';
 }

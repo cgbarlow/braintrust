@@ -45,6 +45,7 @@ import {
 } from '../src/interrogate/issues.js';
 import { escalatedFaults, recordSilence } from '../src/interrogate/store.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
+import { renderScript, type ScriptInput } from '../src/script.js';
 
 const NOW = Date.parse('2026-08-08T09:00:00.000Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -706,6 +707,119 @@ describe('the assertions braintrust makes about itself', () => {
       await receipt.run(aSubject(), interrogator);
       // No rubric was presented to the judge — no model call for judgement.
       assert.equal(interrogator.asked.filter((one) => one.rubric).length, 0);
+    });
+
+    describe('at the rendered-seam, where the Script is what a reader gets', () => {
+      // The Script is the other half of this contract: it is what tells a persona
+      // what a handover looks like. A lookalike would be checking something nobody
+      // serves, so the subject carries the rendered Script — empty retell it, and
+      // the pair that #266 exists to fix is exercised together.
+      const SCRIPT_INPUT: ScriptInput = {
+        subject: 'braintrust model of Nate B. Jones',
+        voiceGenerative: null,
+        voiceBasis: 'measured',
+        reasoningBasis: 'inferred',
+        reasoningLabels: [],
+        bySource: {},
+        itemsRead: 0,
+        wordsRead: 0,
+        window: null,
+      };
+
+      const rendered = (items?: typeof anItem[]) => ({
+        person: 'nate-b-jones',
+        subject: 'braintrust model of Nate B. Jones',
+        speak: renderScript(SCRIPT_INPUT).speak,
+        claims: ['Quests beat goals.'],
+        nothing_matched: {},
+        items: items ?? [anItem],
+      });
+
+      it('convicts a quotation that is not in the item it names', async () => {
+        const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+        const reply =
+          `I said "AI will replace all coders in 2027." It is in my piece at ` +
+          `https://example.com/quests-beat-goals`;
+        const result = await receipt.run(rendered(), stubInterrogator({ reply }));
+        assert.equal(result.passed, false);
+        assert.match(result.detail, /not in the item it names/);
+      });
+
+      it('convicts a reply that carries no quotation and names no source', async () => {
+        const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+        const result = await receipt.run(
+          rendered(),
+          stubInterrogator({ reply: 'That claim stands on its own; I have nothing more to add.' }),
+        );
+        assert.equal(result.passed, false);
+        assert.match(result.detail, /named no source matching the item URL/);
+      });
+
+      it('acquits a handover that names the piece in the same breath it quotes it', async () => {
+        const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+        const reply =
+          `In "Quests beat goals," I said "This is a deep claim I stand by." ` +
+          `The piece is at https://example.com/quests-beat-goals`;
+        const result = await receipt.run(rendered(), stubInterrogator({ reply }));
+        assert.equal(result.passed, true);
+      });
+
+      it('convicts a reply that recites the tool payload, and says it is recitation, not fabrication', async () => {
+        const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+        // nate-b-jones reciting eleven spans of raw payload at a reader: slug,
+        // held_until, days_spanned, similarity, item_count, posted_at — beside a
+        // genuine quotation and the URL. The quotation would verify; the voice
+        // breach is what has to fail, and the Fault has to say *that*.
+        const reply =
+          `As the record shows, "This is a deep claim I stand by" is from ` +
+          `https://example.com/quests-beat-goals. slug: quests-beat-goals, ` +
+          `held_until: 2026-06-18, days_spanned: 228, similarity: 0.582, ` +
+          `item_count: 9, posted_at: 2026-03-11T18:42:07Z`;
+        const result = await receipt.run(rendered(), stubInterrogator({ reply }));
+        assert.equal(result.passed, false);
+        assert.match(result.detail, /recit/i);
+        // Recitation is a voice breach, fabrication is inventing the record. The
+        // detail must say which — otherwise the same pair of fixes get blurred.
+        assert.doesNotMatch(result.detail, /forg|fabricat/i);
+      });
+
+      it('names the recited spans in the Fault, so the breach is judgeable cold', async () => {
+        const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+        const reply =
+          `The record is at https://example.com/quests-beat-goals; "This is a deep claim ` +
+          `I stand by" was written there. held_until stays 2026-06-18.`;
+        const result = await receipt.run(rendered(), stubInterrogator({ reply }));
+        assert.equal(result.passed, false);
+        assert.match(result.detail, /held_until/);
+        assert.match(result.detail, /2026-06-18/);
+      });
+
+      it('convicts grades and scores pasted as a raw key–value pair beside a real quotation', async () => {
+        const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+        // confidence/fit/current/relation read as ordinary words on their own, but pasted
+        // raw — key against value — they are the payload, which the Script forbids reading
+        // out. A different similarity value than the payload carried must still convict.
+        const reply =
+          `In "Quests beat goals" I said "This is a deep claim I stand by" — confidence: ` +
+          `high, fit: close, similarity: 0.7. The piece is at https://example.com/quests-beat-goals`;
+        const result = await receipt.run(rendered(), stubInterrogator({ reply }));
+        assert.equal(result.passed, false);
+        assert.match(result.detail, /confidence: high/);
+        assert.match(result.detail, /similarity: /);
+        assert.match(result.detail, /recit/i);
+        assert.doesNotMatch(result.detail, /forg|fabricat/i);
+      });
+
+      it('acquits prose that merely uses the same words, because only the raw pair is recitation', async () => {
+        const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+        // The words confidence, fit, high and close are ordinary English in an honest
+        // handover; only their key–value paste form is the payload's own shape.
+        const reply =
+          `In "Quests beat goals" I said "This is a deep claim I stand by" with high ` +
+          `confidence; the fit is close. The piece is at https://example.com/quests-beat-goals`;
+        const result = await receipt.run(rendered(), stubInterrogator({ reply }));
+        assert.equal(result.passed, true);
+      });
     });
   });
 });
