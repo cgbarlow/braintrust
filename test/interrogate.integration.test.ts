@@ -118,7 +118,7 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
    */
   function interrogator(sayWhenAskedForTheRecord: string): Interrogator {
     return {
-      generation: 'stub@interrogation-3',
+      generation: 'stub@interrogation-4',
       async reply(exchange) {
         const found = exchange.found as Record<string, unknown> | null;
         if (found && typeof found.item_body === 'string') return sayWhenAskedForTheRecord;
@@ -176,7 +176,7 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
     await seedOnePersonaItem(BODY);
 
     const forger: Interrogator = {
-      generation: 'stub@interrogation-3',
+      generation: 'stub@interrogation-4',
       async reply(exchange) {
         const found = exchange.found as Record<string, unknown> | null;
         if (found && typeof found.item_body === 'string') {
@@ -216,6 +216,83 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
       'select assertion from braintrust_faults',
     );
     assert.deepEqual(still, [{ assertion: RECEIPT_ID }]);
+  });
+
+  it('fails a forged quotation riding beside a real, longer one, and opens the one deduped fault', async () => {
+    await seedOnePersonaItem(BODY);
+
+    // The #255 gap: the real quotation is the longer of the two, so the old verifier
+    // checked it and passed — a Persona could hand over one real span and hang a shorter
+    // invention on it. The length of the fabrication has to buy it nothing.
+    const sneakyForger: Interrogator = {
+      generation: 'stub@interrogation-4',
+      async reply(exchange) {
+        const found = exchange.found as Record<string, unknown> | null;
+        if (found && typeof found.item_body === 'string') {
+          return (
+            `I said "humans pick trades built for speed but forgot to build the skill to ` +
+            `practice them." and also "I predicted this in 2027." Both quotes are in the ` +
+            `piece at ${ITEM_URL}`
+          );
+        }
+        return `${SPOKEN_DISCLOSURE}\n\nI could not look anything up.`;
+      },
+      async judge() {
+        return { holds: true, why: 'the stub said so' };
+      },
+    };
+
+    const report = await runInterrogation({
+      db,
+      interrogator: sneakyForger,
+      issues,
+      now: Date.parse('2026-08-08T09:00:00.000Z'),
+      log: () => {},
+    });
+    assert.equal(report.asked.find((one) => one.assertion === RECEIPT_ID)!.passed, false);
+
+    const { rows: once } = await db.query<{ assertion: string }>(
+      'select assertion from braintrust_faults',
+    );
+    assert.deepEqual(once, [{ assertion: RECEIPT_ID }]);
+  });
+
+  it('passes a handover that names the piece in marks — the title is a name, not a forged citation', async () => {
+    // ITEM_TITLE ("Speed versus skill") is not a span of BODY, so verifying every marked
+    // span against the body alone would misread naming the piece as a forged citation. A
+    // mark of the item's own title is a name: it neither satisfies the check nor convicts it.
+    await seedOnePersonaItem(BODY);
+
+    const namedAndQuoted: Interrogator = {
+      generation: 'stub@interrogation-4',
+      async reply(exchange) {
+        const found = exchange.found as Record<string, unknown> | null;
+        if (found && typeof found.item_body === 'string') {
+          return (
+            `In "${ITEM_TITLE}," I said "humans pick trades built for speed but forgot to ` +
+            `build the skill to practice them." The piece is at ${ITEM_URL}`
+          );
+        }
+        return `${SPOKEN_DISCLOSURE}\n\nI could not look anything up.`;
+      },
+      async judge() {
+        return { holds: true, why: 'the stub said so' };
+      },
+    };
+
+    const report = await runInterrogation({
+      db,
+      interrogator: namedAndQuoted,
+      issues,
+      now: Date.parse('2026-08-08T09:00:00.000Z'),
+      log: () => {},
+    });
+    assert.equal(report.asked.find((one) => one.assertion === RECEIPT_ID)!.passed, true);
+
+    const { rows: faults } = await db.query<{ assertion: string }>(
+      'select assertion from braintrust_faults',
+    );
+    assert.deepEqual(faults, []);
   });
 
   it('passes a corpus with no usable item honestly — there is nothing to ask about', async () => {
