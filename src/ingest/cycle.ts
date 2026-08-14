@@ -21,6 +21,7 @@ import {
   stuckRebuilds,
   type StuckRebuild,
 } from '../compile/store.js';
+import { toDateOnly } from '../dates.js';
 import { clearFault, openFault } from '../interrogate/store.js';
 import { faultKey } from '../interrogate/schedule.js';
 import type { Db, TransactionalDb } from '../db.js';
@@ -34,6 +35,7 @@ import {
   MAX_RETRY_ATTEMPTS,
   audienceKnownBeforeFetch,
   BLOCK_AFTER_FAILURES,
+  RECHECK_CAPTIONS_DAYS,
   requestSpacingMs,
   SHORT_MAX_SECONDS,
   SHORT_MAX_WORDS,
@@ -75,6 +77,7 @@ import {
   recordPoll,
   recordPublished,
   recordRetryableFailure,
+  reopenMissingCaptions,
   reopenShorts,
   reopenWindow,
   sourcesForPerson,
@@ -177,6 +180,11 @@ export type SourceReport = {
   reopened_shorts?: number;
   /** Set when an operator widened `window_months` and past skips came back. */
   reopened_window?: number;
+  /**
+   * Set when a video braintrust had recorded as wordless was young enough to ask again.
+   * Nobody performed this reopen either; the captions arriving did.
+   */
+  reopened_captions?: number;
   /**
    * Set when a blog's sitemap showed a newer `<lastmod>` for a URL braintrust had
    * decided was not a post. Nobody performed this reopen; the sitemap did.
@@ -568,6 +576,23 @@ async function pollFeedSource(
       deps.log(
         `braintrust: exclude_shorts is off for ${source.handle}, so ${reopened} short ` +
           'item(s) braintrust skipped are pending again.',
+      );
+    }
+  }
+
+  // Not a debt to an operator — nobody chose this one. braintrust asked a video for its
+  // words before YouTube had written them and recorded the silence as permanent, so it asks
+  // again while the answer can still change. Here for the same reason as the two around it:
+  // before the Backlog is read, so a video whose captions have since arrived is fetched on
+  // this run rather than the next one.
+  if (source.platform === 'youtube') {
+    const floor = toDateOnly(new Date(deps.now().getTime() - RECHECK_CAPTIONS_DAYS * 86_400_000));
+    const reopenedCaptions = await reopenMissingCaptions(deps.db, source.id, floor);
+    if (reopenedCaptions > 0) {
+      report.reopened_captions = reopenedCaptions;
+      deps.log(
+        `braintrust: ${reopenedCaptions} video(s) of ${source.handle} had no captions when ` +
+          `braintrust asked and were published since ${floor}, so it is asking again.`,
       );
     }
   }
@@ -1350,6 +1375,8 @@ export function summarise(report: CycleReport): string {
     if (source.skipped_window > 0) parts.push(`${source.skipped_window} skipped (outside window)`);
     if (source.skipped_not_a_post > 0) parts.push(`${source.skipped_not_a_post} not posts`);
     if (source.reopened_window) parts.push(`${source.reopened_window} reopened (window widened)`);
+    if (source.reopened_captions)
+      parts.push(`${source.reopened_captions} reopened (captions may have arrived)`);
     if (source.reopened_not_posts) parts.push(`${source.reopened_not_posts} reopened (lastmod moved)`);
     if (source.dated > 0) parts.push(`${source.dated} dated`);
     if (source.skipped_no_captions > 0) parts.push(`${source.skipped_no_captions} no captions`);
