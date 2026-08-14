@@ -7,7 +7,9 @@
  * database can show that the order does not depend on insertion order, on how far a
  * backfill reached, or on anything else that changes between runs.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set.
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * See cycle.integration.test.ts for how to stand a database up.
  */
 
 import assert from 'node:assert/strict';
@@ -16,11 +18,9 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createDb, type PostgresDb } from '../src/db.js';
 import { BANDS, describeSample, sampleCorpus } from '../src/eval/sample.js';
+import { testDatabaseUrl as url } from './support/database.js';
 
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
-
-describe('the eval set, against real Postgres', { skip }, () => {
+describe('the eval set, against real Postgres', () => {
   let db: PostgresDb;
 
   before(async () => {

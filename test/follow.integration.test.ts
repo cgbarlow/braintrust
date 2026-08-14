@@ -6,7 +6,9 @@
  * really does land with `backfill_complete = false`, and the whole registration is one
  * transaction that either happens or does not.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -28,14 +30,12 @@ import { createConfirmTokenStore } from '../src/follow/tokens.js';
 import { listPersonas } from '../src/personas.js';
 import { DEFAULT_SETTINGS } from '../src/sources/types.js';
 import { CHANNEL_ID, NOW, SUBSTACK_HOST, fakeFetcher, natesRoutes } from './support/sources.js';
-
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const LINKS = [`https://${SUBSTACK_HOST}/p/one`, '@NateBJones'];
 const NAME = 'Nate B. Jones';
 
-describe('following someone, against real Postgres', { skip }, () => {
+describe('following someone, against real Postgres', () => {
   let db: PostgresDb;
 
   before(async () => {

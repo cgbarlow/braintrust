@@ -7,7 +7,9 @@
  * posted to never becomes a row, and that a citation still points at the individual post
  * once the batch has been through the whole compiler.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -45,11 +47,9 @@ import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeExtractor, testExtractorConfig } from './support/notes.js';
 import { NOW, fakeFetcher, type FakeFetcher, type Route } from './support/sources.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
+import { testDatabaseUrl as url } from './support/database.js';
 
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
-
-describe('reading Bluesky end to end, against real Postgres', { skip }, () => {
+describe('reading Bluesky end to end, against real Postgres', () => {
   let db: PostgresDb;
 
   before(async () => {

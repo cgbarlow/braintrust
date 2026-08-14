@@ -304,6 +304,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       compileId,
       person.id,
       inferred.through_lines,
+      inferred.candidates,
     );
 
     log(

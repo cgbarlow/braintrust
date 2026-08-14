@@ -7,8 +7,9 @@
  * the only signal that survives a 403 that is a CDN hiccup, a 429 that is politeness, and
  * a captcha interstitial that arrives as a 200 with HTML in it.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. See cycle.integration.test.ts for
- * how to stand one up.
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * See cycle.integration.test.ts for how to stand a database up.
  *
  * Spec: docs/design/ingestion.md §5.
  */
@@ -45,8 +46,7 @@ import {
   type Route,
 } from './support/sources.js';
 
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const LINKS = [`https://${SUBSTACK_HOST}/p/post-0`, '@NateBJones'];
 
@@ -54,7 +54,7 @@ const LINKS = [`https://${SUBSTACK_HOST}/p/post-0`, '@NateBJones'];
 const BODY_ENDPOINT = `https://${SUBSTACK_HOST}/api/v1/posts/`;
 const slugOf = (request: string): string => decodeURIComponent(request.split('/api/v1/posts/')[1]!);
 
-describe('a source that stops answering, against real Postgres', { skip }, () => {
+describe('a source that stops answering, against real Postgres', () => {
   let db: PostgresDb;
 
   before(async () => {

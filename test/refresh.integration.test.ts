@@ -6,7 +6,9 @@
  * the daily cycle, differs only in scope, and that unfollowing is a pause rather than a
  * delete no matter how it is described.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -18,6 +20,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
+import { compileCorpus } from '../src/compile/index.js';
 import { createDb, type PostgresDb } from '../src/db.js';
 import { BraintrustError } from '../src/errors.js';
 import { followPerson, type PlanResponse } from '../src/follow/index.js';
@@ -27,16 +30,15 @@ import { runCycle } from '../src/ingest/cycle.js';
 import { createExtractor } from '../src/notes/index.js';
 import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { refreshPersona, type RefreshResponse, type Refreshed } from '../src/refresh.js';
-import { fakeExtractor, testExtractorConfig } from './support/notes.js';
+import { fakeExtractor, TEST_GENERATION, testExtractorConfig } from './support/notes.js';
 import { NOW, SUBSTACK_HOST, fakeFetcher, natesRoutes, type FakeFetcher } from './support/sources.js';
-
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { fakeSynthesiser } from './support/synthesiser.js';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const LINKS = [`https://${SUBSTACK_HOST}/p/post-0`, '@NateBJones'];
 const NATE = 'nate-b-jones';
 
-describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
+describe('refreshing and unfollowing, against real Postgres', () => {
   let db: PostgresDb;
 
   before(async () => {
@@ -127,11 +129,10 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       assert.ok(outcome.discovered > 0, 'the feeds were polled');
       assert.ok(outcome.retrieved > 0, 'bodies were fetched');
 
-      // A refresh fetches and reads; the compile happens on the daily run.
-      assert.equal(
-        await count('select count(*) from braintrust_chunks'),
-        0,
-        'chunks are written by the cycle but not by refresh',
+      // A refresh fetches, chunks and reads; the compile happens on the daily run.
+      assert.ok(
+        (await count('select count(*) from braintrust_chunks')) > 0,
+        'refresh chunks what it fetched, so the next daily compile has nothing owed',
       );
       assert.equal(await count('select count(*) from braintrust_compiles'), 0, 'no compile from refresh');
     });
@@ -280,6 +281,14 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
     it('pauses the person and deletes nothing at all', async () => {
       await follow();
       await refresh();
+      // The daily run compiles; a refresh fetches and reads only. Compile now as the cron
+      // would, so there is a frozen persona for the pause to keep.
+      await compileCorpus({
+        db,
+        extractor: TEST_GENERATION,
+        synthesiser: fakeSynthesiser(),
+        log: () => {},
+      });
       const before = await corpusSize();
       assert.ok(before.items > 0);
 
@@ -292,7 +301,8 @@ describe('refreshing and unfollowing, against real Postgres', { skip }, () => {
       assert.equal(response.kept.items, before.items);
       assert.equal(response.kept.persona?.still_queryable, true);
       assert.deepEqual(await corpusSize(), before);
-      assert.equal(await count('select count(*) from braintrust_compiles'), 0);
+      // The compile is not deleted either — a pause keeps everything, forever.
+      assert.equal(await count('select count(*) from braintrust_compiles'), 1);
     });
 
     it('leaves the persona answering, frozen at its last compile', async () => {

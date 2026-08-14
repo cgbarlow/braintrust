@@ -175,6 +175,11 @@ export type ThroughLineSet = {
   readings: number;
   /** Entries that surfaced in exactly one reading. Not a failure — the rule working. */
   dropped_single_reading: number;
+  /**
+   * Total candidates found before ranking. Zero when nothing was found — the number that
+   * tells the gate "a rule ate what braintrust found" apart from "there was nothing".
+   */
+  candidates: number;
 };
 
 /** An entry, with the readings that produced it carried alongside. */
@@ -260,6 +265,9 @@ export async function compileThroughLines(
     readings: readings.length,
     // For reporting: how many entries appeared in only one reading (now ranked lower, not deleted).
     dropped_single_reading: folded.entries.filter((e) => e.readings.size < 2).length,
+    // Everything the synthesiser found, counted before the attribution filter and the rank
+    // cap ran — the number that lets the gate distinguish "a rule ate it" from "nothing".
+    candidates: folded.entries.length,
   };
 }
 

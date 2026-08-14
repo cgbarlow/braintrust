@@ -8,7 +8,9 @@
  * currents are impossible by construction rather than by the compiler remembering, and
  * that deleting the old row is the whole of the cleanup.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -36,9 +38,7 @@ import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { chunkItem } from '../src/retrieval/index.js';
 import { fakeEmbedder } from './support/embeddings.js';
 import { distinctStatement, fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
-
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const GENERATION = 'test-reader@notes-1';
 const ITEMS = 4;
@@ -53,7 +53,7 @@ function body(index: number): string {
   return lines.join('\n\n');
 }
 
-describe('compiling the core, against real Postgres', { skip }, () => {
+describe('compiling the core, against real Postgres', () => {
   let db: PostgresDb;
   let personId: string;
   let sourceId: string;
@@ -222,18 +222,23 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     await compile({ synthesiser });
 
     // **Not one call writes a layer of conclusions.** The habits are a selection off an
-    // authored menu and the positions carry their own citations — and the third question,
-    // through-lines, is not asked at all here: four items cannot be read twice, so this
+    // authored menu and the positions carry their own citations. Through-lines are asked
+    // and answer nothing here — four items are read twice as two readings of two — so this
     // persona holds none and publishes anyway. A rebuild still costs a handful of calls
     // over notes rather than a re-read of the corpus.
     assert.deepEqual(
       synthesiser.calls.map((call) => `${call.kind}:${call.mode}`),
-      ['habits:pass', 'positions:pass'],
+      ['habits:pass', 'positions:pass', 'through_lines:pass', 'through_lines:pass', 'through_lines:merge'],
     );
 
-    // Every item's note is in the core digests, and none of the item bodies are.
-    for (const call of synthesiser.calls.filter((one) => one.kind !== 'positions')) {
+    // The habits digest carries every item's note, and the through-lines passes carry the
+    // two readings of two — none of the item bodies are in any of them.
+    for (const call of synthesiser.calls.filter((one) => one.kind === 'habits')) {
       assert.equal(idsFromDigest(call.digest).length, ITEMS);
+      assert.doesNotMatch(call.digest, /speed is the constraint/);
+    }
+    for (const call of synthesiser.calls.filter((one) => one.kind === 'through_lines' && one.mode === 'pass')) {
+      assert.ok(idsFromDigest(call.digest).length > 0);
       assert.doesNotMatch(call.digest, /speed is the constraint/);
     }
 
@@ -1006,7 +1011,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
     // A fifth item, because `high` starts at five distinct Items — and four months of
     // them, because the whole question is whether it was said again later.
     await addItem('post-4', body(4), '2025-05-01');
-    await compile({ synthesiser: fakeSynthesiser({ positionsFor: together }) });
+    await compile({
+      synthesiser: fakeSynthesiser({ positionsFor: together, entriesFor: () => [] }),
+    });
 
     const { rows } = await db.query<{
       confidence: string;
@@ -1038,7 +1045,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
          substring(external_id from 6)::int
        ) where external_id like 'post-%'`,
     );
-    await compile({ synthesiser: fakeSynthesiser({ positionsFor: together }) });
+    await compile({
+      synthesiser: fakeSynthesiser({ positionsFor: together, entriesFor: () => [] }),
+    });
 
     const { rows } = await db.query<{
       confidence: string;
@@ -1061,7 +1070,9 @@ describe('compiling the core, against real Postgres', { skip }, () => {
   it('cannot cap a position it cannot date, and grades it on the count alone', async () => {
     await addItem('post-4', body(4), '2025-05-01');
     await db.query(`update braintrust_items set published_at = null where external_id like 'post-%'`);
-    await compile({ synthesiser: fakeSynthesiser({ positionsFor: together }) });
+    await compile({
+      synthesiser: fakeSynthesiser({ positionsFor: together, entriesFor: () => [] }),
+    });
 
     const { rows } = await db.query<{ confidence: string; days_spanned: number | null }>(
       `select confidence, days_spanned from braintrust_positions where compile_id = $1`,
@@ -1076,6 +1087,7 @@ describe('compiling the core, against real Postgres', { skip }, () => {
   it('drops a position it cannot cite rather than publishing an uncited one', async () => {
     const report = await compile({
       synthesiser: fakeSynthesiser({
+        entriesFor: () => [],
         positionsFor: (claims) => [
           { slug: 'real', statement: 'Rests on a claim braintrust issued.', claims: [claims[0]!] },
           { slug: 'invented', statement: 'Rests on nothing.', claims: ['c9999'] },

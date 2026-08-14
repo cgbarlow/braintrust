@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: bt
+          POSTGRES_DB: braintrust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      BRAINTRUST_TEST_DATABASE_URL: postgresql://postgres:bt@127.0.0.1:5432/braintrust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Do not make this check a required status until the eight known failures are gone.
+      # They live in test/failing-source.integration.test.ts and test/blog-cycle.integration.test.ts
+      # and are the block/fault behaviour added by #241-244 — tracked by the fix-forward
+      # ticket #246, because this one (the gate itself) merges first. Until #246 lands the
+      # run exits non-zero on purpose: the gate must say loudly what it did not pass, never
+      # silently report green over a suite it skipped. Turning the check required before
+      # then would block this very merge; leaving it as a non-blocking check keeps the
+      # signal visible without stopping the fix-forward work.
+      - run: npm test
