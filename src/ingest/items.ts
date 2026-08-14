@@ -719,6 +719,26 @@ export async function reopenShorts(db: Db, sourceId: string): Promise<number> {
  * permanently unfetchable Item blocking every future Compile, and nothing reopened here
  * survives the run. It is drained a few lines after it is reopened, and a video that still
  * has no words is terminal again before the rebuild is even considered.
+ *
+ * **The second arm reopens a `retrieved` Item with no body, which nothing else on this map
+ * does, and it is deliberately not windowed.** Such a row is self-contradictory rather than
+ * merely unlucky: it says braintrust read the item, and braintrust holds none of it. Every
+ * count downstream believes the first half — coverage reports the item among the ones read,
+ * the corpus line counts it as retrieved — while every read of the body finds nothing. That
+ * is the one direction a reader cannot check, because the persona never says a word about
+ * an item it has no words for.
+ *
+ * **This arm claims nothing about how a row gets that way**, and does not need to: no cause
+ * makes the row right. `readCaptions` refuses an empty transcript and `storeBody` is the
+ * only writer of `retrieved` on the per-item path, so on today's code the state should be
+ * unreachable — which is exactly why leaving it unrepairable is the wrong bet. Nothing else
+ * can reach it, since every other reopen moves a *skipped* Item.
+ *
+ * **Unwindowed does not mean unbounded.** The date floor is left off because the row is
+ * wrong at any age. A row this arm reopens is drained in the same run, and whatever the
+ * drain then makes of it — read, skipped, or failed after its retries — is a state this arm
+ * no longer matches. It cannot reopen the same row twice without the drain having put words
+ * in it, so the cost is one request per contradictory row, once.
  */
 export async function reopenMissingCaptions(
   db: Db,
@@ -729,8 +749,10 @@ export async function reopenMissingCaptions(
     `update braintrust_items
         set retrieval = 'pending'
       where source_id = $1
-        and retrieval in ('skipped_no_captions', 'failed')
-        and published_at >= $2::date
+        and (
+          (retrieval in ('skipped_no_captions', 'failed') and published_at >= $2::date)
+          or (retrieval = 'retrieved' and coalesce(btrim(body_text), '') = '')
+        )
       returning id`,
     [sourceId, floor],
   );
