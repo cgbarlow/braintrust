@@ -964,7 +964,7 @@ A Persona behind the compiler is the first kind — it is rebuilt and nobody nee
 shown to be inventing claims is the second: the fault is in the compiler, equal across the fleet, and nothing
 braintrust can do on its own clears it.
 
-### The five assertions
+### The six assertions
 
 | Assertion | Scope | Withdrawn if unrepaired |
 |---|---|---|
@@ -973,8 +973,9 @@ braintrust can do on its own clears it.
 | `the_first_reply_carries_the_disclosure` | compiler | — |
 | `an_empty_answer_is_admitted_and_not_filled` | compiler | `reasoning` |
 | `a_persona_that_cannot_reach_the_record_says_so` | compiler | `reasoning` |
+| `an_empty_answer_names_unread_items` | compiler | `reasoning` |
 
-**Three of the five are properties of the compiler rather than of the person**, so they run once per compiler
+**Four of the six are properties of the compiler rather than of the person**, so they run once per compiler
 version against one subject rather than once per Persona in the fleet — *whoever the base model knows best*,
 stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The two
 persona-scoped assertions run per compile: one is a fact about a person, and the other hunts unknowns.
@@ -986,38 +987,55 @@ rebuild** — it is judged against the claims braintrust holds for somebody, and
 
 ### Receipt checking: the assertion that hunts unknowns
 
-[#204](https://github.com/cgbarlow/braintrust/issues/204)
+[#204](https://github.com/cgbarlow/braintrust/issues/204), and rewritten by
+[#252](https://github.com/cgbarlow/braintrust/issues/252) to measure a quotation rather than a paraphrase.
 
-`the_persona_can_source_its_claims` is the fifth assertion and the only one that **hunts unknowns rather
-than checking known faults.** Every other assertion was written after a human found the failure it guards.
-This one files candidates — any sentence a persona cannot source when asked — and is chartered to catch the
-ninth failure, whatever it is, provided it is a persona saying something it cannot back.
+`the_persona_can_source_its_claims` is the only assertion that **hunts unknowns rather than checking
+known faults.** Every other assertion was written after a human found the failure it guards.
+This one files candidates — a persona unable to hand over the record when asked — and is chartered to catch
+the ninth failure, whatever it is, provided it is a persona saying something it cannot back.
 
-**It is not a better assertion and it never judges.** It asks a persona a question drawn from their own
-corpus, asks for receipts (the sources of each claim), and verifies each against the record. Every check
-is a count — `indexOf` against the item body — with no model call in the verification path. It is the
-same verifier the reader-facing `braintrust_verify_sources` already uses, pointed at a sweep instead of a
-reader.
+**It is not a better assertion and it never judges.** It draws a question from a Person's own corpus, hands
+the persona the item's own text, and asks for one sentence quoted word for word and the URL it came from.
+The reply is verified mechanically: the source must match the item's URL, and the quotation must be a span
+of the item's body. Every check is a count — `indexOf` after normalising whitespace and case — with **no
+model call in the verification path**, which is the property that keeps it independent of the
+interrogator's availability.
 
-**Questions come from each Person's own corpus** — items braintrust holds. Free, never stale, no authoring
-burden, and it grows as a corpus grows: the benchmark is made of the job and cannot drift from it.
+**The thing verified is a quotation, not a claim.** A claim is a paraphrase — it is what a Persona is built
+to produce — and checking one by `indexOf` can never pass and never fail honestly: the sentence a Persona
+summarises an argument into essentially never appears verbatim in an unpunctuated `auto-caption` transcript.
+A quotation is a span of the record, so `indexOf` becomes the right instrument rather than the wrong one.
+Whitespace and transcript noise are normalised before the comparison, because auto-caption bodies carry
+irregular spacing an honest quotation would otherwise fail on.
 
-**A sentence the persona cannot source produces a candidate.** It files a deduped issue on first sight,
+**Parsing is tolerant of prose and strict about substance.** Surrounding prose, a different label, or the
+pair arriving inside a sentence all still verify, because the unit is the span and not the label. A reply
+that marks its quotation is judged by its marks, so a genuinely short quoted sentence is never mistaken for
+prose coincidence — but a marked span too short to be a sentence ("a", "the") is prose coincidence again,
+because a single marked word is not a quotation. A reply carrying no quotation at all fails, however
+fluently it refuses — so the check passes when a Persona is honest and fails when it is not, which is the
+whole of what #235–#239 had been measuring wrong.
+
+**A quotation that is not in the named item produces a candidate.** It files a deduped issue on first sight,
 through the same fault ledger every other assertion uses. Flukes reach the maintainer, by decision, until
 the noise rate is known.
 
 **Three blind spots, recorded here:**
-1. **An unsupported real quote passes.** The verifier proves a quote exists, never that it supports the
-   sentence beside it — that remains [#155](https://github.com/cgbarlow/braintrust/issues/155)'s territory.
+1. **An unsupported real quotation passes.** The verifier proves a quotation exists, never that it supports
+   the sentence beside it — that remains [#155](https://github.com/cgbarlow/braintrust/issues/155)'s
+   territory. Existence is also all it will ever establish: a handover of the item's own words passes even
+   when it is thin — a bare repetition of the title, or fragments of the record used while refusing. That is
+   the price of #202's property and of the no-model rule; a fabricated quotation still fails.
 2. **Tone is invisible.** The generic-voice breach stays invisible to this instrument entirely — it
    detects unsourced claims, never tone or register.
 3. **Flukes reach the maintainer.** Every non-reproducible synthesiser fluke files an issue, by design,
    until the noise rate is known. This is an accepted cost of hunting unknowns.
 
 **The judge is a model too**, and that is open — [#155](https://github.com/cgbarlow/braintrust/issues/155).
-One of the five needs no judge (the disclosure is a string comparison, never a regex), and the three that do
-state their rubric as a single yes/no about a reply that is kept on the record. The receipt-checking
-assertion needs no judge either — verification is a mechanical `indexOf`.
+Two of the six need no judge: the disclosure is a string comparison, never a regex, and the receipt check
+verifies by `indexOf`. The four that do state their rubric as a single yes/no about a reply that is kept on
+the record.
 
 ### What a failure does, and does not do
 
@@ -1041,10 +1059,10 @@ persona per sweep to ask the question; the verification path has no model call i
 budget that caught the last two failures by hand, now spent on a schedule instead of on a human noticing.
 
 **The sweep also counts whether the ask fires the tool at all.** braintrust is its own reader in the sweep,
-and a persona that does not reach for the cited item is detected at the parse step: no claim-source pairs
-in the reply means a candidate. Persistent failure files against braintrust's own tool description, naming
-no Person — it inherits the measured boundary that a model uses a tool it can reach, 21 of 21, and fails
-when the tool is deferred.
+and a persona that does not reach for the cited item is detected at the parse step: a reply that names the
+item's URL but carries no span of the record means a candidate. Persistent failure files against
+braintrust's own tool description, naming no Person — it inherits the measured boundary that a model uses a
+tool it can reach, 21 of 21, and fails when the tool is deferred.
 
 **Nothing in this section writes to a Compile, a layer or a version.** That is what makes *keeps serving
 unchanged* checkable rather than merely intended: the interrogation has three tables of its own and touches

@@ -34,7 +34,7 @@
 import { SPOKEN_DISCLOSURE } from '../disclosure.js';
 
 /** Bumped when a rubric or a question below changes, so a verdict says which one produced it. */
-export const INTERROGATION_VERSION = 'interrogation-2';
+export const INTERROGATION_VERSION = 'interrogation-3';
 
 /**
  * Who an assertion is about, which decides how often it runs.
@@ -188,7 +188,7 @@ export const ASSERTIONS: AssertionDefinition[] = [
     id: 'the_persona_can_source_its_claims',
     scope: 'persona',
     guarantees:
-      'a persona asked about its own published work can cite the sources for its claims, and each claim is in the source it names',
+      'a persona asked to hand over the record quotes its own published work and names where it came from, and the quotation is in the item it names',
     withdraws: ['reasoning'],
     run: thePersonaCanSourceItsClaims,
   },
@@ -413,23 +413,42 @@ async function anEmptyAnswerNamesUnreadItems(
 }
 
 /**
- * **A persona asked about its own published work can cite the sources for its claims.**
+ * **A persona asked to hand over the record quotes its own published work and names where
+ * it came from.**
  *
- * This is the other half of {@link theModelCannotFakeThisIndividual}: that assertion
- * checks what the model says when it *cannot* look anything up; this one checks what
- * it says when it *can*, and whether those claims survive verification.
+ * This is the other half of {@link theModelCannotFakeThisIndividual}: that assertion checks
+ * what the model says when it *cannot* look anything up; this one checks what it says when
+ * it *can* — asked for the record, does it hand one over, and is that record real.
  *
- * The question is drawn from the Person's own corpus — one of their published items.
- * The persona replies with specific claims and their sources. Each claim is then
- * verified against the item body using `indexOf`. No model call is made to judge
- * anything — every check is a count.
+ * The question is drawn from the Person's own corpus — one of their published items. The
+ * persona is handed that item's own text (the record is literally in front of it), asked to
+ * quote one sentence exactly as it was written or said, and asked to name the URL it came
+ * from. The reply is verified mechanically: the source must match the item's URL, and the
+ * quotation must be a span of the item's body. **No model call is made to judge anything —
+ * every check is a count.**
  *
- * A sentence the persona cannot source produces a candidate, which opens a deduped
- * fault on first sight.
+ * **A quotation that is not in the named item produces a candidate**, which opens a deduped
+ * fault on first sight. This is the anti-forgery property from #202, unchanged: what the
+ * check hunts is a quotation that is not in the item it is hung on.
+ *
+ * **Whitespace and transcript noise are normalised before the comparison** — auto-caption
+ * bodies carry irregular spacing, and an honest quotation of "as it was said" would fail on
+ * a double space or a stray line break otherwise.
+ *
+ * **Parsing is tolerant of prose and strict about substance.** A reply carrying a quotation
+ * and a URL in any readable arrangement — surrounding prose, a different label, the pair
+ * inside a sentence — is verified, because the unit is the span and not the label. A reply
+ * that marks its quotation is judged by its marks, so a genuinely short quoted sentence is
+ * never mistaken for prose coincidence; a reply carrying no quotation at all still fails,
+ * however fluently it refuses.
  *
  * **Accepted blind spots, recorded where the verifier lives:**
- * - A real quote hung on a claim it does not support passes — the verifier proves
- *   a quote exists, never that it supports the sentence beside it.
+ * - A real quotation hung on a claim it does not support passes — the verifier proves a
+ *   quotation exists in the named item, never that it supports the sentence beside it.
+ * - A handover of the item's own words passes even when it is thin — a bare repetition of
+ *   the title, or fragments of the record used while refusing — because existence is all
+ *   this verifier can and will establish without a model. That is the price of #202's
+ *   property, and it is exactly why a fabricated quotation still fails.
  * - Tone and generic-voice breach are invisible to this instrument entirely.
  * - Flukes reach the maintainer, by decision, until the noise rate is known.
  */
@@ -453,84 +472,197 @@ async function thePersonaCanSourceItsClaims(
     };
   }
 
-  const question = `In your piece "${item.title}", what did you argue? Be specific and cite your sources. List each claim and its source in this format:
-
-CLAIM: <the specific claim>
-SOURCE: <the item's URL>
-
-End each pair with a blank line.`;
+  const question =
+    `In your piece "${item.title}", hand over the record: quote one sentence exactly as you ` +
+    `wrote or said it — word for word, as it appears in the text — and say where it came ` +
+    `from, the URL of the piece. Answer in your own voice; the sentence you quote is the ` +
+    `part that has to match the record itself.`;
 
   const reply = await interrogator.reply({
     speak: subject.speak,
-    found: { item_title: item.title, item_url: item.url },
+    found: { item_title: item.title, item_url: item.url, item_body: item.body_text },
     question,
   });
 
-  const pairs = parseClaimSourcePairs(reply);
-  if (pairs.length === 0) {
+  if (!namesTheItemAsSource(reply, item.url)) {
     return {
       passed: false,
-      detail: `${subject.person} was asked about "${item.title}" and did not provide any claims with sources in the expected format`,
+      detail: `${subject.person} was asked to hand over the record for "${item.title}" and ` +
+        `named no source matching the item URL "${item.url}"`,
     };
   }
 
-  const failures: { claim: string; why: string }[] = [];
-  for (const { claim, source } of pairs) {
-    if (normaliseUrl(source) !== normaliseUrl(item.url)) {
-      failures.push({ claim, why: `claimed source "${source}" does not match the item URL "${item.url}"` });
-      continue;
-    }
+  const passedDetail = `${subject.person} handed over the record for "${item.title}": a quotation ` +
+    `that is in the piece, and the URL that names where it came from`;
+  const body = normaliseText(item.body_text);
+  // A marked span counts only once it has substance: "a" or "the" in quote marks is a piece
+  // of any transcript, so marking it must not satisfy the check. A genuine short sentence
+  // ("I was wrong.") clears the bar; a single character never does.
+  const marked = quotedSpans(reply).filter((span) => span.length >= MIN_MARKED_QUOTATION_LENGTH);
 
-    const found = item.body_text.indexOf(claim.trim()) >= 0;
-    if (!found) {
-      failures.push({ claim, why: `"${claim.slice(0, 100)}" is not in the item body` });
+  if (marked.length > 0) {
+    // A reply that quotes marks its quotation, and a marked quotation is a quotation
+    // however short the sentence is — what it can never be is absent from the record it is
+    // hung on.
+    const longest = marked.reduce((best, span) => (span.length > best.length ? span : best));
+    if (body.includes(longest)) {
+      return { passed: true, detail: passedDetail };
     }
-  }
-
-  if (failures.length > 0) {
     return {
       passed: false,
-      detail: `${subject.person}'s reply about "${item.title}" had ${pairs.length} claim(s), ` +
-        `${failures.length} could not be sourced: ${failures.map((f) => `"${f.claim.slice(0, 80)}" — ${f.why}`).join('; ')}`,
+      detail: `${subject.person} was asked to hand over the record for "${item.title}" and ` +
+        `quoted "${longest.slice(0, 80)}". A marked quotation that is not in the item it ` +
+        `names is a forged citation, and that is what this check exists to catch`,
     };
   }
 
-  return {
-    passed: true,
-    detail: `${subject.person} correctly sourced ${pairs.length} claim(s) about "${item.title}"`,
-  };
+  const match = longestSpanOf(reply, item.body_text);
+  if (match.length < MIN_QUOTATION_LENGTH) {
+    const closest =
+      match.length > 0
+        ? `; the longest span it shared with the record was "${match.span.slice(0, 80)}" ` +
+          `(${match.length} characters)`
+        : '';
+    return {
+      passed: false,
+      detail: `${subject.person} was asked to hand over the record for "${item.title}" and ` +
+        `quoted nothing from it${closest}. A reply carrying no exact span of the record ` +
+        `cannot be sourced, and that is what this check exists to catch`,
+    };
+  }
+
+  return { passed: true, detail: passedDetail };
 }
 
 /**
- * Parse a reply for CLAIM / SOURCE pairs.
+ * The spans the reply puts in double quotation marks — straight or curly, opening to
+ * closing — normalised for comparison.
  *
- * Looks for lines starting with "CLAIM:" followed by a line starting with "SOURCE:".
- * Skips blank lines between them. This is intentionally mechanical — no model call
- * in the parsing path.
+ * Only double quotes are read as quotations: a single quote is indistinguishable from an
+ * apostrophe, and a half-open quote is a scrap of prose rather than a mark. A marked
+ * quotation is judged by its marks — once it is long enough to mean anything, see
+ * {@link MIN_MARKED_QUOTATION_LENGTH} — so a genuinely short quoted sentence is never
+ * mistaken for prose coincidence, while a single marked character is. A reply without
+ * marks falls back to the span check.
  */
-function parseClaimSourcePairs(reply: string): { claim: string; source: string }[] {
-  const pairs: { claim: string; source: string }[] = [];
-  const lines = reply.split('\n');
+function quotedSpans(reply: string): string[] {
+  const spans: string[] = [];
+  for (const match of reply.matchAll(/[“"]([^“”"]+)[”"]/g)) {
+    const span = normaliseText(match[1]!);
+    if (span.length > 0) spans.push(span);
+  }
+  return spans;
+}
 
-  let currentClaim: string | null = null;
+/**
+ * How long a *marked* span must be before the marks mean anything.
+ *
+ * The marked path exists so a genuinely short quoted sentence ("I was wrong.") passes
+ * without tripping the markless floor, so this is a small number: it keeps a real sentence
+ * in while throwing out a single character or a filler word that any transcript contains.
+ */
+const MIN_MARKED_QUOTATION_LENGTH = 8;
 
-  for (const raw of lines) {
-    const line = raw.trim();
+/**
+ * How long a *markless* span must be before it counts as a quotation rather than two pieces
+ * of prose sharing common words.
+ *
+ * This floor applies only to a reply written without quotation marks. A genuinely short
+ * sentence quoted in marks is judged by its marks, so this is the price of telling an
+ * unmarked quotation from common speech ("I stand by", "the piece") without a model.
+ */
+const MIN_QUOTATION_LENGTH = 15;
 
-    const claimMatch = line.match(/^CLAIM:\s*(.+)/i);
-    if (claimMatch) {
-      currentClaim = claimMatch[1]!.trim();
-      continue;
-    }
+/**
+ * Whether the reply names the item that was asked about, as its source.
+ *
+ * Tokens are split on prose rather than read from a label, so the URL buried in a sentence —
+ * wrapped in brackets, trailing punctuation, surrounded by words — still reads as the same
+ * source. Each token is pared to the URL normalisation used everywhere on this map (scheme
+ * and host lower-cased, trailing slashes stripped), then the scheme and a leading `www.` are
+ * ignored, because a source named in prose may drop the scheme or spell the host with it.
+ */
+function namesTheItemAsSource(reply: string, itemUrl: string): boolean {
+  const wanted = comparableUrl(itemUrl);
+  const tokens = reply.match(/[^\s"'<>[\]]+/g) ?? [];
+  return tokens.some((token) => comparableUrl(token.replace(/^([(\[])+|[),.;:!?]+$/g, '')) === wanted);
+}
 
-    const sourceMatch = line.match(/^SOURCE:\s*(.+)/i);
-    if (sourceMatch && currentClaim !== null) {
-      pairs.push({ claim: currentClaim, source: sourceMatch[1]!.trim() });
-      currentClaim = null;
+/** A URL with the parts that add nothing dropped: scheme and a leading `www.`. */
+function comparableUrl(url: string): string {
+  return normaliseUrl(url).replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+}
+
+/**
+ * The longest span of the item's body the reply carries, as one contiguous run.
+ *
+ * URLs are removed from the reply first, because the pointer is not the record. Both sides
+ * are normalised — whitespace collapsed, case lowered — so an honest quotation of "as it
+ * was said" does not fail on transcript spacing. Returns the span and its length so the
+ * caller can both decide and say why.
+ */
+function longestSpanOf(reply: string, body: string): { span: string; length: number } {
+  return longestCommonSubstring(normaliseText(stripUrls(reply)), normaliseText(body));
+}
+
+/** Whitespace and case, and nothing else: the noise rows of a transcript carry. */
+function normaliseText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** A URL is the pointer, not the record — remove it before quotation math. */
+function stripUrls(text: string): string {
+  return text.replace(/https?:\/\/\S+/gi, '');
+}
+
+/**
+ * The longest common substring of two texts, indexed by 6-character anchors.
+ *
+ * A whole-transcript body makes the quadratic dial useless, but exact matches are rare, so
+ * the body is indexed by its 6-grams and each reply position extends whatever it hits. The
+ * reply is one paragraph and the body one record, so this stays comfortably cheap.
+ */
+function longestCommonSubstring(a: string, b: string): { span: string; length: number } {
+  const ANCHOR = 6;
+  const best = { span: '', length: 0 };
+  if (a.length < ANCHOR || b.length < ANCHOR) return best;
+
+  const anchors = new Map<string, number[]>();
+  for (let i = 0; i + ANCHOR <= b.length; i++) {
+    const gram = b.slice(i, i + ANCHOR);
+    const at = anchors.get(gram);
+    if (at) at.push(i);
+    else anchors.set(gram, [i]);
+  }
+
+  for (let i = 0; i + ANCHOR <= a.length; i++) {
+    const at = anchors.get(a.slice(i, i + ANCHOR));
+    if (!at) continue;
+
+    for (const j of at) {
+      let start = i;
+      let begin = j;
+      while (start > 0 && begin > 0 && a[start - 1] === b[begin - 1]) {
+        start -= 1;
+        begin -= 1;
+      }
+
+      let end = i + ANCHOR;
+      let endB = j + ANCHOR;
+      while (end < a.length && endB < b.length && a[end] === b[endB]) {
+        end += 1;
+        endB += 1;
+      }
+
+      const length = end - start;
+      if (length > best.length) {
+        best.length = length;
+        best.span = a.slice(start, end);
+      }
     }
   }
 
-  return pairs;
+  return best;
 }
 
 /**

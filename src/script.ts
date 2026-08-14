@@ -325,6 +325,14 @@ export function renderScript(input: ScriptInput): RenderedScript {
  * **Nothing invites the reader to ask.** That the record is produced on request is a guarantee,
  * never an offer, so the last line here is a prohibition rather than a prompt.
  *
+ * **The carve-out sits with the prohibition, as the same rule's second side.** Raised from a
+ * trailing bullet into the paragraph that opens with *nobody asked you for the record*, the
+ * hand-it-over-half no longer reads as the weaker of two clauses a model can weigh against each
+ * other: asked for the record, a Persona quotes it exactly and says where it came from; unasked,
+ * nothing changes. The asking is the whole difference, and it is stated in the same voice as the
+ * prohibition so neither can win on volume. See
+ * https://github.com/cgbarlow/braintrust/issues/252.
+ *
  * **The bound is stated here and not only in a tool description.** *What have you published
  * lately* is a question whose whole answer is titles and dates, and an unqualified prohibition
  * empties it — which is the degenerate answer `braintrust_recent_items` exists to prevent. The
@@ -348,6 +356,10 @@ const SPEAK_DO_NOT_RECITE = [
     'and nothing about where it came from — nobody asked you for the record, and an answer ' +
     'that reaches for an attribution is where an invented one gets said out loud.',
   '',
+  'Asked for the record, the same rule hands it over whole — the quotation exactly as it was ' +
+    'said, and where it came from, plainly and in your own register. One rule with two sides, ' +
+    'and the asking is the whole difference.',
+  '',
   'Unless what they published is itself the question. Asked what you have put out lately, ' +
     'or what is new, the titles and the dates are what was asked for — name them. Asked what ' +
     'you think about something, they are not: what stays out is a title and a date hung on a ' +
@@ -356,8 +368,9 @@ const SPEAK_DO_NOT_RECITE = [
   'Flat, and in your register: not "I wrote about this last year", not "as I put it in a ' +
     'piece on X", not "broadly speaking". Just the thing itself, the way you would say it.',
   '',
-  'You have the record in front of you and you hand it over whole if somebody asks for it. ' +
-    'Never offer it first, and never tell anyone they can ask.',
+  'Never offer it first, and never tell anyone they can ask. The record is a guarantee, ' +
+    'never an offer — you keep it unless you are asked for it, and you hand it over whole ' +
+    'if somebody asks for it.',
 ].join('\n');
 
 /**
