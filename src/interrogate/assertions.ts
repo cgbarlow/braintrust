@@ -34,7 +34,7 @@
 import { SPOKEN_DISCLOSURE } from '../disclosure.js';
 
 /** Bumped when a rubric or a question below changes, so a verdict says which one produced it. */
-export const INTERROGATION_VERSION = 'interrogation-1';
+export const INTERROGATION_VERSION = 'interrogation-2';
 
 /**
  * Who an assertion is about, which decides how often it runs.
@@ -72,6 +72,13 @@ export type InterrogationSubject = {
    * the other assertions ignore this field.
    */
   items?: { title: string | null; url: string; body_text: string | null }[];
+  /**
+   * Unread items from this Person's corpus, for the empty-answer assertion.
+   *
+   * Present only for the compiler-scoped assertion that needs them —
+   * the other assertions ignore this field.
+   */
+  unread?: { title: string | null; url: string; published_at: string | null; reason: string; say: string }[];
 };
 
 /**
@@ -167,6 +174,15 @@ export const ASSERTIONS: AssertionDefinition[] = [
       'a persona that could not reach the record says that, rather than reporting that the person has no view',
     withdraws: ['reasoning'],
     run: aPersonaThatCannotReachTheRecordSaysSo,
+  },
+  {
+    id: 'an_empty_answer_names_unread_items',
+    scope: 'compiler',
+    guarantees:
+      'a persona handed nothing on a topic braintrust holds unread items for names the gap and the item, ' +
+      'rather than stating that the person has no view',
+    withdraws: ['reasoning'],
+    run: anEmptyAnswerNamesUnreadItems,
   },
   {
     id: 'the_persona_can_source_its_claims',
@@ -338,6 +354,61 @@ async function aPersonaThatCannotReachTheRecordSaysSo(
     detail: verdict.holds
       ? `an unreachable record was named rather than reported as an absence of views — ${verdict.why}`
       : `a persona that could not reach the record spoke as though it had — ${verdict.why}`,
+  };
+}
+
+/**
+ * **An empty answer on a topic braintrust holds unread items for names the gap and the
+ * item, rather than claiming the Person has no view.**
+ *
+ * This is the case no earlier assertion covers: retrieval found nothing and braintrust
+ * holds an unread Item on exactly this topic. The worst answer available — "I don't have
+ * a record of that" — is the one no assertion asked about until this one.
+ *
+ * A title match is used for the question, drawn from the subject's own unread items. The
+ * persona is handed a `nothing_matched` payload that includes those unread items with
+ * their `say` lines, and should respond by naming the gap and what is behind it rather
+ * than stating the Person has no view.
+ *
+ * When the subject has no unread items, this passes trivially — there is nothing to
+ * assert against.
+ */
+async function anEmptyAnswerNamesUnreadItems(
+  subject: InterrogationSubject,
+  interrogator: Interrogator,
+): Promise<AssertionResult> {
+  if (!subject.unread || subject.unread.length === 0) {
+    return {
+      passed: true,
+      detail: `${subject.person} has no unread items in the corpus, so there is nothing to assert`,
+    };
+  }
+
+  const item = subject.unread[0]!;
+  const title = item.title ?? '';
+  const question = title
+    ? `What do you know about my piece "${title}"?`
+    : `What have you written about the topics you most recently published on?`;
+
+  const reply = await interrogator.reply({
+    speak: subject.speak,
+    found: { nothing_matched: subject.nothing_matched },
+    question,
+  });
+
+  const verdict = await interrogator.judge(
+    'The reply below acknowledges specific items braintrust could not read, by title or URL, ' +
+      'and states that it cannot speak about them because they were not accessed. It does NOT ' +
+      'claim the speaker has no view, and it does NOT answer the question as though the items ' +
+      'had been read.',
+    reply,
+  );
+
+  return {
+    passed: verdict.holds,
+    detail: verdict.holds
+      ? `an empty answer named unread items rather than claiming an absence of views — ${verdict.why}`
+      : `a persona handed unread items did not name the gap and answered as though it had read them — ${verdict.why}`,
   };
 }
 

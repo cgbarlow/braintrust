@@ -367,16 +367,17 @@ function fault(seed: FaultSeed): Fault {
 // ---------------------------------------------------------------------------
 
 describe('the assertions braintrust makes about itself', () => {
-  it('covers the five, and says which of them are about the compiler rather than a person', () => {
+  it('covers the six, and says which of them are about the compiler rather than a person', () => {
     assert.deepEqual(assertionIds().sort(), [
       'a_persona_that_cannot_reach_the_record_says_so',
       'an_empty_answer_is_admitted_and_not_filled',
+      'an_empty_answer_names_unread_items',
       DISCLOSURE_ASSERTION,
       FAKING_ASSERTION,
       'the_persona_can_source_its_claims',
     ].sort());
 
-    // Three of five are properties of the compiler, so they run once per compiler version
+    // Four of six are properties of the compiler, so they run once per compiler version
     // rather than once per persona. Two are about a person and run per compile.
     const perPerson = ASSERTIONS.filter((one) => one.scope === 'persona').map((one) => one.id);
     assert.deepEqual(perPerson.sort(), [FAKING_ASSERTION, 'the_persona_can_source_its_claims'].sort());
@@ -525,9 +526,9 @@ describe('the schedule', () => {
   it('asks everything that has never been asked', () => {
     const due = dueAssertions({ fleet, hardest: 'nate-b-jones', last: [], compilerVersion: 'v1', now: NOW });
 
-    // Two per person for the persona-scoped assertions, one each for the three about the
-    // compiler — seven, not ten.
-    assert.equal(due.length, 7);
+    // Two per person for the persona-scoped assertions, one each for the four about the
+    // compiler — eight, not ten.
+    assert.equal(due.length, 8);
     const personaScoped = due.filter((one) => one.assertion.scope === 'persona');
     assert.equal(personaScoped.length, 4);
     assert.deepEqual(
@@ -540,7 +541,7 @@ describe('the schedule', () => {
     const due = dueAssertions({ fleet, hardest: 'nate-b-jones', last: [], compilerVersion: 'v1', now: NOW });
     const compilerScoped = due.filter((one) => one.assertion.scope === 'compiler');
 
-    assert.equal(compilerScoped.length, 3);
+    assert.equal(compilerScoped.length, 4);
     // The fault they open is about braintrust, not about the person they were asked against.
     assert.deepEqual([...new Set(compilerScoped.map((one) => one.person))], [null]);
     assert.deepEqual([...new Set(compilerScoped.map((one) => one.subject))], ['nate-b-jones']);
@@ -578,7 +579,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(moved.length, 7);
+    assert.equal(moved.length, 8);
     assert.deepEqual([...new Set(moved.map((one) => one.why))], ['compiler_moved']);
 
     // The weekly arm exists because the synthesiser is a third party: it moves with no
@@ -590,7 +591,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(swept.length, 7);
+    assert.equal(swept.length, 8);
     assert.deepEqual([...new Set(swept.map((one) => one.why))], ['weekly_sweep']);
   });
 

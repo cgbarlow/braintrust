@@ -41,10 +41,12 @@
  * and urls all still ship, and a reader can still tell the difference from the payload
  * alone. **Nothing here may be trimmed on the grounds that it is no longer spoken.**
  *
- * **No Coverage block.** Coverage is a Core concern and this tool stays lean, so an empty
- * answer here is silent about whether 304 unread paid posts might have held it. The
- * accepted cost is paid by the tool description, which points clients at
- * `braintrust_load_persona` for exactly that.
+ * **An empty answer names what it could not read.** When braintrust_find_positions matches
+ * nothing, the payload names Items braintrust holds for that Person, on that topic, which it
+ * has not read — with the reason and the existing `say` line. A title match is weaker than
+ * a Chunk match, so this appears only when the answer is otherwise empty: the alternative
+ * there is a bare denial, which is worse than an imperfect pointer. It never reorders or
+ * dilutes a real answer. Every not-read reason is covered, not only `failed`.
  *
  * See docs/design/mcp-surface.md §3.
  */
@@ -56,6 +58,7 @@ import { vectorLiteral, type Embedder } from './retrieval/embed.js';
 import type { QueryGate } from './retrieval/index.js';
 import { movedParts } from './compile/version.js';
 import { UNMEASURED_RETRIEVAL_FLOOR } from './unmeasured.js';
+import { NOT_READ } from './recent.js';
 
 /**
  * How many **Items** the vector search ranks. The Items are what map to Positions, so this
@@ -363,6 +366,14 @@ export type FindPayload = {
  * interest rate policy."* and no next move, on the first question a reader asks. Handed the
  * nearest thing braintrust does hold, the Persona offered it unprompted.
  */
+export type UnreadItem = {
+  title: string | null;
+  url: string;
+  published_at: string | null;
+  reason: string;
+  say: string;
+};
+
 export type NothingMatched = {
   nearest_similarity: number | null;
   /** The gate in force for this Persona — measured on its last Compile unless overridden. */
@@ -384,6 +395,16 @@ export type NothingMatched = {
    * rather than composed here.
    */
   nearest: { slug: string; statement: string }[];
+  /**
+   * Items braintrust holds for this Person that could not be read, whose titles share
+   * keywords with the query. Present only when the answer is otherwise empty and such
+   * items exist.
+   *
+   * A title match is weaker than a Chunk match, so this is bounded to the empty case:
+   * the alternative there is a bare denial, which is worse than an imperfect pointer.
+   * It never reorders or dilutes a real answer.
+   */
+  unread?: UnreadItem[];
 };
 
 /** How many adjacent Positions an empty answer offers. Enough to be a choice, not a list. */
@@ -401,6 +422,7 @@ export function nothingMatched(facts: {
   nearest_similarity: number | null;
   floor: number;
   nearest: { slug: string; statement: string }[];
+  unread?: UnreadItem[];
 }): NothingMatched {
   return {
     nearest_similarity: facts.nearest_similarity,
@@ -409,6 +431,7 @@ export function nothingMatched(facts: {
     // nothing left to mean: a question either reaches this Corpus or it does not.
     reason: facts.nearest_similarity === null ? 'nothing_indexed' : 'below_floor',
     nearest: facts.nearest,
+    ...(facts.unread !== undefined && facts.unread.length > 0 ? { unread: facts.unread } : {}),
   };
 }
 
@@ -423,6 +446,7 @@ export const NOTHING_MATCHED_KEYS = [
   'floor',
   'reason',
   'nearest',
+  'unread',
 ] as const;
 
 export const NOTHING_MATCHED_REASONS = ['below_floor', 'nothing_indexed'] as const;
@@ -445,7 +469,7 @@ export function speakableProseIn(payload: Record<string, unknown>): string[] {
       offending.push(key);
       continue;
     }
-    if (key === 'nearest') continue;
+    if (key === 'nearest' || key === 'unread') continue;
     if (value === null || typeof value === 'number') continue;
     if (key === 'reason' && (NOTHING_MATCHED_REASONS as readonly string[]).includes(String(value))) {
       continue;
@@ -590,6 +614,10 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
       // did — they are what this Persona has looked at nearby, so a dead end can be handed
       // back as a choice. Nothing to offer is a real answer too, and it is an empty list.
       nearest: await nearestPositions(deps.db, compile.id, literal, search.model),
+      // **Unread Items, matched on title keywords.** No additional model calls — the titles
+      // are already in the database and the match is not a synthesis step. Only when the
+      // answer is otherwise empty, so this never reorders or dilutes a real answer.
+      unread: await unreadItemsFor(deps.db, slug, query),
     });
   }
 
@@ -598,6 +626,91 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
 
 function bounded(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, Math.trunc(value)));
+}
+
+/** Extract significant keywords from a query for title matching. */
+export function keywordsFrom(query: string): string[] {
+  const STOP_WORDS = new Set([
+    'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
+    'her', 'was', 'one', 'our', 'out', 'has', 'have', 'been', 'what', 'with',
+    'that', 'this', 'from', 'your', 'they', 'its', 'about', 'which', 'their',
+    'would', 'could', 'should', 'them', 'than', 'then', 'some', 'these',
+    'into', 'over', 'after', 'also', 'other', 'more', 'such', 'how', 'why',
+    'who', 'when', 'where', 'did', 'does', 'just', 'than',
+  ]);
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'_-]/g, '')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+}
+
+/**
+ * Unread Items whose titles share significant keywords with the query.
+ *
+ * **Matched on titles only, never on body text.** A title keyword is what a
+ * client supplies when asking about a specific piece, and the match is a
+ * word-overlap test — not an embedding and not a model call.
+ *
+ * Returns at most {@link NEAREST_ON_EMPTY} items, enough to be a choice
+ * rather than a list.
+ */
+async function unreadItemsFor(
+  db: Db,
+  slug: string,
+  query: string,
+): Promise<UnreadItem[]> {
+  const keywords = keywordsFrom(query);
+  if (keywords.length === 0) return [];
+
+  const params: (string | string[])[] = [slug, keywords];
+  const { rows } = await db.query<{
+    title: string | null;
+    url: string;
+    published_at: string | null;
+    retrieval: string;
+  }>(
+    `select i.title, i.url, i.published_at::text as published_at, i.retrieval
+       from braintrust_items i
+       join braintrust_sources s on s.id = i.source_id
+       join braintrust_people p on p.id = s.person_id
+       left join lateral (
+         select argument_md, claims
+           from braintrust_item_notes
+          where item_id = i.id
+          order by created_at desc
+          limit 1
+       ) n on true
+      where p.slug = $1
+        and i.title is not null
+        and (i.retrieval != 'retrieved' or (i.retrieval = 'retrieved'
+             and n.argument_md is null and n.claims is null))
+        and exists (
+          select 1 from unnest($2::text[]) kw
+           where i.title ilike '%' || kw || '%'
+        )
+      order by i.published_at desc nulls last
+      limit ${NEAREST_ON_EMPTY}`,
+    params,
+  );
+
+  return rows.map(toNothingUnreadItem);
+}
+
+function toNothingUnreadItem(row: {
+  title: string | null;
+  url: string;
+  published_at: string | null;
+  retrieval: string;
+}): UnreadItem {
+  const reason = row.retrieval === 'retrieved' ? 'pending' : row.retrieval;
+  return {
+    title: row.title,
+    url: row.url,
+    published_at: row.published_at,
+    reason,
+    say: NOT_READ[reason] ?? 'braintrust has not read it',
+  };
 }
 
 async function currentCompile(db: Db, slug: string): Promise<CurrentCompile | undefined> {
