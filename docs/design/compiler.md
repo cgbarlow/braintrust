@@ -1017,6 +1017,17 @@ because a single marked word is not a quotation. A reply carrying no quotation a
 fluently it refuses — so the check passes when a Persona is honest and fails when it is not, which is the
 whole of what #235–#239 had been measuring wrong.
 
+**Every marked quotation is verified, not just the longest** ([#255](https://github.com/cgbarlow/braintrust/issues/255)).
+A marked quotation is a quotation however short the sentence is, so each one is checked against the named
+item's body — a forged span fails the reply even when a real, longer one rides beside it, and the length of
+an invention never buys it a pass. That is the #202 property against the case that used to slip through:
+fabrication arriving alongside real content. The failure detail names the forged span(s), so the Fault is
+judgeable without re-running anything. **A mark of the item's own title is a name, not a quotation** — a
+persona asked for the record often names the piece in the same breath it quotes it (`In "Speed versus
+skill" I said …`), and the title is not a span of the body, so a title in marks neither satisfies the check
+nor convicts it. The markless fallback is unchanged: a reply with no marks is judged by its longest shared
+span, and the recorded blind spot — existence, never exhaustiveness — stays accepted there.
+
 **A quotation that is not in the named item produces a candidate.** It files a deduped issue on first sight,
 through the same fault ledger every other assertion uses. Flukes reach the maintainer, by decision, until
 the noise rate is known.

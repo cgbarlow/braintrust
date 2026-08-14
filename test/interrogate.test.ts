@@ -575,6 +575,78 @@ describe('the assertions braintrust makes about itself', () => {
       assert.match(result.detail, /not in the item it names/);
     });
 
+    it('fails a fabrication beside a real, longer quotation — the #255 gap', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      // Same forgery, same reply shape as the #202 case — the only difference is that the
+      // invented sentence is shorter than the real one. Checking only the longest marked
+      // span used to let this pass; a real quotation beside a forged one launders nothing.
+      const reply =
+        `I said "This is a deep claim I stand by." and I also said "I predicted 2027." — ` +
+        `https://example.com/quests-beat-goals`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      // The Fault names which marked quotation was not found, so it is judgeable cold.
+      // (The named span is normalised for comparison, so it reads lower-cased here.)
+      assert.match(result.detail, /i predicted 2027/i);
+      assert.match(result.detail, /not in the item it names/);
+    });
+
+    it('fails every fabrication when several ride at once, naming all of them', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply =
+        `I said "This is a deep claim I stand by." and also "I predicted 2027." and ` +
+        `"The economy always crashes." — https://example.com/quests-beat-goals`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /i predicted 2027/i);
+      assert.match(result.detail, /the economy always crashes/i);
+    });
+
+    it('passes a reply that marks several real quotations, because every one is verified', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply =
+        `I wrote "Quests beat goals." and I stand by "This is a deep claim I stand by." — ` +
+        `https://example.com/quests-beat-goals`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('reads a mark of the item’s own title as a name, not a quotation to be verified', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      // The title is not a span of the body — it is not the record, it is what names it —
+      // so a persona that says `In "Speed versus skill" I said …` has named the piece, not
+      // forged a citation. The real quotation beside it is what has to verify.
+      const titled = {
+        title: 'Speed versus skill',
+        url: 'https://example.com/speed-versus-skill',
+        body_text:
+          'A common pattern here is that humans pick trades built for speed but forgot to ' +
+          'build the skill to practice them.',
+      };
+      const reply =
+        `In "Speed versus skill," I said "humans pick trades built for speed but forgot to ` +
+        `build the skill to practice them." — https://example.com/speed-versus-skill`;
+      const result = await receipt.run(aSubject([titled]), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('fails a reply whose only mark is the title, because a name is not a handover', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const titled = {
+        title: 'Speed versus skill',
+        url: 'https://example.com/speed-versus-skill',
+        body_text:
+          'A common pattern here is that humans pick trades built for speed but forgot to ' +
+          'build the skill to practice them.',
+      };
+      const reply =
+        `I won't hand over the record, but here is "Speed versus skill" — ` +
+        `https://example.com/speed-versus-skill`;
+      const result = await receipt.run(aSubject([titled]), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /quoted nothing from it/);
+    });
+
     it('reads a source named without the scheme, and one spelled with www, as the same item', async () => {
       const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
       const schemeLess = await receipt.run(

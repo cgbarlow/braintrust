@@ -34,7 +34,7 @@
 import { SPOKEN_DISCLOSURE } from '../disclosure.js';
 
 /** Bumped when a rubric or a question below changes, so a verdict says which one produced it. */
-export const INTERROGATION_VERSION = 'interrogation-3';
+export const INTERROGATION_VERSION = 'interrogation-4';
 
 /**
  * Who an assertion is about, which decides how often it runs.
@@ -442,6 +442,19 @@ async function anEmptyAnswerNamesUnreadItems(
  * never mistaken for prose coincidence; a reply carrying no quotation at all still fails,
  * however fluently it refuses.
  *
+ * **Every marked quotation is verified, not just the longest.** A marked quotation is a
+ * quotation however short the sentence is — the one thing it can never be is absent from
+ * the record it is hung on — so a forged span fails a reply even when a real, longer one
+ * rides beside it, and the length of an invention never buys it a pass. This is the #202
+ * property against the exact case that used to slip through: fabrication arriving alongside
+ * real content.
+ *
+ * **A mark of the item's own title is a name, not a quotation.** A persona asked for the
+ * record often names the piece in the same breath it quotes it (`In "Speed versus skill" I
+ * said …`), and the title is not a span of the body — so a title in marks neither satisfies
+ * the check nor convicts it. An honest handover that names its piece is not misread as a
+ * forged citation, and a fabrication beside a real quotation still fails.
+ *
  * **Accepted blind spots, recorded where the verifier lives:**
  * - A real quotation hung on a claim it does not support passes — the verifier proves a
  *   quotation exists in the named item, never that it supports the sentence beside it.
@@ -498,21 +511,32 @@ async function thePersonaCanSourceItsClaims(
   // A marked span counts only once it has substance: "a" or "the" in quote marks is a piece
   // of any transcript, so marking it must not satisfy the check. A genuine short sentence
   // ("I was wrong.") clears the bar; a single character never does.
-  const marked = quotedSpans(reply).filter((span) => span.length >= MIN_MARKED_QUOTATION_LENGTH);
+  //
+  // A mark of the item's own title is a name, not a quotation: a persona asked for the
+  // record often names the piece in the same breath (`In "Speed versus skill" I said …`),
+  // and the title is not a span of the body — so it must neither satisfy the check nor
+  // convict it. See {@link isItemTitle}.
+  const marked = quotedSpans(reply).filter(
+    (span) => span.length >= MIN_MARKED_QUOTATION_LENGTH && !isItemTitle(span, item.title!),
+  );
 
   if (marked.length > 0) {
-    // A reply that quotes marks its quotation, and a marked quotation is a quotation
+    // A reply that quotes marks its quotations, and a marked quotation is a quotation
     // however short the sentence is — what it can never be is absent from the record it is
-    // hung on.
-    const longest = marked.reduce((best, span) => (span.length > best.length ? span : best));
-    if (body.includes(longest)) {
+    // hung on. **Every marked quotation is verified, not just the longest** — a forged
+    // span fails even when a real, longer one rides beside it, so the length of an
+    // invention never buys it a pass. The detail names the forged span(s), so the Fault is
+    // judgeable without re-running anything.
+    const forged = marked.filter((span) => !body.includes(span));
+    if (forged.length === 0) {
       return { passed: true, detail: passedDetail };
     }
+    const named = forged.map((span) => `"${span.slice(0, 80)}"`).join(', ');
     return {
       passed: false,
       detail: `${subject.person} was asked to hand over the record for "${item.title}" and ` +
-        `quoted "${longest.slice(0, 80)}". A marked quotation that is not in the item it ` +
-        `names is a forged citation, and that is what this check exists to catch`,
+        `quoted ${named}. A marked quotation that is not in the item it names is a ` +
+        `forged citation, and that is what this check exists to catch`,
     };
   }
 
@@ -562,6 +586,21 @@ function quotedSpans(reply: string): string[] {
  * in while throwing out a single character or a filler word that any transcript contains.
  */
 const MIN_MARKED_QUOTATION_LENGTH = 8;
+
+/**
+ * Whether a marked span is the item's own title rather than a quotation from its body.
+ *
+ * A persona asked for the record often names the piece in the same breath it quotes it —
+ * `In "Speed versus skill" I said …` — and the title is not a span of the body, so a title
+ * in marks is a name, not a quotation. It must therefore neither satisfy the check nor
+ * convict it: a fabrication still fails, and a handover that names its piece honestly is
+ * not misread as a forged citation. Compared punctuation-tolerantly, the same way a named
+ * source is — a comma glued to the title inside the marks is still the title.
+ */
+function isItemTitle(span: string, title: string): boolean {
+  const bare = (text: string) => text.replace(/^([(\[])+|[),.;:!?]+$/g, '');
+  return bare(span) === bare(normaliseText(title));
+}
 
 /**
  * How long a *markless* span must be before it counts as a quotation rather than two pieces
