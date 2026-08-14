@@ -49,7 +49,30 @@ export function createInterrogator(
 ): Interrogator {
   const url = chatUrl(config.baseUrl);
 
-  async function ask(system: string, user: string, job: string): Promise<string> {
+  /**
+   * `wants` is the shape of the answer, and it is a parameter because the two callers
+   * genuinely differ: the persona is asked for prose and the judge for one JSON object.
+   * Declaring the judge's shape on the request is the same thing the synthesiser does on
+   * all four of its prompts, for a reason worth stating rather than inheriting.
+   *
+   * **A prompt that asks for JSON in prose and does not say so on the request is a
+   * coin toss.** Found live: the judge's every call went out unconstrained, and this
+   * endpoint's model answered most of them through gpt-oss's constrained-JSON channel —
+   * output the server then failed to parse and returned as HTTP 500. Measured against the
+   * live endpoint, the same payload failed four times in five without this field and
+   * five times in five with it. Intermittence is what made it expensive: the interrogation
+   * had been rolling the dice since it shipped, and a 500 scores as *could not be asked*,
+   * so the failure spent a day looking like an endpoint having a bad time before the
+   * `reasoning` layer was withdrawn from every persona.
+   *
+   * The judge's prompt still asks for the object in words. The request now agrees with it.
+   */
+  async function ask(
+    system: string,
+    user: string,
+    job: string,
+    wants: 'prose' | 'json-object',
+  ): Promise<string> {
     let response;
     try {
       response = await fetchPatiently(
@@ -62,6 +85,7 @@ export function createInterrogator(
             // because an interrogation that varied on temperature would be measuring the
             // sampler on top of everything else it cannot pin down.
             temperature: 0,
+            ...(wants === 'json-object' ? { response_format: { type: 'json_object' } } : {}),
             messages: [
               { role: 'system', content: system },
               { role: 'user', content: user },
@@ -107,7 +131,7 @@ export function createInterrogator(
     generation: `${config.model}@${INTERROGATION_VERSION}`,
 
     async reply(exchange: Interrogation): Promise<string> {
-      return ask(HARNESS, exchangeAsUserTurn(exchange), 'a persona to answer');
+      return ask(HARNESS, exchangeAsUserTurn(exchange), 'a persona to answer', 'prose');
     },
 
     async judge(rubric: string, reply: string): Promise<Verdict> {
@@ -115,6 +139,7 @@ export function createInterrogator(
         JUDGE,
         `STATEMENT\n${rubric}\n\nREPLY\n${reply}`,
         'a reply to be judged',
+        'json-object',
       );
       return readVerdict(content, url);
     },
