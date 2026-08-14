@@ -615,6 +615,26 @@ describe('the ingest cycle, against real Postgres', () => {
     assert.equal(tomorrow.report.sources.length, 2);
   });
 
+  it('polls a source the moment the next run reaches the check, even seconds early', async () => {
+    await follow();
+    await run();
+
+    // The measured failure this fixes: the 2026-08-13 run polled at 15:00:50 and the
+    // 2026-08-14 run reached the check at 15:00:19, missed the line by 31 seconds, and
+    // logged `0 of 9 sources due`. The due test is the schedule's property, so a Source
+    // exactly one interval old is due on the run that reaches it a moment early.
+    const early = await run({ now: new Date(NOW.getTime() + 24 * 3600_000 - 31_000) });
+
+    assert.equal(early.report.sources.length, 2);
+    assert.equal(early.report.not_due, 0);
+
+    // The tolerance did not become a second poll: a re-read well within the interval is
+    // still suppressed, which is the whole meaning `poll_interval_hours` is allowed to keep.
+    const stillFresh = await run({ now: new Date(NOW.getTime() + 2 * 3600_000) });
+    assert.equal(stillFresh.report.sources.length, 0);
+    assert.equal(stillFresh.report.not_due, 2);
+  });
+
   it('is resumable: a run stopped halfway has written real rows', async () => {
     await follow();
 

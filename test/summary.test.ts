@@ -39,7 +39,7 @@ function report(overrides: Partial<CycleReport> = {}): CycleReport {
 
 describe('the run summary', () => {
   it('says nothing was due when nothing was', () => {
-    assert.equal(summarise(report()), 'braintrust: nothing was due.');
+    assert.equal(summarise(report()), 'braintrust: nothing was due — 0 of 2 sources were polled.');
   });
 
   it('reports the index even when no source was due', () => {
@@ -97,7 +97,7 @@ describe('the run summary', () => {
       }),
     );
 
-    assert.equal(summary, 'braintrust: nothing was due.');
+    assert.equal(summary, 'braintrust: nothing was due — 0 of 2 sources were polled.');
   });
 
   it('names the personas it rebuilt, and the version that built them', () => {
@@ -148,7 +148,7 @@ describe('the run summary', () => {
       }),
     );
 
-    assert.equal(summary, 'braintrust: nothing was due.');
+    assert.equal(summary, 'braintrust: nothing was due — 0 of 2 sources were polled.');
   });
 
   it('reports a compile that failed, rather than a run that did nothing', () => {

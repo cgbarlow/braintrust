@@ -55,6 +55,26 @@ const SOURCE_COLUMNS = `
 `;
 
 /**
+ * How far past a Source's exact due boundary braintrust still calls it due.
+ *
+ * A Source is due when `last_checked_at` is at or before `now` minus its
+ * `poll_interval_hours`. The daily job runs on a fixed time and **stamps `last_checked_at`
+ * when it reaches the Source — always a moment after the run started** — so the next run,
+ * comparing against its own (earlier) start, finds the Source a moment short of the line
+ * and skips it for the whole day. Measured live: the 2026-08-14 run reached the check 31
+ * seconds before the previous day's stamp and logged `0 of 9 sources due`.
+ *
+ * This tolerance absorbs that skew. It is **a property of the schedule, not of a Source**:
+ * one value applied to every Source equally, whatever its interval. It is sized to cover
+ * the seconds a run spends getting to the check — and the documented 26-minute maximum a
+ * heavy run can hold a later Source past its own start — while remaining far below the
+ * default 24-hour interval, so it cannot become a second poll and cannot read as a licence
+ * to poll continuously. `poll_interval_hours` keeps its meaning: a Source polled this
+ * morning is still not polled again this morning.
+ */
+export const DUE_TOLERANCE_MINUTES = 60;
+
+/**
  * Sources the job should touch on this run.
  *
  * Two filters, and they are different facts. A **paused** Person is the user's own
@@ -77,9 +97,10 @@ export async function dueSources(db: Db, now: Date): Promise<SourceRow[]> {
         and (
           s.last_checked_at is null
           or s.last_checked_at <= $1::timestamptz - make_interval(hours => s.poll_interval_hours)
+            + make_interval(mins => $2)
         )
       order by p.slug, s.platform`,
-    [now.toISOString()],
+    [now.toISOString(), DUE_TOLERANCE_MINUTES],
   );
   return rows;
 }

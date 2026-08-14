@@ -100,7 +100,9 @@ the default, so the ordinary path asks for nothing. Keeping the defaults as colu
 braintrust does if you say nothing" is readable in one place rather than buried in the compiler.
 
 **`poll_interval_hours` does not create a second scheduler.** There is still one daily job; the interval
-only decides whether a source is *due* when it runs.
+only decides whether a source is *due* when it runs. The due test carries a schedule-wide tolerance of one
+hour so a run that reaches the check moments before the exact boundary still polls a Source polled one
+interval ago — the tolerance is a property of the schedule, never of the Source.
 
 **The paywall behaviour is deliberately not among them.** *Never ingest anything where `audience` is not
 `everyone`* is a hard line rather than a default, so it gets no column. Note this is enforced as an

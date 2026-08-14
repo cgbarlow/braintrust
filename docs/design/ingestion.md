@@ -303,6 +303,14 @@ nothing.
 **`poll_interval_hours` does not create a second scheduler.** There is one daily job; the interval only
 decides whether a Source is *due* when it runs.
 
+**A Source is due with a tolerance — the schedule's property, not the Source's.** The job runs on a fixed
+time and stamps `last_checked_at` when it *reaches* a Source, always a moment after the run started. The
+next run compares against its own (earlier) start, so a Source polled exactly one interval ago sits a few
+seconds past the line and is skipped for the whole day — found live at 31 seconds ([#267](https://github.com/cgbarlow/braintrust/issues/267)).
+The due test therefore accepts a Source up to one hour past its exact boundary. The tolerance is a single
+value applied to every Source equally — it is not a per-Source setting and it is too small to be a second
+poll: a Source read this morning is still read again tomorrow morning, not later today.
+
 **A window is a setting, so widening one has to reach the Items it was widened for.** An Item the feed
 carries but the archive walk stopped short of is written `retrieval = 'skipped_window'`, not `failed`:
 nobody asked the source for it, so a terminal outcome would be recording braintrust's own decision as a
