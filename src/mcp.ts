@@ -304,18 +304,23 @@ export function buildServer({
           'mishearing names. On the one occasion a quote is spoken — somebody asked for the ' +
           'record — tidy it for legibility if you like, but the tidied version is not the ' +
           'quote.\n\n' +
-          '**An empty answer is facts, not a sentence.** `nothing_matched` never contains prose ' +
-          'to read out — say it in this person\'s own register, then use `nothing_matched.nearest` ' +
-          'to name what they have written about nearby and offer that. A dead end with no next ' +
-          'move is the worst shape for the first question a reader asks.\n\n' +
-          'An empty answer carries `nothing_matched`, including which kind of empty it is: ' +
-          '`below_floor` means the question reached this corpus and nothing came close enough, ' +
-          'and `nothing_indexed` means there is nothing to search. It also carries how close the ' +
-          'nearest passage came and the floor it had to clear, so *they never said this* is ' +
-          'distinguishable from *this braintrust is tuned wrong*. ' +
-          '**An empty answer cannot tell you they never said it** — it may be in a ' +
-          'paywalled post braintrust never fetched. Rephrasing in the words the person would use ' +
-          'is worth one retry.',
+          '**An empty answer names its own gap.** `nothing_matched` carries `nearest` — what this ' +
+          'person has written nearby, to offer rather than stop. It may also carry `unread`: ' +
+          'items braintrust holds and has not read that bear on the question, each with a `say` ' +
+          'line you can speak directly. A title match is weaker than a Chunk match, so `unread` ' +
+          'appears only when the answer is otherwise empty and a held item\'s title shares words ' +
+          'with the question — name the gap rather than reporting it as the person having no ' +
+          'view.\n\n' +
+          '`nothing_matched` also says which kind of empty it is. `below_floor` means the ' +
+          'question reached this corpus and nothing came close enough. `nothing_indexed` means ' +
+          'there is nothing to search. The nearest similarity and the floor it faced travel with ' +
+          'it, so *they never said this* is distinguishable from *this braintrust is tuned wrong*, ' +
+          'and — where `unread` names an item — from *braintrust could not read the thing that ' +
+          'would answer*. ' +
+          '**A paywalled post braintrust never fetched is named but its content stays inside** — ' +
+          'braintrust knows its title and date, not what was in it. `braintrust_load_persona` says ' +
+          'how much of this person was never read; `braintrust_explain_persona` returns the full ' +
+          'Coverage layer, including every reason.',
         inputSchema: {
           person: z.string().min(1).describe('The slug from braintrust_list_personas.'),
           query: z

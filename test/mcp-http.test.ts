@@ -288,8 +288,9 @@ describe('the retrieval tool, on a server that has an embeddings endpoint', () =
     // And nothing is withheld for grading badly, which a client has to be told or it will
     // assume an absence means braintrust found nothing.
     assert.match(find.description!, /Nothing is withheld/);
-    // An empty answer still cannot tell you they never said it.
-    assert.match(find.description!, /cannot tell you they never said it/);
+    // An empty answer can now name the gap: "braintrust could not read the thing that
+    // would answer" is distinguishable from "never said it" via unread Items with say.
+    assert.match(find.description!, /could not read the thing/);
     // Quotes stay a must-not-get-wrong.
     assert.match(find.description!, /the tidied version is not the quote/);
     await client.close();
