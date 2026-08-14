@@ -735,6 +735,13 @@ self-identification line, the Script or any description tells a reader they may 
 sentence forbidding the Persona from saying so. What braintrust does when somebody does ask is
 [#194](https://github.com/cgbarlow/braintrust/issues/194), not this.
 
+**The carve-out now sits beside the prohibition, as the same rule's second side** —
+[#252](https://github.com/cgbarlow/braintrust/issues/252). *Nobody asked you for the record* and *asked for
+the record, hand it over whole* were written apart, and a Persona reading both could follow either — the
+weaker-sounding carve-out was where the receipt sweep kept losing. They are one paragraph now, in the same
+voice, with the asking as the whole difference; the anti-forgery property above is unchanged, because what
+changed is only what happens *when asked*.
+
 #### A through-line never outnumbers the Positions beside it — [#198](https://github.com/cgbarlow/braintrust/issues/198)
 
 The cap that enforces *never the whole of an answer* as a **proportion**: an answer cannot carry more

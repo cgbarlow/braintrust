@@ -438,10 +438,12 @@ describe('the assertions braintrust makes about itself', () => {
   describe('the receipt-checking assertion', () => {
     const RECEIPT_ID = 'the_persona_can_source_its_claims';
 
+    // Irregular spacing on purpose: a transcript row, which is exactly what a check that
+    // normalises transcript noise is for.
     const anItem = {
       title: 'Quests beat goals',
       url: 'https://example.com/quests-beat-goals',
-      body_text: 'Quests beat goals. This is a deep claim I stand by.',
+      body_text: 'Quests  beat  goals.\nThis   is a deep claim I   stand by.',
     };
 
     const aSubject = (items?: typeof anItem[]) => ({
@@ -460,41 +462,170 @@ describe('the assertions braintrust makes about itself', () => {
         stubInterrogator(),
       );
       assert.equal(result.passed, true);
+      assert.equal(result.detail, 'thin has no retrieved items in the corpus, so there is nothing to ask about');
     });
 
-    it('passes when the persona correctly cites a claim from the item', async () => {
+    it('passes when the persona hands the record over whole, quotation and all', async () => {
       const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
-      const reply = `I argued that goals are fleeting but quests endure.\n\nCLAIM: Quests beat goals\nSOURCE: https://example.com/quests-beat-goals\n`;
+      const reply =
+        `In that piece I said "Quests beat goals. This is a deep claim I stand by" — the ` +
+        `sentence, word for word. The piece: https://example.com/quests-beat-goals`;
       const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
       assert.equal(result.passed, true);
     });
 
-    it('fails when the persona cites a claim not found in the item body', async () => {
+    it('passes when the quotation sits in prose around it, not on a labelled line', async () => {
       const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
-      const reply = `I argued that AI will replace all coders.\n\nCLAIM: AI will replace all coders\nSOURCE: https://example.com/quests-beat-goals\n`;
+      const reply =
+        `You're right to check. In "Quests" I wrote it as plain as this: "This is a deep ` +
+        `claim I stand by." The whole piece is at https://example.com/quests-beat-goals`;
       const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
-      assert.equal(result.passed, false);
-      assert.match(result.detail, /could not be sourced/);
+      assert.equal(result.passed, true);
     });
 
-    it('fails when the persona does not provide claims in the expected format', async () => {
+    it('passes without quotation marks at all, because the unit is the span and not the label', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply = `The sentence to check: Quests beat goals. That's from https://example.com/quests-beat-goals`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('reads a URL wrapped in prose and punctuation, because the pair inside a sentence is still readable', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply =
+        `This is a deep claim I stand by, and I said so in the piece ` +
+        `(https://example.com/quests-beat-goals).`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('passes when the reply keeps the old labelled format, which is one readable arrangement among many', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply =
+        `I argued that goals are fleeting but quests endure.\n\nCLAIM: Quests beat goals\n` +
+        `SOURCE: https://example.com/quests-beat-goals\n`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('fails when the quotation is not in the item that is named — the forged citation from #202', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply =
+        `I said "AI will replace all coders in 2027." That's in my piece at ` +
+        `https://example.com/quests-beat-goals`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /not in the item it names/);
+      assert.match(result.detail, /forged citation/);
+    });
+
+    it('passes a genuinely short quoted sentence, because a marked quotation is a quotation whatever its length', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      // "I was wrong." is 13 characters — under the markless span floor, and far too short
+      // to be prose coincidence once it is in quotation marks.
+      const shortItem = {
+        title: 'On being wrong',
+        url: 'https://example.com/on-being-wrong',
+        body_text: 'Quests beat goals. I was wrong. Still, we moved on.',
+      };
+      const reply = `I said exactly this in the piece: "I was wrong." It is at https://example.com/on-being-wrong`;
+      const result = await receipt.run(aSubject([shortItem]), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('fails a short marked quotation that is not in the item, so forgery has no length exemption', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const shortItem = {
+        title: 'On being wrong',
+        url: 'https://example.com/on-being-wrong',
+        body_text: 'Quests beat goals. I was wrong. Still, we moved on.',
+      };
+      const reply = `I said it in the piece: "We must act now." It is at https://example.com/on-being-wrong`;
+      const result = await receipt.run(aSubject([shortItem]), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /not in the item it names/);
+    });
+
+    it('fails a reply that marks only a bare common word, because marking it does not make it a quotation', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      // "a" and "the" are in every transcript; a refusal that marks one must not satisfy
+      // the check by coincidence with the record.
+      const bare = await receipt.run(
+        aSubject(),
+        stubInterrogator({ reply: `I am not handing over anything. "a" and the piece is at https://example.com/quests-beat-goals` }),
+      );
+      assert.equal(bare.passed, false);
+      assert.match(bare.detail, /quoted nothing from it/);
+
+      const filler = await receipt.run(
+        aSubject(),
+        stubInterrogator({ reply: `I refuse. "the" is all you are getting. https://example.com/quests-beat-goals` }),
+      );
+      assert.equal(filler.passed, false);
+      assert.match(filler.detail, /quoted nothing from it/);
+    });
+
+    it('fails a fabricated marked quotation even when a trivial marked word is also present', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply =
+        `I said "a" and also "AI will replace all coders in 2027." ever so plainly — ` +
+        `https://example.com/quests-beat-goals`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /not in the item it names/);
+    });
+
+    it('reads a source named without the scheme, and one spelled with www, as the same item', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const schemeLess = await receipt.run(
+        aSubject(),
+        stubInterrogator({ reply: `"Quests beat goals." from example.com/quests-beat-goals` }),
+      );
+      assert.equal(schemeLess.passed, true);
+
+      const withWww = await receipt.run(
+        aSubject(),
+        stubInterrogator({ reply: `"Quests beat goals." at https://www.example.com/quests-beat-goals` }),
+      );
+      assert.equal(withWww.passed, true);
+    });
+
+    it('fails when a source is named but no quotation is handed over at all', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply = `I can't hand over the record for that one. The piece is at https://example.com/quests-beat-goals`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /quoted nothing from it/);
+    });
+
+    it('fails when the reply names no source matching the item', async () => {
       const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
       const result = await receipt.run(
         aSubject(),
         stubInterrogator({ reply: 'I argued about goals in my piece.' }),
       );
       assert.equal(result.passed, false);
-      assert.match(result.detail, /did not provide any claims with sources/);
+      assert.match(result.detail, /named no source matching the item URL/);
     });
 
-    it('asks with the tool available, so the persona can cite the record', async () => {
+    it('fails when the source is a different item than the one asked about', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      const reply = `I said "Quests beat goals." — from https://example.com/wrong-item`;
+      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /named no source matching the item URL/);
+    });
+
+    it('asks with the item’s own text, so the record is in front of the persona', async () => {
       const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
       const interrogator = stubInterrogator();
       await receipt.run(aSubject(), interrogator);
       const exchange = interrogator.asked.find((one) => one.exchange)!.exchange!;
-      // The persona gets the item to cite from — the tool is present.
+      // The persona gets the item to hand the record over from — the record is present.
       assert.ok(exchange.found !== null);
-      assert.ok((exchange.found as Record<string, unknown>).item_url === anItem.url);
+      const found = exchange.found as Record<string, unknown>;
+      assert.equal(found.item_url, anItem.url);
+      assert.equal(found.item_body, anItem.body_text);
     });
 
     it('does not use a judge — verification is a count against the item body', async () => {
@@ -503,14 +634,6 @@ describe('the assertions braintrust makes about itself', () => {
       await receipt.run(aSubject(), interrogator);
       // No rubric was presented to the judge — no model call for judgement.
       assert.equal(interrogator.asked.filter((one) => one.rubric).length, 0);
-    });
-
-    it('fails when the source URL does not match the expected item', async () => {
-      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
-      const reply = `I argued about goals.\n\nCLAIM: Quests beat goals\nSOURCE: https://example.com/wrong-item\n`;
-      const result = await receipt.run(aSubject(), stubInterrogator({ reply }));
-      assert.equal(result.passed, false);
-      assert.match(result.detail, /does not match the item URL/);
     });
   });
 });

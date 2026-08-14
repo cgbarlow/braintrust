@@ -380,6 +380,28 @@ describe('the script', () => {
     assert.doesNotMatch(speak, /if you(?:'d| would) like the (source|citation|quote)/i);
   });
 
+  /**
+   * **The carve-out sits with the prohibition, as the same rule's second side** — raised from
+   * the trailing bullet it once hid in, so a persona asked for the record is not weighing two
+   * clauses that pull different ways. Unasked the anti-forgery property from #202 is untouched.
+   */
+  it('says the carve-out in the same voice as the prohibition, so neither reads as the weaker', () => {
+    const { speak } = renderScript(input());
+    const section = speak.split('WHEN YOU HAVE LOOKED SOMETHING UP')[1]!;
+
+    assert.match(section, /Asked for the record, the same rule hands it over whole/);
+    assert.match(section, /the quotation exactly as it was said, and where it came from/);
+    assert.match(section, /One rule with two sides, and the asking is the whole difference/);
+    // Raised next to the prohibition rather than four bullets below it: the two halves sit
+    // in the same paragraph as the asking that separates them.
+    assert.ok(section.indexOf('nobody asked you for the record') < section.indexOf('Asked for the record'));
+    assert.ok(section.indexOf('the asking is the whole difference') < section.indexOf('Unless what they published'));
+    // And raising the carve-out does not loosen the unasked half — the prohibition survives.
+    assert.match(section, /No title, no date, no quotation/);
+    assert.match(section, /nothing about where it came from/);
+    assert.doesNotMatch(section, /[Aa]sked what you have written/);
+  });
+
   /** The two lines this ticket was told not to touch, asserted where they are rendered. */
   it('leaves the fixed disclosure and the first-line rule alone', () => {
     const { speak } = renderScript(input());
