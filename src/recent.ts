@@ -59,12 +59,24 @@ export type RecentArgs = {
  * Why braintrust has no Note for an Item it knows about, and what a Persona can say about
  * it. The `say` line exists for the same reason #115 gave `nothing_matched` one: the
  * Persona has to speak this, and braintrust's own vocabulary is not speakable.
+ *
+ * **A state with no line here does not fail — it goes vague**, which is the worse outcome
+ * and the harder one to notice. All three readers fall back to *braintrust has not read
+ * it*, a sentence that is true of every entry in this map and tells a listener nothing
+ * about which one they hit. `skipped_no_captions` sat in that fallback from the day it was
+ * given a state of its own: a video braintrust genuinely has no words for was described in
+ * the same breath as a paywall and a fetch that failed. The typed exhaustiveness check in
+ * test/recent.test.ts is what stops the next state repeating it.
  */
 export const NOT_READ: Record<string, string> = {
   skipped_paywall: 'behind a paywall, which braintrust never reads',
   skipped_short: 'too short to be worth reading — braintrust skips these by setting',
   skipped_window: 'published before the window braintrust was asked to read',
   skipped_not_a_post: 'a link that turned out not to be a post',
+  // Said as a fact about the video rather than about braintrust, because that is what it
+  // is: there is no transcript to read, so there is nothing braintrust could have done
+  // differently and nothing a listener should read as a failure or a refusal.
+  skipped_no_captions: 'a video with no captions on it, so there were no words to read',
   failed: 'braintrust could not fetch it',
   pending: 'not read yet',
 };
