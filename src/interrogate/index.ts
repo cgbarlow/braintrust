@@ -21,8 +21,9 @@
 
 import { COMPILER_VERSION } from '../compile/version.js';
 import type { Db } from '../db.js';
-import { nothingMatched, NEAREST_ON_EMPTY, RETRIEVAL_FLOOR } from '../find.js';
+import { nothingMatched, NEAREST_ON_EMPTY, RETRIEVAL_FLOOR, type UnreadItem } from '../find.js';
 import { loadPersona } from '../personas.js';
+import { NOT_READ } from '../recent.js';
 import {
   ASSERTIONS,
   type AssertionDefinition,
@@ -272,6 +273,7 @@ async function subjectFor(db: Db, person: string): Promise<InterrogationSubject>
   const persona = await loadPersona(db, person);
   const claims = await claimsHeldFor(db, person);
   const items = await corpusItems(db, person);
+  const unread = await unreadItems(db, person);
 
   return {
     person,
@@ -282,9 +284,59 @@ async function subjectFor(db: Db, person: string): Promise<InterrogationSubject>
       nearest_similarity: null,
       floor: RETRIEVAL_FLOOR,
       nearest: claims.slice(0, NEAREST_ON_EMPTY),
+      unread,
     }) as unknown as Record<string, unknown>,
     items,
+    unread: unread.length > 0 ? unread : undefined,
   };
+}
+
+/**
+ * The most recent unread Items for a Person, with their not-read reasons and say lines.
+ *
+ * Used only by the interrogation subject, so the
+ * `an_empty_answer_names_unread_items` assertion can ask about them.
+ */
+async function unreadItems(
+  db: Db,
+  slug: string,
+): Promise<UnreadItem[]> {
+  const { rows } = await db.query<{
+    title: string | null;
+    url: string;
+    published_at: string | null;
+    retrieval: string;
+  }>(
+    `select i.title, i.url, i.published_at::text as published_at, i.retrieval
+       from braintrust_items i
+       join braintrust_sources s on s.id = i.source_id
+       join braintrust_people p on p.id = s.person_id
+       left join lateral (
+         select argument_md, claims
+           from braintrust_item_notes
+          where item_id = i.id
+          order by created_at desc
+          limit 1
+       ) n on true
+      where p.slug = $1
+        and i.title is not null
+        and (i.retrieval != 'retrieved' or (i.retrieval = 'retrieved'
+             and n.argument_md is null and n.claims is null))
+      order by i.published_at desc nulls last
+      limit ${NEAREST_ON_EMPTY}`,
+    [slug],
+  );
+
+  return rows.map((row) => {
+    const reason = row.retrieval === 'retrieved' ? 'pending' : row.retrieval;
+    return {
+      title: row.title,
+      url: row.url,
+      published_at: row.published_at,
+      reason,
+      say: NOT_READ[reason] ?? 'braintrust has not read it',
+    };
+  });
 }
 
 /**

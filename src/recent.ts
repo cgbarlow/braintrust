@@ -60,7 +60,7 @@ export type RecentArgs = {
  * it. The `say` line exists for the same reason #115 gave `nothing_matched` one: the
  * Persona has to speak this, and braintrust's own vocabulary is not speakable.
  */
-const NOT_READ: Record<string, string> = {
+export const NOT_READ: Record<string, string> = {
   skipped_paywall: 'behind a paywall, which braintrust never reads',
   skipped_short: 'too short to be worth reading — braintrust skips these by setting',
   skipped_window: 'published before the window braintrust was asked to read',
