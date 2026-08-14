@@ -18,7 +18,6 @@ import type { Db, QueryResult } from '../src/db.js';
 import { SPOKEN_DISCLOSURE } from '../src/disclosure.js';
 import { nothingMatched, RETRIEVAL_FLOOR } from '../src/find.js';
 import type { Fetcher } from '../src/net/fetch.js';
-import { renderScript } from '../src/script.js';
 import {
   ASSERTIONS,
   assertionIds,
