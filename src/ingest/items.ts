@@ -695,6 +695,48 @@ export async function reopenShorts(db: Db, sourceId: string): Promise<number> {
   return rows.length;
 }
 
+/**
+ * **The same sentence `reopenShorts` and `reopenWindow` write, for the one state braintrust
+ * reached on its own rather than being told.**
+ *
+ * A video with no caption track was recorded as a fact about the video. On publication day
+ * it is a fact about the clock: YouTube had not written the captions yet. So the question is
+ * asked again while the video is young enough for the answer to change, and only stops being
+ * asked once it is old enough that silence really is the video's own.
+ *
+ * **Both terminal states are reopened, because one event produced both.** `skipped_no_captions`
+ * is what a wordless video became after #243 gave it a state of its own; before that the same
+ * video became `failed`, and the row does not say which of the two it was. Reopening only the
+ * newer state would leave every video lost before that shipped exactly where it was.
+ *
+ * **`attempt_count` is deliberately left where it is.** Resetting it would hand a genuinely
+ * broken Item a fresh budget every single day, which is exactly the unbounded retry that
+ * `MAX_RETRY_ATTEMPTS` exists to prevent and that Blocked exists to stop routing around. Left
+ * alone, an Item already at the limit gets one more ask and is terminal again the moment it
+ * fails, so the bill is one request per recent wordless video per day and no more.
+ *
+ * This does not contradict `pendingItems` declining to carry `failed` — that is about one
+ * permanently unfetchable Item blocking every future Compile, and nothing reopened here
+ * survives the run. It is drained a few lines after it is reopened, and a video that still
+ * has no words is terminal again before the rebuild is even considered.
+ */
+export async function reopenMissingCaptions(
+  db: Db,
+  sourceId: string,
+  floor: string,
+): Promise<number> {
+  const { rows } = await db.query<{ id: string }>(
+    `update braintrust_items
+        set retrieval = 'pending'
+      where source_id = $1
+        and retrieval in ('skipped_no_captions', 'failed')
+        and published_at >= $2::date
+      returning id`,
+    [sourceId, floor],
+  );
+  return rows.length;
+}
+
 /** The exact date, once a per-item fetch has found one the listing could not give. */
 export async function recordPublished(db: Db, itemId: string, publishedAt: Date): Promise<void> {
   await db.query(

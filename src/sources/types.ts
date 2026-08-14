@@ -254,6 +254,31 @@ export const MAX_RETRY_ATTEMPTS = 3;
 export const BLOCK_AFTER_FAILURES = 5;
 
 /**
+ * How long after publication a video with no caption track is still worth re-asking.
+ *
+ * **A video braintrust reaches on publication day has no words yet, and that is a fact
+ * about the clock rather than about the video.** YouTube writes automatic captions some
+ * time after a video goes up — minutes for a short one, longer for the rest — so the
+ * daily job, which finds a video the day it appears, asks the one question it cannot
+ * yet be answered and then records the silence as permanent.
+ *
+ * Measured, not assumed: five videos the cron recorded as having no caption track
+ * between 2026-08-07 and 2026-08-12 were re-asked on 2026-08-14 and every one of them
+ * answered, with 2,486 to 5,052 words each. Nothing about those videos changed; only
+ * when they were asked did. Left terminal, a channel that publishes daily loses very
+ * nearly every video it publishes, which is what #229 looked like from the outside.
+ *
+ * Fourteen days is far longer than captions take, and it costs nothing to be generous:
+ * the re-ask is reopened and drained inside the same run, so an item that still has no
+ * words is terminal again before the run ends and never delays a rebuild. The bill is
+ * one request per recent wordless video per day.
+ *
+ * Shorts never reach this: the duration check runs before the caption lookup, so a video
+ * skipped for length was never asked for words in the first place.
+ */
+export const RECHECK_CAPTIONS_DAYS = 14;
+
+/**
  * What a cheap look at a Source says it will cost. Produced by reading feeds and
  * catalogues only: no body, no caption, no Item row.
  */

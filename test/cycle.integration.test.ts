@@ -28,7 +28,12 @@ import { recordCatalogued, type SourceRow } from '../src/ingest/items.js';
 import { createExtractor } from '../src/notes/index.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
-import { BLOCK_AFTER_FAILURES, requestSpacingMs } from '../src/sources/types.js';
+import {
+  BLOCK_AFTER_FAILURES,
+  MAX_RETRY_ATTEMPTS,
+  RECHECK_CAPTIONS_DAYS,
+  requestSpacingMs,
+} from '../src/sources/types.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeExtractor, TEST_GENERATION, testExtractorConfig } from './support/notes.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
@@ -44,6 +49,7 @@ import {
   YOUTUBE_NO_CAPTIONS,
   YOUTUBE_SHORT_IN_LISTING,
   YOUTUBE_SHORT_WITHOUT_BADGE,
+  captionBaseUrl,
   captionText,
   fakeFetcher,
   natesRoutes,
@@ -342,16 +348,83 @@ describe('the ingest cycle, against real Postgres', () => {
     assert.equal(short.body_text, captionText(YOUTUBE_SHORT_IN_LISTING));
   });
 
-  it('records a video with no captions as skipped_no_captions, never retried', async () => {
+  it('records a video with no captions as skipped_no_captions, and asks again while it is young', async () => {
     await follow();
     await run();
 
     const row = (await items('i.external_id = $1', [videoId(YOUTUBE_NO_CAPTIONS)]))[0]!;
     assert.equal(row.retrieval, 'skipped_no_captions');
 
-    // Terminal: the next run leaves it alone rather than asking again forever.
+    // **Recorded, but not yet a fact about the video.** On the day it is published a video
+    // has no captions because YouTube has not written them, so the next run asks again.
     const { fetcher } = await run({ now: new Date(NOW.getTime() + 25 * 3600_000) });
+    assert.ok(fetcher.sent.some((request) => request.json?.videoId === videoId(YOUTUBE_NO_CAPTIONS)));
+
+    // Still nothing there, so it is terminal again by the end of that run rather than
+    // waiting as a Backlog item and holding up the rebuild.
+    const again = (await items('i.external_id = $1', [videoId(YOUTUBE_NO_CAPTIONS)]))[0]!;
+    assert.equal(again.retrieval, 'skipped_no_captions');
+  });
+
+  it('stops asking once the video is old enough that silence is its own', async () => {
+    await follow();
+    await run();
+
+    // Past the settle window there is no version of this where the words are coming, and
+    // asking forever is the loop the terminal state exists to prevent.
+    const { fetcher } = await run({
+      now: new Date(NOW.getTime() + (RECHECK_CAPTIONS_DAYS + 1) * 24 * 3600_000),
+    });
     assert.ok(!fetcher.sent.some((request) => request.json?.videoId === videoId(YOUTUBE_NO_CAPTIONS)));
+  });
+
+  it('brings back a video that was written off before its captions existed', async () => {
+    await follow();
+    await run();
+
+    // The damage this repairs, in the state the older code left it in: every wordless video
+    // became `failed` before #243 gave it one of its own, and neither state was ever re-asked.
+    await db.query(
+      `update braintrust_items set retrieval = 'failed', attempt_count = $2
+        where external_id = $1`,
+      [videoId(YOUTUBE_NO_CAPTIONS), MAX_RETRY_ATTEMPTS],
+    );
+
+    // The captions have since arrived, which is the only thing about the world that changed.
+    const captioned: Route[] = [
+      {
+        match: (url, sent) =>
+          url.endsWith('/youtubei/v1/player') && sent?.videoId === videoId(YOUTUBE_NO_CAPTIONS),
+        body: (_url, sent) => {
+          const answer = JSON.parse(playerResponse(sent.videoId, sent.context.client.clientName));
+          answer.captions = {
+            playerCaptionsTracklistRenderer: {
+              captionTracks: [
+                {
+                  baseUrl: captionBaseUrl(YOUTUBE_NO_CAPTIONS),
+                  name: { runs: [{ text: 'English (auto-generated)' }] },
+                  languageCode: 'en',
+                  kind: 'asr',
+                },
+              ],
+            },
+          };
+          return JSON.stringify(answer);
+        },
+      },
+      ...natesRoutes(),
+    ];
+
+    const { report } = await run({
+      now: new Date(NOW.getTime() + 25 * 3600_000),
+      fetcher: fakeFetcher(captioned),
+    });
+
+    assert.equal(of(report, 'youtube').reopened_captions, 1);
+
+    // No operator did anything and no row was hand-edited: the ordinary daily run repaired it.
+    const row = (await items('i.external_id = $1', [videoId(YOUTUBE_NO_CAPTIONS)]))[0]!;
+    assert.equal(row.retrieval, 'retrieved');
   });
 
   /**
@@ -488,7 +561,17 @@ describe('the ingest cycle, against real Postgres', () => {
 
     // Two feeds and nothing else: no archive page, no body.
     assert.equal(fetcher.requests.filter((request) => request.includes('/api/v1/')).length, 0);
-    assert.equal(fetcher.requests.length, 2);
+
+    // **One exception, and it is not the rows being unsure.** A video braintrust found
+    // wordless is asked once more each day until it is old enough for that to be the
+    // video's own doing rather than the clock's — so a steady-state run is the two feeds
+    // plus one player call per recent wordless video, and nothing else.
+    const asked = fetcher.sent.filter((request) => request.json?.videoId);
+    assert.deepEqual(
+      asked.map((request) => request.json?.videoId),
+      [videoId(YOUTUBE_NO_CAPTIONS)],
+    );
+    assert.equal(fetcher.requests.length, 2 + asked.length);
   });
 
   it('respects poll_interval_hours without a second scheduler', async () => {
