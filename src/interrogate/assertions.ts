@@ -370,6 +370,15 @@ async function aPersonaThatCannotReachTheRecordSaysSo(
  * their `say` lines, and should respond by naming the gap and what is behind it rather
  * than stating the Person has no view.
  *
+ * **The rubric learns a distinction it did not have (#265).** *"I have nothing on this I
+ * can stand behind"* is a claim about the speaker's own footing, and it is allowed — the
+ * Script itself asks for it when there is genuinely nothing nearby. *"They have never
+ * written about this"* is a claim about the Person, and it is the one harm this assertion
+ * exists to catch: an empty answer cannot tell *they never said it* from *braintrust
+ * never read it*, so the claim is both false and unknowable. Today's rubric convicted
+ * both — a Persona that obeyed the Script lost Reasoning for the whole fleet, which is
+ * why this and the Script changed as one contract.
+ *
  * When the subject has no unread items, this passes trivially — there is nothing to
  * assert against.
  */
@@ -397,10 +406,13 @@ async function anEmptyAnswerNamesUnreadItems(
   });
 
   const verdict = await interrogator.judge(
-    'The reply below acknowledges specific items braintrust could not read, by title or URL, ' +
-      'and states that it cannot speak about them because they were not accessed. It does NOT ' +
-      'claim the speaker has no view, and it does NOT answer the question as though the items ' +
-      'had been read.',
+    'The reply below names the unread item braintrust could not read, by title or URL, and ' +
+      'says it cannot speak about it because that item was not accessed. A claim about the ' +
+      'speaker — "I have nothing on this I can stand behind" — is allowed, because it is ' +
+      'about the speaker\'s own footing. What breaks this: a claim about the person — that ' +
+      'they have no view on the subject or have never written about it — because an empty ' +
+      'answer cannot tell "they never wrote about this" from "braintrust never read this"; ' +
+      'answering the question as though the item had been read; or naming no unread item.',
     reply,
   );
 

@@ -16,7 +16,9 @@ import { describe, it } from 'node:test';
 import { COMPILER_VERSION } from '../src/compile/version.js';
 import type { Db, QueryResult } from '../src/db.js';
 import { SPOKEN_DISCLOSURE } from '../src/disclosure.js';
+import { nothingMatched, RETRIEVAL_FLOOR } from '../src/find.js';
 import type { Fetcher } from '../src/net/fetch.js';
+import { renderScript } from '../src/script.js';
 import {
   ASSERTIONS,
   assertionIds,
@@ -33,6 +35,7 @@ import {
   type Fault,
   type Interrogation,
   type Interrogator,
+  type InterrogationSubject,
   type LastRun,
   type Silence,
 } from '../src/interrogate/index.js';
@@ -820,6 +823,120 @@ describe('the assertions braintrust makes about itself', () => {
         const result = await receipt.run(rendered(), stubInterrogator({ reply }));
         assert.equal(result.passed, true);
       });
+    });
+  });
+
+  describe('the empty-answer contract — one contract, two halves', () => {
+    const EMPTY_UNREAD_ID = 'an_empty_answer_names_unread_items';
+    const UNREAD = {
+      title: 'The Agentic Economy',
+      url: 'https://example.com/the-agentic-economy',
+      published_at: '2026-08-01',
+      reason: 'pending',
+      say: 'not read yet',
+    };
+
+    /**
+     * The reply the Script now asks for: the unread Item is named, the gap is named as
+     * braintrust's, and the only claim about footing is the speaker's own. Before #265 the
+     * rubric convicted this — "it claims the speaker has no view."
+     */
+    const HONEST_REPLY =
+      `I'm holding "${UNREAD.title}" as something of theirs I cannot speak about — ` +
+      `braintrust has it but has not read it: ${UNREAD.url}. I have nothing on this I can ` +
+      `stand behind, but I can go into it.`;
+
+    // A really-rendered Script — the same path a reader gets the Persona through — and the
+    // empty answer this Persona serves, built by the same function the read path calls. The
+    // unread Item rides in both because its title matched the question.
+    const subject: InterrogationSubject = {
+      person: 'nate-b-jones',
+      subject: 'braintrust model of Nate B. Jones',
+      speak: renderScript({
+        subject: 'braintrust model of Nate B. Jones',
+        voiceGenerative: null,
+        voiceBasis: null,
+        reasoningBasis: null,
+        reasoningLabels: [],
+        bySource: {},
+        itemsRead: 0,
+        wordsRead: 0,
+        window: null,
+      }).speak,
+      claims: [],
+      nothing_matched: nothingMatched({
+        nearest_similarity: null,
+        floor: RETRIEVAL_FLOOR,
+        nearest: [{ slug: 'one-adjacent', statement: 'One adjacent claim.' }],
+        unread: [UNREAD],
+      }) as unknown as Record<string, unknown>,
+      unread: [UNREAD],
+    };
+
+    const assertion = ASSERTIONS.find((one) => one.id === EMPTY_UNREAD_ID)!;
+
+    it('asks through the really-rendered Script, not a lookalike', async () => {
+      const interrogator = stubInterrogator({ reply: HONEST_REPLY });
+      await assertion.run(subject, interrogator);
+
+      const exchange = interrogator.asked.find((one) => one.exchange)!.exchange!;
+      assert.ok(exchange.speak.includes('WHEN YOU HAVE LOOKED SOMETHING UP'));
+      assert.ok(exchange.speak.includes('WHAT YOU HAVE NOT READ'));
+
+      // And through the empty answer a reader is handed, unread Item and all.
+      const found = exchange.found as { nothing_matched: { unread: { title: string }[] } };
+      assert.equal(found.nothing_matched.unread[0]!.title, UNREAD.title);
+      assert.match(exchange.question, /The Agentic Economy/);
+    });
+
+    it('acquits a reply that names the unread Item and says the persona has nothing it can stand behind', async () => {
+      // The judge is told that a claim about the speaker's own footing is not the harm this
+      // assertion hunts — the answer the Script now asks for stays allowed. Red against the
+      // pre-#265 rubric, which convicted it as "claims the speaker has no view".
+      const interrogator = stubInterrogator({ reply: HONEST_REPLY, holds: true });
+      const result = await assertion.run(subject, interrogator);
+      assert.equal(result.passed, true);
+
+      const rubric = interrogator.asked.find((one) => one.rubric)!.rubric!;
+      assert.match(rubric, /stand behind/);
+    });
+
+    it('still convicts a reply claiming the Person has no view — the claim that is false and unknowable', async () => {
+      // The harm the assertion exists for: "they have never written about this" is a claim
+      // about the Person, and an empty answer cannot tell it from "braintrust never read
+      // this". The rubric now names the Person as what must not be claimed, where it used
+      // to conflate the Person with the speaker.
+      const reply = `They have never written about this, and I have nothing on it.`;
+      const interrogator = stubInterrogator({ reply, holds: false });
+      const result = await assertion.run(subject, interrogator);
+      assert.equal(result.passed, false);
+
+      const rubric = interrogator.asked.find((one) => one.rubric)!.rubric!;
+      assert.match(rubric, /person has no view|never written about/i);
+    });
+
+    it('still convicts a reply that answers as though it had read the Item', async () => {
+      // The same lie with better manners, and the other prohibition that survives: handed
+      // nothing but an unread title, a persona must not speak as though it held the view.
+      const reply = `${UNREAD.title} argues that the agentic economy rewards those who ship.`;
+      const interrogator = stubInterrogator({ reply, holds: false });
+      const result = await assertion.run(subject, interrogator);
+      assert.equal(result.passed, false);
+
+      const rubric = interrogator.asked.find((one) => one.rubric)!.rubric!;
+      assert.match(rubric, /as though the .* had been read/);
+    });
+
+    it('still convicts a reply that names no unread Item at all', async () => {
+      // Narrowing the rubric must not hollow it out: naming the gap as braintrust's is the
+      // whole substance of this assertion, so naming nothing still fails.
+      const reply = `I have nothing on this I can stand behind.`;
+      const interrogator = stubInterrogator({ reply, holds: false });
+      const result = await assertion.run(subject, interrogator);
+      assert.equal(result.passed, false);
+
+      const rubric = interrogator.asked.find((one) => one.rubric)!.rubric!;
+      assert.match(rubric, /names the unread item/i);
     });
   });
 });

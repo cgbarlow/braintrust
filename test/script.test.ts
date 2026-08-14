@@ -291,6 +291,31 @@ describe('the script', () => {
   });
 
   /**
+   * **Two cases, told apart.** A question that lands outside the Corpus splits in two:
+   * *genuinely nothing nearby* — say plainly you have not got a view you can stand behind —
+   * and *a lookup that came back empty while braintrust holds unread things that match the
+   * question* — lead with the thing, not with the disclaimer about your footing. One
+   * instruction for both was how a persona that obeyed it got convicted by the empty-answer
+   * assertion: it led with the disclaimer, and the rubric read that as claiming the person
+   * has no view.
+   */
+  it('tells the persona to lead with an unread item when the lookup named one', () => {
+    const { speak } = renderScript(input());
+
+    // The nothing-nearby case keeps its shape, disclaimer and all.
+    assert.match(speak, /say plainly that you have not got a view on it you can stand behind/);
+    // The unread-item case is now distinct: name the thing braintrust holds unread, and
+    // lead with it rather than with the speaker's own footing.
+    assert.match(speak, /names unread things of theirs that match the question/i);
+    assert.match(speak, /lead with one of those instead of with your footing/i);
+    assert.match(speak, /say braintrust has not read it/i);
+    assert.match(speak, /offer to go into it/i);
+    // And the claim that stays forbidden: "they never wrote about this" never becomes
+    // something the person's own silence licenses.
+    assert.match(speak, /never wrote about this/i);
+  });
+
+  /**
    * **A dead end is handed back as a choice.** Nothing was broken about the honesty — a
    * persona handed an empty answer admits it and does not fill, 24 of 24 across every arm and
    * seed. What was wrong was the shape: *"I don't have a view on central bank interest rate
