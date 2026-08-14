@@ -3,7 +3,9 @@
  * properties the design leans on hardest: the partial unique indexes that make
  * regeneration safe, and that they hold without the compiler remembering to.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -19,8 +21,7 @@ import { COMPILER_VERSION } from '../src/compile/version.js';
 import { createDb, type PostgresDb } from '../src/db.js';
 import { listPersonas } from '../src/personas.js';
 
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const TABLES = [
   // braintrust checking itself, first because nothing references them and they reference
@@ -29,6 +30,7 @@ const TABLES = [
   'braintrust_silences',
   'braintrust_faults',
   'braintrust_interrogations',
+  'braintrust_stuck_rebuilds',
   'braintrust_through_line_items',
   'braintrust_through_lines',
   'braintrust_position_relations',
@@ -45,7 +47,7 @@ const TABLES = [
   'braintrust_people',
 ];
 
-describe('schema.sql against real Postgres', { skip }, () => {
+describe('schema.sql against real Postgres', () => {
   let db: PostgresDb;
 
   before(async () => {

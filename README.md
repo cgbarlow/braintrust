@@ -71,7 +71,10 @@ Paste [`schema.sql`](schema.sql) into your Supabase SQL editor — it is idempot
 
 Add your first council member through your AI client, not the command line — `braintrust_follow_person`, with whatever links you have. **Only a human can add someone**, so an AI can refresh a persona but never introduce one.
 
-`npm test` runs the suite; the database tests skip without a Postgres.
+`npm test` runs the whole suite, and it **fails rather than skipping** when it cannot reach a
+database: a suite that quietly counted itself green is how database-only regressions shipped
+twice, so the database-backed tests throw unless `BRAINTRUST_TEST_DATABASE_URL` points at a
+Postgres with pgvector. `npm run test:unit` runs the unit tests alone.
 
 **There is nothing to calibrate.** braintrust has to know when a question falls outside what it has read — otherwise a persona answers anyway, and answers well, on whatever its corpus holds nearest, which for an off-corpus question is its most central claims and nothing to do with what was asked. Where that line sits depends on your embeddings model, so braintrust measures it rather than shipping a number: every compile probes the persona's own positions against questions nobody could think it covers, and puts the floor in the gap. It re-measures on every rebuild, so it tracks a corpus as it grows. `npm run calibrate` reports what was measured and why, if you ever want to look — a persona reading `overlapping` is telling you your embeddings model cannot tell covered from uncovered, which is worth knowing.
 

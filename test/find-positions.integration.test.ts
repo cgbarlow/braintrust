@@ -8,7 +8,9 @@
  * compiler decided was superseded is served flagged rather than dropped — end to end,
  * from the judgement that wrote the row to the answer a client reads.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -43,9 +45,7 @@ import {
 import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 import { fakeEmbeddings, TEST_DIMENSION, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeSynthesiser, type FakeOptions } from './support/synthesiser.js';
-
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const GENERATION = 'test-reader@notes-1';
 const MODEL = testEmbeddingsConfig.model;
@@ -169,7 +169,7 @@ function byTopic(text: string, slot: number): number[] {
   return vector;
 }
 
-describe('finding positions, against real Postgres', { skip }, () => {
+describe('finding positions, against real Postgres', () => {
   let db: PostgresDb;
   let personId: string;
   let sourceId: string;
@@ -761,11 +761,14 @@ describe('finding positions, against real Postgres', { skip }, () => {
 
   it('recomputes held_since from the citations, so a backfill moves it earlier', async () => {
     // One position over every claim, so its held_since is the oldest item behind it.
+    // Through-lines are suppressed: this is the span logic being checked, and a borrow
+    // from the layer would be a different test.
     const together = (claims: string[]) => [
       { slug: 'evals-precede-the-harness', statement: 'Evals come first.', claims },
     ];
+    const options = { entriesFor: () => [] };
 
-    await compile(together);
+    await compile(together, options);
     const first = await find({ query: await chunkTextOf('evals') });
     assert.equal(first.positions[0]!.held_since, '2024-01-09');
     assert.equal(first.positions[0]!.item_count, ITEMS.length);
@@ -781,7 +784,7 @@ describe('finding positions, against real Postgres', { skip }, () => {
       },
       [{ statement: 'Write the eval first.', quote: 'Write the eval first', chunk_id: null, start_ms: null }],
     );
-    await compile(together);
+    await compile(together, options);
 
     const second = await find({ query: await chunkTextOf('evals') });
     // Nothing carried the old value forward: it is derived from the citations every time.
@@ -827,9 +830,10 @@ describe('finding positions, against real Postgres', { skip }, () => {
 
   it('bounds a position own citations the same way, and full lifts that too', async () => {
     const all = ITEMS.length * CLAIMS_PER_ITEM;
-    await compile((claims) => [
-      { slug: 'everything', statement: 'One position over every claim.', claims },
-    ]);
+    await compile(
+      (claims) => [{ slug: 'everything', statement: 'One position over every claim.', claims }],
+      { entriesFor: () => [] },
+    );
 
     const bounded = await find({ query: await chunkTextOf('evals') });
     assert.equal(bounded.positions[0]!.citations.length, DEFAULT_CITATIONS);

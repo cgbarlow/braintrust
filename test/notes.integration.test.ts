@@ -6,7 +6,9 @@
  * second generation beside the first rather than over it, and that a Compile cannot
  * read Notes without saying which generation it is reading.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -29,9 +31,7 @@ import {
 } from '../src/notes/index.js';
 import { chunkItem } from '../src/retrieval/index.js';
 import { fakeExtractor, TEST_GENERATION, testExtractorConfig } from './support/notes.js';
-
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const ITEMS = 3;
 
@@ -56,7 +56,7 @@ function noteFor(index: number): RawNote {
   };
 }
 
-describe('reading each item once, against real Postgres', { skip }, () => {
+describe('reading each item once, against real Postgres', () => {
   let db: PostgresDb;
   let personId: string;
 

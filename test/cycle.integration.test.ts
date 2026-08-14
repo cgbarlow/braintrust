@@ -6,7 +6,9 @@
  * another one and looking at what is on disk in between — which is exactly what the
  * interruption test does.
  *
- * Skipped unless BRAINTRUST_TEST_DATABASE_URL is set. To run it locally:
+ * Fails loudly rather than skipping: a suite that cannot reach its database used to
+ * report as passing (skipped 0), which is how a database-only regression merged twice.
+ * To run it locally:
  *
  *   docker run -d --name bt-pg -e POSTGRES_PASSWORD=bt -e POSTGRES_DB=braintrust \
  *     -p 55432:5432 pgvector/pgvector:pg16
@@ -51,8 +53,7 @@ import {
   type Route,
 } from './support/sources.js';
 
-const url = process.env.BRAINTRUST_TEST_DATABASE_URL;
-const skip = url ? false : 'set BRAINTRUST_TEST_DATABASE_URL to run the schema tests';
+import { testDatabaseUrl as url } from './support/database.js';
 
 const LINKS = [`https://${SUBSTACK_HOST}/p/post-0`, '@NateBJones'];
 
@@ -71,7 +72,7 @@ const YT_RETRIEVED = YOUTUBE_LISTING_IN_WINDOW - YT_SHORTS - YT_NO_CAPTIONS;
 /** The 55 the listing found beyond the feed's 15-entry window, each dated by a fetch. */
 const YT_DATED = YOUTUBE_LISTING_IN_WINDOW - YOUTUBE_FEED_ENTRIES;
 
-describe('the ingest cycle, against real Postgres', { skip }, () => {
+describe('the ingest cycle, against real Postgres', () => {
   let db: PostgresDb;
 
   before(async () => {
