@@ -10,7 +10,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CLAIMS_PER_ITEM, DEFAULT_RECENT, MAX_RECENT, recentItems } from '../src/recent.js';
+import { CLAIMS_PER_ITEM, DEFAULT_RECENT, MAX_RECENT, NOT_READ, recentItems } from '../src/recent.js';
+import type { Retrieval } from '../src/sources/types.js';
 import { fakeDb } from './support/fake-db.js';
 
 const PERSON = [{ display_name: 'Ethan Mollick', compiled_at: new Date('2026-08-01T22:53:44Z') }];
@@ -119,5 +120,60 @@ describe('recent items', () => {
       () => recentItems({ person: 'nobody' }, db),
       /does not follow anyone called "nobody".*braintrust_list_personas/s,
     );
+  });
+
+  /**
+   * **Every state a listener can be told about has words of its own.**
+   *
+   * The fallback in all three readers is *braintrust has not read it* — true of every
+   * entry in the map and therefore useless, because it cannot tell a paywall from a fetch
+   * that failed from a video with no soundtrack to transcribe. A missing line does not
+   * throw and does not show up in any other test; it just makes a persona vaguer, which is
+   * the failure this map exists to prevent.
+   *
+   * The `Record` is the guard. It is keyed on the `Retrieval` union, so adding a state to
+   * the union stops this file compiling until somebody decides what a persona should say
+   * about it — which is the moment to decide, rather than after a reader hears the vague
+   * sentence. `retrieved` is excluded because an Item that was read carries a Note instead,
+   * and one that was read and somehow has no Note is served as `pending`.
+   */
+  it('gives a persona words for every state it can be asked about', () => {
+    const asked: Record<Exclude<Retrieval, 'retrieved'>, true> = {
+      pending: true,
+      skipped_paywall: true,
+      skipped_short: true,
+      skipped_window: true,
+      skipped_not_a_post: true,
+      skipped_no_captions: true,
+      failed: true,
+    };
+
+    for (const state of Object.keys(asked)) {
+      assert.ok(NOT_READ[state], `no say line for ${state}, so a persona falls back to the vague one`);
+    }
+  });
+
+  it('says a captionless video has no words rather than that braintrust failed', async () => {
+    const payload = await recentItems(
+      { person: 'ethan-mollick' },
+      dbWith([
+        {
+          title: 'A video with nothing to transcribe',
+          url: 'https://www.youtube.com/watch?v=abc',
+          published_at: '2026-08-01',
+          platform: 'youtube',
+          retrieval: 'skipped_no_captions',
+          argument_md: null,
+          claims: null,
+        },
+      ]),
+    );
+
+    const item = payload.items[0]!;
+    assert.equal(item.not_read!.reason, 'skipped_no_captions');
+    // A fact about the video. Nothing here reads as a failure, a refusal, or a paywall,
+    // and nothing invites a listener to think braintrust could have tried harder.
+    assert.match(item.not_read!.say, /no captions/);
+    assert.doesNotMatch(item.not_read!.say, /failed|could not|paywall/);
   });
 });
