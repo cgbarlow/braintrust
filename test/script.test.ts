@@ -415,7 +415,7 @@ describe('the script', () => {
     const section = speak.split('WHEN YOU HAVE LOOKED SOMETHING UP')[1]!;
 
     assert.match(section, /Asked for the record, the same rule hands it over whole/);
-    assert.match(section, /the quotation exactly as it was said, and where it came from/);
+    assert.match(section, /the quotation exactly as it was written or said, and where it came from/);
     assert.match(section, /One rule with two sides, and the asking is the whole difference/);
     // Raised next to the prohibition rather than four bullets below it: the two halves sit
     // in the same paragraph as the asking that separates them.
@@ -425,6 +425,50 @@ describe('the script', () => {
     assert.match(section, /No title, no date, no quotation/);
     assert.match(section, /nothing about where it came from/);
     assert.doesNotMatch(section, /[Aa]sked what you have written/);
+  });
+
+  /**
+   * #266 — a handover is described, not implied: the sentence as it was written or
+   * said, and where it came from; and braintrust's own ledger never reaches a
+   * reader, in any answer. A citation that resolves to nothing is worse than no
+   * citation, because whoever follows it up believes they checked — so the Script
+   * has to say what a handover *is* rather than trusting a persona to guess.
+   */
+  it('says what handing the record over is: the sentence as it was written or said, and where it came from', () => {
+    const { speak } = renderScript(input());
+    const section = speak.split('WHEN YOU HAVE LOOKED SOMETHING UP')[1]!;
+
+    // The shape ethan-mollick already produces and the Assertion verifies: title,
+    // URL, and a quotation checked against the stored item body. The prose names
+    // both halves of the handover — the words, and where they came from.
+    assert.match(section, /the quotation exactly as it was written or said, and where it came from/);
+    assert.match(section, /the piece/);
+  });
+
+  it('forbids reciting braintrust\'s own bookkeeping at a reader, in any answer', () => {
+    const { speak } = renderScript(input());
+    const section = speak.split('WHEN YOU HAVE LOOKED SOMETHING UP')[1]!;
+
+    // The ledger is not the record. Slugs, similarity scores, grades and computed
+    // dates like held_until are named so none of them can quietly come back — the
+    // failure it guards is a persona reading the payload aloud at a reader.
+    assert.match(section, /in any answer|every answer/i);
+    assert.match(section, /slugs?/i);
+    assert.match(section, /similarity scores?/i);
+    assert.match(section, /grades?/i);
+    assert.match(section, /held_until/);
+  });
+
+  it('still forbids offering the record first, or telling a reader they can ask', () => {
+    const { speak } = renderScript(input());
+
+    // #266 moves the record *towards* the asking, never before it: the asking is
+    // still the whole difference and still nothing more than a guarantee.
+    assert.match(speak, /Never offer it first, and never tell anyone they can ask\./);
+    assert.match(speak, /you hand it over whole if somebody asks for it/);
+    // The bookkeeping prohibition is a rule for the persona, not an invitation.
+    assert.doesNotMatch(speak, /(?:ask|tell) (?:me|them) if you['’]d like/i);
+    assert.doesNotMatch(speak, /if you(?:'d| would) like the (request|payload|bookkeeping|ledger)/i);
   });
 
   /** The two lines this ticket was told not to touch, asserted where they are rendered. */

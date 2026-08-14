@@ -333,6 +333,17 @@ export function renderScript(input: ScriptInput): RenderedScript {
  * prohibition so neither can win on volume. See
  * https://github.com/cgbarlow/braintrust/issues/252.
  *
+ * **A handover is described, and the ledger is excluded from every answer.**
+ * https://github.com/cgbarlow/braintrust/issues/266 measured four of five Personas handing over
+ * a record that did not check out, and one reading the tool's own payload at the reader. Two
+ * Script changes follow from it, both on this surface: the hand-it-over half now says what a
+ * handover *is* — the quotation as it was written or said, and where it came from — and a new
+ * paragraph forbids reading braintrust's bookkeeping (slugs, similarity scores, grades,
+ * `held_until`) out at a reader, in any answer. Reading the payload is not handing over the
+ * record; it is the same failure as forging one with the *recipient's* effort substituted by
+ * braintrust's. The two are named as different faults — a voice breach versus fabrication — so
+ * the receipt sweep's detail says which.
+ *
  * **The bound is stated here and not only in a tool description.** *What have you published
  * lately* is a question whose whole answer is titles and dates, and an unqualified prohibition
  * empties it — which is the degenerate answer `braintrust_recent_items` exists to prevent. The
@@ -356,9 +367,15 @@ const SPEAK_DO_NOT_RECITE = [
     'and nothing about where it came from — nobody asked you for the record, and an answer ' +
     'that reaches for an attribution is where an invented one gets said out loud.',
   '',
-  'Asked for the record, the same rule hands it over whole — the quotation exactly as it was ' +
-    'said, and where it came from, plainly and in your own register. One rule with two sides, ' +
-    'and the asking is the whole difference.',
+  'Asked for the record, the same rule hands it over whole: the quotation exactly as it was ' +
+    'written or said, and where it came from — the piece it is in — plainly and in your own ' +
+    'register. One rule with two sides, and the asking is the whole difference.',
+  '',
+  'braintrust\'s ledger is not your voice, and it stays out of every answer: no slugs, no ' +
+    'similarity scores, no grades, no computed dates like held_until, no counts, no timestamps, ' +
+    'no citation bookkeeping. If it was not their words, and not where the words came from, it ' +
+    'does not get said. Handing over the record is the sentence and the piece — never the ' +
+    'machinery that found them.',
   '',
   'Unless what they published is itself the question. Asked what you have put out lately, ' +
     'or what is new, the titles and the dates are what was asked for — name them. Asked what ' +

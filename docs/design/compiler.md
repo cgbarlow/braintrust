@@ -1032,14 +1032,30 @@ span, and the recorded blind spot — existence, never exhaustiveness — stays 
 through the same fault ledger every other assertion uses. Flukes reach the maintainer, by decision, until
 the noise rate is known.
 
+**Reciting the payload is its own fault, named separately from fabrication**
+([#266](https://github.com/cgbarlow/braintrust/issues/266)). Handing over the record is a stated guarantee,
+and measured end-to-end through the real MCP surface four of five Personas failed it three different ways:
+quotations hung on Items they were not in, quotations with no source named, and — `nate-b-jones` — eleven
+spans of raw payload read out at the reader: slugs, `held_until`, citation bookkeeping. The payload this
+assertion hands a persona carries the record (title, URL, body) and braintrust's ledger beside it (slug,
+`held_since` / `held_until`, `days_spanned`, grades, `similarity`, `item_count`, timestamps, relations) —
+the same two kinds of thing a real retrieval hands over. A reply that recites a bookkeeping span fails with
+a detail that says **recitation**, because reciting the payload and forging a quotation are different faults
+with different fixes — one is a voice breach, the other is fabrication — and a Fault has to say which. The
+record's own words are never recitation: naming and quoting the title, URL or body *is* the handover, so a
+span the record itself carries can never convict a reply. This is a count like every other here —
+`indexOf` over the payload's own values, with no model call.
+
 **Three blind spots, recorded here:**
 1. **An unsupported real quotation passes.** The verifier proves a quotation exists, never that it supports
    the sentence beside it — that remains [#155](https://github.com/cgbarlow/braintrust/issues/155)'s
    territory. Existence is also all it will ever establish: a handover of the item's own words passes even
    when it is thin — a bare repetition of the title, or fragments of the record used while refusing. That is
    the price of #202's property and of the no-model rule; a fabricated quotation still fails.
-2. **Tone is invisible.** The generic-voice breach stays invisible to this instrument entirely — it
-   detects unsourced claims, never tone or register.
+2. **Recitation is visible; tone is not.** Reading the payload out at a reader is caught, because it is a
+   shape — a span the reply is compared against by `indexOf`. Everything else about register stays
+   invisible to this instrument entirely: it never judges how the reply sounds, only whether what it
+   carries is sourced and spoken.
 3. **Flukes reach the maintainer.** Every non-reproducible synthesiser fluke files an issue, by design,
    until the noise rate is known. This is an accepted cost of hunting unknowns.
 

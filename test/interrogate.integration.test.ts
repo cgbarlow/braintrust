@@ -118,7 +118,7 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
    */
   function interrogator(sayWhenAskedForTheRecord: string): Interrogator {
     return {
-      generation: 'stub@interrogation-4',
+      generation: 'stub@interrogation-5',
       async reply(exchange) {
         const found = exchange.found as Record<string, unknown> | null;
         if (found && typeof found.item_body === 'string') return sayWhenAskedForTheRecord;
@@ -176,7 +176,7 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
     await seedOnePersonaItem(BODY);
 
     const forger: Interrogator = {
-      generation: 'stub@interrogation-4',
+      generation: 'stub@interrogation-5',
       async reply(exchange) {
         const found = exchange.found as Record<string, unknown> | null;
         if (found && typeof found.item_body === 'string') {
@@ -225,7 +225,7 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
     // checked it and passed — a Persona could hand over one real span and hang a shorter
     // invention on it. The length of the fabrication has to buy it nothing.
     const sneakyForger: Interrogator = {
-      generation: 'stub@interrogation-4',
+      generation: 'stub@interrogation-5',
       async reply(exchange) {
         const found = exchange.found as Record<string, unknown> | null;
         if (found && typeof found.item_body === 'string') {
@@ -257,6 +257,65 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
     assert.deepEqual(once, [{ assertion: RECEIPT_ID }]);
   });
 
+  it('fails a reply that recites the tool payload, names it recitation, and opens the one deduped fault', async () => {
+    await seedOnePersonaItem(BODY);
+
+    // nate-b-jones reciting raw payload at a reader: slug, held_until, a similarity
+    // score, citation bookkeeping — beside a genuine quotation and the URL, so the
+    // quotation alone would verify. The voice breach is the failure, and the Fault
+    // has to say it is recitation rather than fabrication.
+    const reciter: Interrogator = {
+      generation: 'stub@interrogation-5',
+      async reply(exchange) {
+        const found = exchange.found as Record<string, unknown> | null;
+        if (found && typeof found.item_body === 'string') {
+          return (
+            `The record shows: "humans pick trades built for speed but forgot to build the ` +
+            `skill to practice them." at ${ITEM_URL}. slug: speed-versus-skill, ` +
+            `held_until: 2026-06-18, similarity: 0.582, item_count: 9, ` +
+            `posted_at: 2026-03-11T18:42:07Z, other: agents-are-prompt-chains`
+          );
+        }
+        return `${SPOKEN_DISCLOSURE}\n\nI could not look anything up.`;
+      },
+      async judge() {
+        return { holds: true, why: 'the stub said so' };
+      },
+    };
+
+    const report = await runInterrogation({
+      db,
+      interrogator: reciter,
+      issues,
+      now: Date.parse('2026-08-08T09:00:00.000Z'),
+      log: () => {},
+    });
+
+    const receipt = report.asked.find((one) => one.assertion === RECEIPT_ID)!;
+    assert.equal(receipt.passed, false);
+    assert.match(receipt.detail, /recit/i);
+    assert.doesNotMatch(receipt.detail, /forg|fabricat/i);
+
+    // One fault, not a recitation fault and a fabrication fault riding together.
+    const { rows: once } = await db.query<{ assertion: string }>(
+      'select assertion from braintrust_faults',
+    );
+    assert.deepEqual(once, [{ assertion: RECEIPT_ID }]);
+
+    // And it stays one however often it is re-observed — the row is the deduplication.
+    await runInterrogation({
+      db,
+      interrogator: reciter,
+      issues,
+      now: Date.parse('2026-08-08T09:00:00.000Z'),
+      log: () => {},
+    });
+    const { rows: still } = await db.query<{ assertion: string }>(
+      'select assertion from braintrust_faults',
+    );
+    assert.deepEqual(still, [{ assertion: RECEIPT_ID }]);
+  });
+
   it('passes a handover that names the piece in marks — the title is a name, not a forged citation', async () => {
     // ITEM_TITLE ("Speed versus skill") is not a span of BODY, so verifying every marked
     // span against the body alone would misread naming the piece as a forged citation. A
@@ -264,7 +323,7 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
     await seedOnePersonaItem(BODY);
 
     const namedAndQuoted: Interrogator = {
-      generation: 'stub@interrogation-4',
+      generation: 'stub@interrogation-5',
       async reply(exchange) {
         const found = exchange.found as Record<string, unknown> | null;
         if (found && typeof found.item_body === 'string') {
