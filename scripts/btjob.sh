@@ -1,27 +1,5 @@
 #!/bin/zsh
 #
-# btjob — run the braintrust ingest job in a contai$
-#
-# Usage:
-#   ./btjob.sh              run the job, log to log$
-#   ./btjob.sh --quiet      no terminal output (for$
-#   ./btjob.sh --build      rebuild the image first$
-#   ./btjob.sh --config     validate .env and exit $
-#
-# Called with no arguments by the launchd agent.
-
-set -u
-
-APP_DIR="/Users/chris/repos/bt-probe"
-IMAGE="braintrust:local"
-LOG_DIR="$APP_DIR/logs"
-DOCKER="$(command -v docker || echo /usr/local/bin/$
-
-chris@Chriss-Mac-mini bt-probe % clear
-chris@Chriss-Mac-mini bt-probe % cat ~/repos/bt-probe/btjob.sh
-
-#!/bin/zsh
-#
 # btjob — run the braintrust ingest job in a container.
 #
 # Usage:
@@ -110,4 +88,3 @@ ln -sf "$LOG" "$LOG_DIR/latest.log"
 ls -1t "$LOG_DIR"/job-*.log 2>/dev/null | tail -n +31 | xargs rm -f 2>/dev/null
 
 exit 0
-chris@Chriss-Mac-mini bt-probe % 
