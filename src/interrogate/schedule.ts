@@ -11,7 +11,7 @@
  */
 
 import type { AssertionDefinition } from './assertions.js';
-import { ASSERTIONS, assertionById } from './assertions.js';
+import { ASSERTIONS, faultById } from './assertions.js';
 
 /**
  * How long an assertion may go unasked before it is asked again, whatever braintrust's own
@@ -313,7 +313,7 @@ export function withdrawnLayers(faults: Fault[], person: string): string[] {
   const layers = faults
     .filter((fault) => fault.escalated_at !== null)
     .filter((fault) => fault.person === null || fault.person === person)
-    .flatMap((fault) => assertionById(fault.assertion)?.withdraws ?? []);
+    .flatMap((fault) => faultById(fault.assertion)?.withdraws ?? []);
 
   return [...new Set(layers)].sort();
 }

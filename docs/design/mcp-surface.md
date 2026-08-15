@@ -1113,10 +1113,15 @@ and nothing braintrust ships tells a listener they may ask.
       "verdict": "sourced" },
     { "sentence": "The paid models are already better at planning.",
       "verdict": "unsourced",
-      "detail": "The item exists and braintrust holds its body, but the sentence is not in it. …" },
+      "detail": "The item exists and braintrust holds its body, but \"The paid models…\" is not in it. …" },
+    { "sentence": "*Title:* \"Speed versus skill\"",
+      "verdict": "sourced" },
     { "sentence": "Agents change how work gets done.",
+      "verdict": "sourced",
+      "detail": "This is a Position braintrust holds for the person — a claim synthesised across many items …" },
+    { "sentence": "Something from a source braintrust does not hold.",
       "verdict": "never_claimed",
-      "detail": "braintrust has no item matching the one you named for this person. …" }
+      "detail": "braintrust holds nothing matching the source you named … refused as unanswerable. …" }
   ] }
 ```
 
@@ -1126,14 +1131,33 @@ returns the record in its own words, never in the person's voice.
 
 **Three verdicts, and the design follows from them:**
 
-- **sourced** — the sentence is in the item body. braintrust found it.
-- **unsourced** — the item exists but the sentence is not in its body. The persona attributed text the source
-  does not contain. braintrust refutes, and never repeats the persona's words back.
-- **never claimed** — the persona offered no source for this sentence, or named an item braintrust does not
-  hold for this person. braintrust says the item does not exist rather than repeating the attribution.
+- **sourced** — the sentence is in the item body, is a record field whose value matches the item's own field,
+  or is one of the Positions braintrust holds for the person. braintrust found it.
+- **unsourced** — the item exists but the sentence is not in its body, or a record field's value disagrees with
+  the item's own field. The persona attributed text the source does not contain. braintrust refutes, and never
+  repeats the persona's words back — it names the span that was not found so the failure is judgeable without
+  re-running anything.
+- **never claimed** — the persona offered no source for this sentence, or the named source resolves to nothing
+  braintrust holds. A citation that resolves to nothing is **refused as unanswerable**, never reported as the
+  persona naming a source that does not exist — a Position is synthesised across many items, so "the item I
+  named" and "the Position I hold" look the same to a check that only knows Items, and braintrust must not call
+  the second a forgery.
 
-**The model proposes; braintrust refutes.** A persona that authors a title still authors it, and braintrust
-says the item does not exist rather than repeating it.
+**A handover of the record passes.** Asked to hand over the record, a persona hands it over — lines like
+`*Title:* "…"`, `*URL:* https://…`, `*Published at:* 2026-07-23` and `*Quote:* "…"`. The record's own field
+labels are braintrust's naming, never quotations, so they are never verified as quotations: each line is
+checked against the item's own field (title against title, URL against URL, date against date, quotation
+against body), and a quotation submitted with its label attached is verified on the quotation, not on the
+label. Reciting the record is the handover; it is not a forgery, and it is not reported as one
+([#277](https://github.com/cgbarlow/braintrust/issues/277)).
+
+**A Position is checked against what a Position is.** A Position is a claim synthesised across many items,
+so no single item contains one. A sentence that is one of the person's Positions comes back `sourced` with a
+detail saying it was verified against the Position, not against any single item.
+
+**The model proposes; braintrust refutes.** A persona that authors a title still authors it, and a field value
+that disagrees with the item's own field is a real attribution error. A sentence braintrust cannot place is
+refused as unanswerable rather than repeated as a forgery.
 
 **Three branches were closed by that shape:**
 
@@ -1170,6 +1194,13 @@ to ask never learns it is there.
 reach for it; a reader runs `hermes chat`, with `--continue` and `--resume` besides, and this map's other live
 client is multi-turn too. The genuinely turnless deployments have no human in front of them to ask anything,
 so nothing is owed there. **Any test or probe touching the record runs multi-turn.**
+
+**The re-run is a probe, and its count is recorded where the probe prints it.**
+`verify.probe.mts` re-runs this tool over the serving Personas in one pass — handing each the record
+(Title, URL, Published at, Quote) and a genuine quotation, plus nothing the body does not contain — and prints
+per-person and total counts of sourced / unsourced / never-claimed. That is the re-run #277's acceptance
+criterion asks for: the real sourcing failures told apart from the ones the ticket removed. Run it with
+`BRAINTRUST_DATABASE_URL=… npx tsx verify.probe.mts`.
 
 ---
 

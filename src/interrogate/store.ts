@@ -18,6 +18,8 @@
  */
 
 import type { Db } from '../db.js';
+import { BraintrustError } from '../errors.js';
+import { faultById } from './assertions.js';
 import { faultKey, silenceKey, type Fault, type LastRun, type Silence } from './schedule.js';
 
 export type InterrogationRun = {
@@ -177,6 +179,20 @@ export async function openFault(
   db: Db,
   fault: { assertion: string; person: string | null; detail: string },
 ): Promise<Fault> {
+  // **The registry is the only place that decides what a fault name means.** A fault is the
+  // one place braintrust says what a failure was protecting, so a fault under a name the
+  // registry does not know is a coding error — and it is refused here, the moment it would
+  // be opened, rather than degrading to "unknown" at the later moment the issue is filed.
+  // See https://github.com/cgbarlow/braintrust/issues/277.
+  if (!faultById(fault.assertion)) {
+    throw new BraintrustError(
+      `braintrust refuses to open a fault under "${fault.assertion}" — it is not a name the ` +
+        'assertion registry knows. A fault must be registered (with a stated guarantee and a ' +
+        'withdrawal list) before it can open, so a Fault report never has to explain its own ' +
+        'missing information.',
+    );
+  }
+
   const { rows } = await db.query<FaultRow>(
     `insert into braintrust_faults (fault_key, assertion, person_slug, detail)
           values ($1, $2, $3, $4)

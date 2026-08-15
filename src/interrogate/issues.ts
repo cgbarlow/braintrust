@@ -137,10 +137,8 @@ export function faultIssue(input: FaultIssueInput): Issue {
             'is served — silently, the way a layer withheld for a rules change is — and a second ' +
             'issue opens here. Until then this is invisible to a reader.'
           : 'A second issue opens here a day after the first failure. Nothing a reader receives ' +
-            'changes at any point: this assertion governs no layer that could be withdrawn, ' +
-            'because the disclosure is the one sentence that must always ship. It is an ' +
-            'accepted cost that the assertion closest to what a reader hears is the one whose ' +
-            'failure they never see.'
+            'changes at any point: the registry registers this assertion as withdrawing no ' +
+            'layer, and this issue is the whole of the escalation.'
       }`,
       '',
       `**This issue is not repeated.** A fault that is re-observed on every run opens no further ` +
@@ -169,8 +167,8 @@ export function escalationIssue(input: FaultIssueInput): Issue {
           }. It is absent rather than flagged — a persona missing a part reads exactly like one ` +
           'that never had it, and there is no second kind of silence. A passing interrogation ' +
           'restores it with no rebuild.'
-        : '**Nothing changed for readers**, and that was chosen: this assertion governs no ' +
-          'withdrawable part. This issue is the whole of the escalation.',
+        : '**Nothing changed for readers.** The registry registers this assertion as ' +
+          'withdrawing no layer, and this issue is the whole of the escalation.',
     ].join('\n'),
   };
 }

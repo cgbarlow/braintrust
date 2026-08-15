@@ -24,7 +24,9 @@ import {
   createInterrogator,
   dueAssertions,
   ESCALATES_AFTER_MS,
+  faultById,
   faultsToFile,
+  REGISTERED_FAULTS,
   runInterrogation,
   SILENCE_REPORTS_AFTER_MS,
   silencesToFile,
@@ -45,7 +47,7 @@ import {
   silenceIssue,
   type Issue,
 } from '../src/interrogate/issues.js';
-import { escalatedFaults, recordSilence } from '../src/interrogate/store.js';
+import { escalatedFaults, openFault, recordSilence } from '../src/interrogate/store.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 import { renderScript, type ScriptInput } from '../src/script.js';
 
@@ -1922,6 +1924,78 @@ describe('the issue a fault opens', () => {
 
   it('says it will not repeat itself, and why closing it is not the same as fixing it', () => {
     assert.match(faultIssue(input).body, /clears it when the assertion passes, not when this issue is closed/);
+  });
+
+  it('says what passing guarantees, in braintrust’s own words, and never that its own absence is an accepted cost', () => {
+    // The empty-withdrawals case (the disclosure) no longer explains its own emptiness as an
+    // "accepted cost". The withdrawal list is the registry's area, not the issue's: a filed
+    // Fault reports what it registers, and argues for nothing.
+    const body = faultIssue({
+      assertion: DISCLOSURE_ASSERTION,
+      guarantees: 'the first thing a reader hears is what they are talking to, word for word',
+      person: null,
+      subject: 'the fleet',
+      detail: 'd',
+      compilerVersion: 'v1',
+      interrogator: 'stub@interrogation-1',
+      firstFailedAt: new Date(NOW).toISOString(),
+      withdraws: [],
+    }).body;
+
+    assert.match(body, /What passing guarantees/);
+    assert.doesNotMatch(body, /accepted cost/);
+    assert.doesNotMatch(body, /governs no layer that could be withdrawn/);
+    assert.doesNotMatch(body, /closest to what a reader hears/);
+  });
+});
+
+describe('the fault registry', () => {
+  it('is the only place that decides what a fault name means, assertions and tool faults alike', () => {
+    // Every name a fault may open under has a guarantee and a withdrawal list, and the lookup
+    // is the one function both the filing path and the withdrawal path use.
+    const names = REGISTERED_FAULTS.map((one) => one.id);
+
+    assert.ok(names.includes('verify_sources'));
+    assert.ok(names.includes('persona_stuck_behind_compiler'));
+    assert.ok(names.includes('source_consecutive_failures'));
+
+    const verify = faultById('verify_sources')!;
+    assert.ok(verify.guarantees.length > 0);
+    assert.deepEqual(verify.withdraws, ['reasoning']);
+
+    // An assertion resolves through its own entry.
+    const faking = faultById(FAKING_ASSERTION)!;
+    assert.equal(faking.guarantees, ASSERTIONS.find((a) => a.id === FAKING_ASSERTION)!.guarantees);
+
+    // The source failures fault is matched by prefix: the name embeds the source id.
+    const scoped = faultById('source_consecutive_failures:de305d54-75b4-431b-adb2-eb6b9e546014')!;
+    assert.equal(scoped.id, 'source_consecutive_failures');
+  });
+
+  it('refuses to open a fault under a name it does not know, loudly and at once', async () => {
+    const db = interrogatingDb();
+
+    await assert.rejects(
+      openFault(db, {
+        assertion: 'not_a_registered_name',
+        person: 'nate-b-jones',
+        detail: 'never gets here',
+      }),
+      /not a name the assertion registry knows/,
+    );
+  });
+
+  it('opens a fault under a registered tool name, and that fault withdraws from the registry', async () => {
+    const db = interrogatingDb();
+    const fault = await openFault(db, {
+      assertion: 'verify_sources',
+      person: 'nate-b-jones',
+      detail: 'observed through the listener-facing tool',
+    });
+
+    assert.equal(fault.assertion, 'verify_sources');
+    assert.ok(db.faults.has(fault.key));
+    assert.deepEqual(withdrawnLayers([{ ...fault, escalated_at: new Date(NOW).toISOString() }], 'nate-b-jones'), ['reasoning']);
   });
 });
 

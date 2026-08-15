@@ -33,20 +33,30 @@ const ITEM_TITLE = 'A real post';
 const SENTENCE_FOUND = 'This sentence is in the body.';
 const SENTENCE_NOT_FOUND = 'This is not in the body at all.';
 
-const ITEMS: Record<string, { id: string; title: string; body_text: string | null }> = {
+/** A Position braintrust holds for the person — synthesised across many items. */
+const POSITION_STATEMENT = 'Recovering perfectionists optimise for speed at the cost of skill.';
+const POSITIONS = [{ slug: 'recovering-perfectionists', statement: POSITION_STATEMENT }];
+
+const ITEMS: Record<string, { id: string; title: string; url: string; published_at: Date; body_text: string | null }> = {
   [ITEM_URL_MATCHES]: {
     id: 'item-1',
     title: ITEM_TITLE,
+    url: ITEM_URL_MATCHES,
+    published_at: new Date(2026, 6, 23),
     body_text: `Some text here. ${SENTENCE_FOUND} And some more text.`,
   },
   [ITEM_URL_NOMATCH]: {
     id: 'item-2',
     title: 'Another post',
+    url: ITEM_URL_NOMATCH,
+    published_at: new Date(2026, 6, 23),
     body_text: 'Completely different content.',
   },
   [ITEM_URL_NOBODY]: {
     id: 'item-3',
     title: 'Empty body',
+    url: ITEM_URL_NOBODY,
+    published_at: new Date(2026, 6, 23),
     body_text: null,
   },
 };
@@ -72,6 +82,11 @@ const seedDb: Answer = (sql, params) => {
     const title = params[1] as string;
     const item = Object.values(ITEMS).find((i) => i.title === title);
     return item ? [item] : [];
+  }
+
+  // The claims braintrust holds for the person — Positions and through-lines.
+  if (text.includes('from braintrust_positions pos')) {
+    return POSITIONS;
   }
 
   // Insert into braintrust_faults — fake a returning row so openFault works
@@ -218,6 +233,24 @@ describe('braintrust_verify_sources over MCP', () => {
     await client.close();
   });
 
+  it('does not claim the item holds a body that was never stored, even for a quoted handover line', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: `${SENTENCE_NOT_FOUND}`,
+        sentences: [{ text: `*Quote:* "${SENTENCE_NOT_FOUND}"`, claimed_item: ITEM_URL_NOBODY }],
+      }),
+    );
+
+    assert.equal(result.results.length, 1);
+    assert.equal(result.results[0]!.verdict, 'unsourced');
+    assert.match(result.results[0]!.detail!, /body was not stored|post text is missing/);
+    assert.doesNotMatch(result.results[0]!.detail!, /holds its body/);
+
+    await client.close();
+  });
+
   it('handles multiple sentences with mixed verdicts', async () => {
     const client = await connect();
     const result = payload(
@@ -269,6 +302,156 @@ describe('braintrust_verify_sources over MCP', () => {
 
     assert.equal(result.isError, true);
     assert.match(result.content[0]!.text, /does not know/);
+
+    await client.close();
+  });
+
+  it('passes a record handover verbatim — the record’s field labels are never verified as quotations', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: '**Record**\n*Title:* "A real post"\n*URL:* https://example.com/matches',
+        sentences: [
+          { text: '**Record**', claimed_item: ITEM_URL_MATCHES },
+          { text: '*Title:* "A real post"', claimed_item: ITEM_URL_MATCHES },
+          { text: '*URL:* https://example.com/matches', claimed_item: ITEM_URL_MATCHES },
+          { text: '*Published at:* 2026-07-23', claimed_item: ITEM_URL_MATCHES },
+          { text: `*Quote:* "${SENTENCE_FOUND}"`, claimed_item: ITEM_URL_MATCHES },
+        ],
+      }),
+    );
+
+    // Four of the five are the record's own field labels or the label line's framing; none
+    // is verified as a quotation. The fifth is the quotation with its label attached,
+    // verified on the quotation, not on the label. All five pass, and no fault opens.
+    for (const one of result.results) {
+      assert.equal(one.verdict, 'sourced', one.sentence);
+    }
+    assert.equal(result.fault, undefined);
+
+    await client.close();
+  });
+
+  it('names the invented span when a quoted handover is not in the source', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: 'I predicted all of this in 2027.',
+        sentences: [
+          { text: `*Quote:* "I predicted all of this in 2027."`, claimed_item: ITEM_URL_MATCHES },
+        ],
+      }),
+    );
+
+    assert.equal(result.results[0]!.verdict, 'unsourced');
+    assert.match(result.results[0]!.detail!, /I predicted all of this in 2027/);
+    // A genuine fabrication still opens a fault.
+    assert.ok(result.fault);
+
+    await client.close();
+  });
+
+  it('tolerates the sentence punctuation a handover line carries', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: '*Title:* "A real post," *URL:* https://example.com/matches.',
+        sentences: [
+          { text: '*Title:* "A real post,"', claimed_item: ITEM_URL_MATCHES },
+          { text: '*URL:* https://example.com/matches.', claimed_item: ITEM_URL_MATCHES },
+        ],
+      }),
+    );
+
+    // A comma glued to the title inside the quotes, and a period a sentence would carry on
+    // the URL line, are the same record handed over — not a forged citation. Both pass, and
+    // no fault opens.
+    for (const one of result.results) {
+      assert.equal(one.verdict, 'sourced', one.sentence);
+    }
+    assert.equal(result.fault, undefined);
+
+    await client.close();
+  });
+
+  it('does not misread a prose sentence that merely opens with a label word', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: 'URL: the best explanation I have seen is this.',
+        sentences: [
+          { text: 'URL: the best explanation I have seen is this.', claimed_item: ITEM_URL_MATCHES },
+        ],
+      }),
+    );
+
+    // "URL: …" here is prose, not a handover line: the value is not shaped like a URL. It
+    // is checked as a plain sentence against the body — not compared to the item's URL.
+    assert.equal(result.results[0]!.verdict, 'unsourced');
+    assert.match(result.results[0]!.detail!, /not in it/);
+
+    await client.close();
+  });
+
+  it('verifies a sentence that is a Position against what a Position is, with no source named', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: POSITION_STATEMENT,
+        sentences: [{ text: POSITION_STATEMENT, claimed_item: null }],
+      }),
+    );
+
+    // A Position is synthesised across many items, so no single item can contain it — the
+    // sentence is checked against what a Position is, and comes back sourced with the note.
+    assert.equal(result.results[0]!.verdict, 'sourced');
+    assert.match(result.results[0]!.detail!, /Position/);
+    assert.equal(result.fault, undefined);
+
+    await client.close();
+  });
+
+  it('verifies a Position even when the named source is not an item', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: POSITION_STATEMENT,
+        sentences: [
+          { text: POSITION_STATEMENT, claimed_item: 'https://example.com/not-an-item' },
+        ],
+      }),
+    );
+
+    assert.equal(result.results[0]!.verdict, 'sourced');
+    assert.match(result.results[0]!.detail!, /Position/);
+    assert.equal(result.fault, undefined);
+
+    await client.close();
+  });
+
+  it('refuses a source braintrust cannot place as unanswerable, never as a forgery', async () => {
+    const client = await connect();
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: 'Nobody ever said this anywhere.',
+        sentences: [
+          { text: 'Nobody ever said this anywhere.', claimed_item: 'https://example.com/not-an-item' },
+        ],
+      }),
+    );
+
+    assert.equal(result.results[0]!.verdict, 'never_claimed');
+    assert.match(result.results[0]!.detail!, /refused as unanswerable/);
+    assert.doesNotMatch(result.results[0]!.detail!, /naming a source that does not exist/);
+    // An unanswerable citation is not a finding against the persona, so it opens no fault.
+    assert.equal(result.fault, undefined);
 
     await client.close();
   });
