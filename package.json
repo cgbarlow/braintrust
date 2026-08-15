@@ -15,10 +15,12 @@
     "job": "node dist/job/index.js",
     "eval": "node dist/eval/index.js",
     "calibrate": "node dist/calibrate/index.js",
+    "qa": "node dist/qa/index.js",
     "dev": "tsx watch src/server/index.ts",
     "job:dev": "tsx src/job/index.ts",
     "eval:dev": "tsx src/eval/index.ts",
     "calibrate:dev": "tsx src/calibrate/index.ts",
+    "qa:dev": "tsx src/qa/index.ts",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "node --import tsx --test --test-concurrency=1 \"test/!(*.integration).test.ts\"",
     "test:integration": "node --import tsx --test --test-concurrency=1 \"test/*.integration.test.ts\""
