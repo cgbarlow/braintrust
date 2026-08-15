@@ -227,7 +227,19 @@ export type YoutubeCaptions = {
   };
 };
 
-/** Thrown when a video has no captions at all — a terminal fact about that video. */
+/**
+ * Thrown when the player response carried no caption track braintrust could use.
+ *
+ * **A fact about the response, not about the video.** This was documented as terminal — *a
+ * video with no words in it* — and that was measured false: videos recorded this way return
+ * full transcripts when the identical request goes out from a domestic connection rather
+ * than the datacenter the scheduled job runs in. YouTube serves the caption track to some
+ * networks and withholds it from others, so the absence is a property of who asked. See
+ * issue #272.
+ *
+ * The name is kept because it is the state's name and a stored row's key; what changed is
+ * every sentence braintrust says about it.
+ */
 export class NoCaptions extends BraintrustError {}
 
 /**
@@ -259,8 +271,10 @@ export async function retrieveYoutubeCaptions(
   const track = pickTrack(player.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? []);
   if (!track) {
     throw new NoCaptions(
-      `Video ${videoId} has no caption track braintrust can read. Recorded as failed: ` +
-        'a video with no words in it is a fact about the video, not a fetch to retry.',
+      `braintrust asked for the captions of video ${videoId} and the response carried no ` +
+        'caption track. That is what braintrust saw, not a fact about the video: the same ' +
+        'request from a different network has returned full transcripts for videos recorded ' +
+        'this way, so the words may well exist and braintrust did not get them.',
     );
   }
 

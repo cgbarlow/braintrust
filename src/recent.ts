@@ -73,10 +73,20 @@ export const NOT_READ: Record<string, string> = {
   skipped_short: 'too short to be worth reading — braintrust skips these by setting',
   skipped_window: 'published before the window braintrust was asked to read',
   skipped_not_a_post: 'a link that turned out not to be a post',
-  // Said as a fact about the video rather than about braintrust, because that is what it
-  // is: there is no transcript to read, so there is nothing braintrust could have done
-  // differently and nothing a listener should read as a failure or a refusal.
-  skipped_no_captions: 'a video with no captions on it, so there were no words to read',
+  // **Said as a fact about braintrust's attempt, not about the video**, because that is
+  // the only one of the two braintrust is in a position to state.
+  //
+  // This line used to read "a video with no captions on it", and that was measured false.
+  // The same videos this state was recorded for return full transcripts — 86, 4,265 and
+  // 5,052 words — when the identical request goes out from a domestic connection instead
+  // of the datacenter the scheduled job runs in. YouTube withholds the caption track from
+  // some networks and serves it to others, so what braintrust observed was its own failed
+  // attempt, and it was reporting it as an absence in somebody's published work.
+  //
+  // A persona telling a reader a video has no captions is making a claim about the video.
+  // braintrust cannot support that claim and does not need to: *braintrust could not get
+  // the captions* is true whichever way the underlying fact falls. See issue #272.
+  skipped_no_captions: 'a video braintrust ran into trouble getting the captions for',
   failed: 'braintrust could not fetch it',
   pending: 'not read yet',
 };
