@@ -31,6 +31,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # test/btjob.test.ts drives scripts/btjob.sh, which is a zsh script (the job
+      # host is macOS/launchd). The runner image does not ship zsh, so install it.
+      - run: sudo apt-get update && sudo apt-get install -y zsh
       # Do not make this check a required status until the eight known failures are gone.
       # They live in test/failing-source.integration.test.ts and test/blog-cycle.integration.test.ts
       # and are the block/fault behaviour added by #241-244 — tracked by the fix-forward

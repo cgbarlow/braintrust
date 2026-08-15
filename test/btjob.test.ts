@@ -20,6 +20,24 @@ import { fileURLToPath } from 'node:url';
 
 const SCRIPT = fileURLToPath(new URL('../scripts/btjob.sh', import.meta.url));
 
+/**
+ * The script under test is `#!/bin/zsh` — the shell the job host runs it under
+ * (macOS/launchd) — and not every CI image ships zsh: the ubuntu-latest image,
+ * for example, does not. When zsh is absent the suite is skipped rather than
+ * failing the run for a shell nobody promised was there. The workflow itself
+ * installs zsh (`.github/workflows/ci.yml`) so the tests normally do run there.
+ */
+function zshAvailable(): boolean {
+  try {
+    const probe = spawnSync('zsh', ['-n', '-c', 'true'], { encoding: 'utf8' });
+    return probe.error === undefined && probe.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+const runJobTest = zshAvailable() ? it : it.skip;
+
 const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const REMOTE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
@@ -139,19 +157,30 @@ function runJob(overrides: Record<string, string> = {}, args: string[] = ['--qui
   const env = makeEnv(appDir, overrides);
   const result = spawnSync('zsh', [SCRIPT, ...args], { env, encoding: 'utf8' });
 
+  // A spawn that cannot happen at all (zsh missing) is a real cause, not a
+  // mystery: say so instead of letting a downstream ENOENT hide it.
+  if (result.error) throw result.error;
+
   const dockerCalls = (existsSync(join(appDir, 'docker-calls')) ? readFileSync(join(appDir, 'docker-calls'), 'utf8') : '')
     .split('\n')
     .filter(Boolean);
   const gitCalls = (existsSync(join(appDir, 'git-calls')) ? readFileSync(join(appDir, 'git-calls'), 'utf8') : '')
     .split('\n')
     .filter(Boolean);
-  const log = (() => {
-    const logsDir = join(appDir, 'logs');
+  const logsDir = join(appDir, 'logs');
+  let log = '';
+  if (existsSync(logsDir)) {
     const logs = readdirSync(logsDir).filter((name) => name.endsWith('.log'));
     logs.sort().reverse();
-    if (logs.length === 0) return '';
-    return readFileSync(join(logsDir, logs[0]!), 'utf8');
-  })();
+    if (logs.length > 0) log = readFileSync(join(logsDir, logs[0]!), 'utf8');
+  } else {
+    // btjob.sh always starts its own log file before the run; a run that created
+    // none exited early, and its exit status and stderr are the diagnosis.
+    throw new Error(
+      `btjob.sh exited before writing its log in ${logsDir}: status ${result.status}, ` +
+        `stderr=${JSON.stringify(result.stderr)}`,
+    );
+  }
 
   rmSync(appDir, { recursive: true, force: true });
 
@@ -166,7 +195,7 @@ function runJob(overrides: Record<string, string> = {}, args: string[] = ['--qui
 }
 
 describe('the job host updates itself', () => {
-  it('fetches origin/main before every run', () => {
+  runJobTest('fetches origin/main before every run', () => {
     const run = runJob();
     assert.equal(run.status, 0);
     assert.ok(run.gitCalls.some((call) => call.includes('fetch origin main')));
@@ -174,7 +203,7 @@ describe('the job host updates itself', () => {
     assert.ok(run.dockerCalls.some((call) => call.includes('run')));
   });
 
-  it('an update with nothing new is a no-op that says so, and does not rebuild', () => {
+  runJobTest('an update with nothing new is a no-op that says so, and does not rebuild', () => {
     const run = runJob();
     assert.equal(run.status, 0);
     assert.match(run.log, /nothing new, no rebuild/);
@@ -182,14 +211,14 @@ describe('the job host updates itself', () => {
     assert.ok(run.dockerCalls.some((call) => call.includes('docker run')));
   });
 
-  it('an interactive (non-quiet) run takes the same path and still writes the log', () => {
+  runJobTest('an interactive (non-quiet) run takes the same path and still writes the log', () => {
     const run = runJob({ FAKE_IMAGE_COMMIT: REMOTE }, []);
     assert.equal(run.status, 0);
     assert.match(run.log, /nothing new, no rebuild/);
     assert.match(run.log, /=== btjob exit 0 at /);
   });
 
-  it('a fetch that fails runs the existing image and does not rebuild', () => {
+  runJobTest('a fetch that fails runs the existing image and does not rebuild', () => {
     const run = runJob({ FAKE_GIT_FETCH_FAIL: '1' });
     assert.equal(run.status, 0);
     assert.match(run.log, /could not fetch origin\/main/);
@@ -197,7 +226,7 @@ describe('the job host updates itself', () => {
     assert.ok(run.dockerCalls.some((call) => call.includes('docker run')));
   });
 
-  it('a failed build keeps the previous image, runs it, and says it did', () => {
+  runJobTest('a failed build keeps the previous image, runs it, and says it did', () => {
     const run = runJob({ FAKE_GIT_REMOTE_SHA: REMOTE, FAKE_BUILD_FAIL: '1' });
     assert.equal(run.status, 0);
     assert.match(run.log, /HEAD moved/);
@@ -209,14 +238,14 @@ describe('the job host updates itself', () => {
     assert.ok(run.dockerCalls.indexOf(build) < run.dockerCalls.indexOf(runCall));
   });
 
-  it('a failed build with no previous image aborts, and does not run', () => {
+  runJobTest('a failed build with no previous image aborts, and does not run', () => {
     const run = runJob({ FAKE_GIT_REMOTE_SHA: REMOTE, FAKE_BUILD_FAIL: '1', FAKE_IMAGE_MISSING: '1' });
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /no previous image/);
     assert.ok(!run.dockerCalls.some((call) => call.includes('docker run')));
   });
 
-  it('a successful build labels the image with the fetched commit and runs it', () => {
+  runJobTest('a successful build labels the image with the fetched commit and runs it', () => {
     const run = runJob({
       FAKE_GIT_REMOTE_SHA: REMOTE,
       FAKE_GIT_FETCH_FAIL: '0',
@@ -233,7 +262,7 @@ describe('the job host updates itself', () => {
 });
 
 describe('every run names the commit it ran from', () => {
-  it('resolves the commit from the image label, not the checkout', () => {
+  runJobTest('resolves the commit from the image label, not the checkout', () => {
     // The image was built from REMOTE, but the checkout behind it is just the
     // pre-existing HEAD: the log must name the image's commit.
     const run = runJob({ FAKE_IMAGE_COMMIT: REMOTE });
@@ -242,7 +271,7 @@ describe('every run names the commit it ran from', () => {
     assert.ok(run.dockerCalls.some((call) => call.includes(`-e BRAINTRUST_COMMIT=${REMOTE}`)));
   });
 
-  it('falls back to the image digest for an image built before labels existed', () => {
+  runJobTest('falls back to the image digest for an image built before labels existed', () => {
     const run = runJob({ FAKE_IMAGE_ID: 'deadbeefdeadbeef' });
     assert.equal(run.status, 0);
     assert.match(run.log, /built from deadbeefdeadbeef/);
@@ -250,13 +279,13 @@ describe('every run names the commit it ran from', () => {
 });
 
 describe('the script reports', () => {
-  it('the container run exit status, not a green 0', () => {
+  runJobTest('the container run exit status, not a green 0', () => {
     const run = runJob({ FAKE_RUN_EXIT: '3' });
     assert.equal(run.status, 3);
     assert.match(run.log, /=== btjob exit 3 at /);
   });
 
-  it('in the log that wraps the run, with the commit line inside it', () => {
+  runJobTest('in the log that wraps the run, with the commit line inside it', () => {
     const run = runJob({ FAKE_IMAGE_COMMIT: REMOTE });
     const lines = run.log.split('\n');
     assert.equal(lines[0], lines[0]);
@@ -265,7 +294,7 @@ describe('the script reports', () => {
     assert.match(run.log, /=== btjob exit 0 at /);
   });
 
-  it('missing issue-filing configuration to the --config check, up front', () => {
+  runJobTest('missing issue-filing configuration to the --config check, up front', () => {
     const run = runJob({}, ['--config']);
     assert.equal(run.status, 0);
     const calls = run.dockerCalls.join('\n');
@@ -275,14 +304,14 @@ describe('the script reports', () => {
 });
 
 describe('a run nobody is watching stays visible', () => {
-  it('writes a log file even with --quiet, and keeps it behind latest.log', () => {
+  runJobTest('writes a log file even with --quiet, and keeps it behind latest.log', () => {
     const run = runJob();
     assert.notEqual(run.log, '');
     assert.match(run.log, /=== btjob start /);
     assert.match(run.log, /=== btjob exit 0 at /);
   });
 
-  it('with --quiet still captures the container run\'s stderr into the log', () => {
+  runJobTest('with --quiet still captures the container run\'s stderr into the log', () => {
     // launchd runs with --quiet, and the container's stderr (fault lines,
     // warnings, errors) has to reach the same log a maintainer reads — a
     // `2>&1 >>log` redirection order would silently point it elsewhere.
