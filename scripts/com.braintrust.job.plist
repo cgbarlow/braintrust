@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The launchd agent that runs the braintrust ingest job on the job host.
+
+  Install (one command):
+    cp scripts/com.braintrust.job.plist ~/Library/LaunchAgents/ \
+      && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.braintrust.job.plist
+
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.braintrust.job
+
+  The script updates the host itself — fetch origin/main, rebuild the image if
+  the tree moved — so there is no human step after this install. Every run is
+  logged to logs/job-<stamp>.log and names the commit the image was built from.
+  If the host's timezone is not the one this schedule assumes, adjust
+  StartCalendarInterval to the local time you want the job to run.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.braintrust.job</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/chris/repos/bt-probe/scripts/btjob.sh</string>
+    <string>--quiet</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>14</integer>
+    <key>Minute</key>
+    <integer>59</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/chris/repos/bt-probe/logs/launchd.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/chris/repos/bt-probe/logs/launchd.stderr.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BTJOB_APP_DIR</key>
+    <string>/Users/chris/repos/bt-probe</string>
+  </dict>
+</dict>
+</plist>
