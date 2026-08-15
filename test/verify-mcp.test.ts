@@ -353,6 +353,87 @@ describe('braintrust_verify_sources over MCP', () => {
     await client.close();
   });
 
+  /**
+   * **A fault is cleared by passing, because that is what the fault report promises.**
+   *
+   * Every Fault report ends *"braintrust clears it when the assertion passes, not when this
+   * issue is closed"*. For this fault that sentence was unkeepable: `verifySources` opened
+   * faults and had no path to close one, and nothing in the scheduled run re-checks it
+   * either. So a `verify_sources` fault outlived any fix to the detector that raised it, went
+   * on re-printing the evidence it was opened on, and escalated on schedule.
+   *
+   * Measured on 2026-08-15, which is why this exists. The fixed detector verified 20 of 20
+   * sentences across all five serving Personas; all three open faults survived it unchanged
+   * and were still due to withdraw `reasoning` the next morning — from personas that had
+   * demonstrably stopped failing. See issue #283.
+   */
+  it('clears the fault when every sentence checks out', async () => {
+    const client = await connect();
+    const before = db.calls.length;
+
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: '**Record**\n*Title:* "A real post"\n*URL:* https://example.com/matches',
+        sentences: [
+          { text: '**Record**', claimed_item: ITEM_URL_MATCHES },
+          { text: '*Title:* "A real post"', claimed_item: ITEM_URL_MATCHES },
+          { text: '*URL:* https://example.com/matches', claimed_item: ITEM_URL_MATCHES },
+          { text: '*Published at:* 2026-07-23', claimed_item: ITEM_URL_MATCHES },
+          { text: `*Quote:* "${SENTENCE_FOUND}"`, claimed_item: ITEM_URL_MATCHES },
+        ],
+      }),
+    );
+
+    assert.equal(result.fault, undefined);
+
+    const issued = db.sql().slice(before);
+    const cleared = issued.filter((sql) => sql.includes('delete from braintrust_faults'));
+    assert.equal(
+      cleared.length,
+      1,
+      'a pass must clear the fault, or the fault outlives the failure it was opened for',
+    );
+
+    // Cleared under this assertion and this person, never somebody else's fault.
+    const call = db.calls.slice(before).find((c) => c.sql.includes('delete from braintrust_faults'));
+    assert.match(String(call!.params[0]), /verify_sources/);
+    assert.match(String(call!.params[0]), new RegExp(PERSON_SLUG));
+
+    await client.close();
+  });
+
+  /**
+   * The other half, and the one that would make this dangerous if it were wrong: clearing
+   * happens on a pass, never merely because the tool was called. A reply that fails must
+   * leave the fault standing.
+   */
+  it('leaves the fault standing when a sentence does not check out', async () => {
+    const client = await connect();
+    const before = db.calls.length;
+
+    const result = payload(
+      await verify(client, {
+        person: PERSON_SLUG,
+        reply: 'I predicted all of this in 2027.',
+        sentences: [
+          { text: `*Quote:* "I predicted all of this in 2027."`, claimed_item: ITEM_URL_MATCHES },
+        ],
+      }),
+    );
+
+    assert.ok(result.fault);
+
+    const issued = db.sql().slice(before);
+    assert.equal(
+      issued.filter((sql) => sql.includes('delete from braintrust_faults')).length,
+      0,
+      'a failing check must not clear the fault it just opened',
+    );
+
+    await client.close();
+  });
+
   it('tolerates the sentence punctuation a handover line carries', async () => {
     const client = await connect();
     const result = payload(
