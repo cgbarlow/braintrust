@@ -73,19 +73,29 @@ export const HABITS_VERSION = 'habits-1';
 
 /** Synthesis is a long read for a model, like the extractor's. Not a 20-second fetch. */
 /**
- * Fifteen minutes, and the number is measured rather than chosen.
+ * Thirty minutes, and the number is measured rather than chosen.
  *
- * Five minutes was inherited from the extractor, where it is generous: one Item is a few
- * thousand words and the answer is a short object. Synthesis is the opposite shape — the
- * digest is up to {@link DIGEST_BUDGET_CHARS} of Notes in one prompt, and a Corpus of any
- * size sends several of them. The first real Compile against a self-hosted 120B model
- * timed out clustering 183 claims, which is a *small* Corpus.
+ * 900_000 (fifteen minutes) was the first measurement, sized when the worst observed case
+ * was clustering 183 claims. It was too short for the largest Corpus in the fleet: on the
+ * 2026-08-15 16:20 NZST run, `nate-b-jones` ran seven `positions` passes at
+ * 225s/178s/514s/179s/465s/188s/296s — two of them already past half the old ceiling — and
+ * the next call hit it, discarding a Compile that had done 98 minutes and 38 model calls of
+ * work. 1_800_000 is sized against the measured maximum (514s) with real headroom, not
+ * against the one that failed.
  *
- * Long is the right direction here. This runs in an unattended job that is allowed to take
- * half an hour, the work it protects is the expensive read that already happened, and a
- * timeout does not lose the Notes — it costs a rebuild the next run makes anyway.
+ * **This buys a wider margin, not resilience.** A Compile is still one all-or-nothing unit:
+ * a timeout still discards every stage that already succeeded, including the six passes
+ * that finished in the run above. Raising the ceiling stops the *common* case from being
+ * lost to a margin that was too tight; it does nothing for the stage that is genuinely
+ * slower than this. That resilience — keeping the stages that already succeeded — is
+ * #290, and this ticket does not attempt it.
+ *
+ * The run above is the real budget: 98 minutes end to end against one endpoint, not the
+ * "half an hour" this comment used to claim. This runs in an unattended job with no reader
+ * waiting on it, so long is still the right direction, and a timeout still does not lose
+ * the Notes — it costs a rebuild the next run makes anyway.
  */
-export const SYNTHESIS_TIMEOUT_MS = 900_000;
+export const SYNTHESIS_TIMEOUT_MS = 1_800_000;
 
 /** One inferred conviction, and the Items it was traced to. */
 export type SynthesisedEntry = {

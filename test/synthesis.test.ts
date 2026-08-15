@@ -11,7 +11,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createSynthesiser } from '../src/compile/synthesis.js';
+import { createSynthesiser, SYNTHESIS_TIMEOUT_MS } from '../src/compile/synthesis.js';
+import { createFetcher } from '../src/net/fetch.js';
 import type { FetchInit, Fetcher } from '../src/net/fetch.js';
 
 const CONFIG = { baseUrl: 'https://models.test/v1', model: 'a-model', apiKey: 'k' };
@@ -173,5 +174,39 @@ describe('what a run can tell about its own model calls', () => {
         return true;
       },
     );
+  });
+});
+
+/**
+ * `SYNTHESIS_TIMEOUT_MS` only does anything through `createFetcher({ timeoutMs })`, the way
+ * the job wires it in `src/job/index.ts`. A test that only asserts the constant's numeric
+ * value would pass even if the job stopped threading it through to the fetcher's abort
+ * signal — so this pins the value that actually reaches a synthesis call's timeout, not
+ * just the constant's name.
+ */
+describe('the ceiling applied to a synthesis call', () => {
+  it('is the value a fetcher built for synthesis actually aborts at', async () => {
+    const originalTimeout = AbortSignal.timeout;
+    const seen: number[] = [];
+    AbortSignal.timeout = (ms: number) => {
+      seen.push(ms);
+      return originalTimeout(ms);
+    };
+    try {
+      const fetcher = createFetcher({ timeoutMs: SYNTHESIS_TIMEOUT_MS });
+      await fetcher('https://models.test/v1/chat/completions', { json: {} }).catch(() => {
+        // Nothing is listening at models.test — only the abort budget matters here.
+      });
+    } finally {
+      AbortSignal.timeout = originalTimeout;
+    }
+    assert.deepEqual(seen, [SYNTHESIS_TIMEOUT_MS]);
+  });
+
+  // Sized against the measured maximum (514s) with real headroom — see the constant's own
+  // comment for the run that set it. A silent change here changes what the largest Corpus
+  // in the fleet can finish.
+  it('is thirty minutes', () => {
+    assert.equal(SYNTHESIS_TIMEOUT_MS, 1_800_000);
   });
 });
