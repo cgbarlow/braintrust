@@ -25,6 +25,8 @@ import {
   confidenceFor,
   CONFIDENCE_HIGH_ITEMS,
   CONFIDENCE_MODERATE_ITEMS,
+  deserializePositionSet,
+  serializePositionSet,
   slugify,
 } from '../src/compile/positions.js';
 import { MAX_POSITIONS, readClusterContent, readGroupContent } from '../src/compile/synthesis.js';
@@ -626,5 +628,29 @@ describe('what the clustering prompt is allowed to do', () => {
     // The quote on a citation is copied off the verified claim, not taken from the model.
     assert.match(source, /quote: ref\.claim\.quote/);
     assert.doesNotMatch(source, /cluster\.quote|position\.quote/);
+  });
+});
+
+describe('the resume payload', () => {
+  /**
+   * What a resumed Compile hands to Revisions instead of recomputing `positions`. The
+   * property that matters is `claim.statement` surviving the round trip — a citation
+   * never carries it, only the verbatim quote, so a lossy encoding here would be
+   * invisible until Revisions silently compared the wrong text.
+   */
+  it('carries a PositionSet through JSON with nothing lost, `claims` included', async () => {
+    const set = await compilePositions(NOTES, fakeSynthesiser());
+    assert.ok(set.claims.size > 0, 'the fixture must actually exercise the claims map');
+
+    const roundTripped = deserializePositionSet(
+      JSON.parse(JSON.stringify(serializePositionSet(set))),
+    );
+
+    assert.deepEqual(roundTripped.positions, set.positions);
+    assert.deepEqual([...roundTripped.claims.entries()], [...set.claims.entries()]);
+    assert.equal(roundTripped.clusterer, set.clusterer);
+    assert.equal(roundTripped.passes, set.passes);
+    assert.equal(roundTripped.dropped_uncitable, set.dropped_uncitable);
+    assert.equal(roundTripped.claims_read, set.claims_read);
   });
 });

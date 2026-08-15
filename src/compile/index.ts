@@ -28,7 +28,7 @@ import { coverageLayer, withVoicePopulation } from './coverage.js';
 import { calibrateFit, notGradeable } from './fit.js';
 import { checkCompile } from './gate.js';
 import { compileHabits } from './infer.js';
-import { compilePositions } from './positions.js';
+import { compilePositions, deserializePositionSet, serializePositionSet, type PositionSet } from './positions.js';
 import { compileThroughLines } from './throughlines.js';
 import { compileRevisions } from './revisions.js';
 import { calibrateSelectivity, notMeasurable } from './selectivity.js';
@@ -36,20 +36,26 @@ import {
   abandonStale,
   backlogOwed,
   beginCompile,
+  clearResumeMarker,
   compilablePeople,
   failCompile,
   gateFacts,
   measurableItems,
   measureCoverage,
+  positionIdsFor,
   promote,
   rejectCompile,
+  reopenCompile,
+  resumeMarkerFor,
   runningCompile,
   writeLayer,
   writePositions,
   writeRelations,
+  writeResumeMarker,
   writeStatementVectors,
   writeThroughLines,
   type CompilablePerson,
+  type CompileStage,
 } from './store.js';
 import type { Synthesiser } from './synthesis.js';
 import { compilerVersion } from './version.js';
@@ -133,7 +139,11 @@ export async function compileCorpus(deps: CompileDeps): Promise<CompileReport> {
           `${outcome.revisions} relation${outcome.revisions === 1 ? '' : 's'} between them` +
           // Said out loud, because a burst of rebuilds on a day nothing was published
           // is otherwise an unexplained cost. This is the line that explains it.
-          `${!person.has_unseen ? ' — rebuilt because the compiler changed, not the corpus' : ''}.`,
+          `${!person.has_unseen ? ' — rebuilt because the compiler changed, not the corpus' : ''}` +
+          // The other unexplained cost this run could be mistaken for: a rebuild that
+          // looks routine but is actually cheaper than it reads, because an earlier
+          // attempt already paid for part of it.
+          `${outcome.resumed_from ? ` — resumed after an earlier attempt reached ${outcome.resumed_from}, so ${skippedStages(outcome.resumed_from)} were not repeated` : ''}.`,
       );
     } else if (outcome.kind === 'waiting') {
       report.waiting.push({ person: person.slug, reason: outcome.reason });
@@ -163,10 +173,22 @@ type Outcome =
       items_measured: number;
       positions: number;
       revisions: number;
+      /** Set when a prior attempt's stages were reused rather than repeated. See below. */
+      resumed_from?: CompileStage;
     }
   | { kind: 'waiting'; reason: string }
   | { kind: 'rejected'; reason: string }
   | { kind: 'failed'; reason: string };
+
+/** The stages a resume at `stage` did not have to repeat, for the one line that says so. */
+function skippedStages(stage: CompileStage): string {
+  const names: Record<CompileStage, string> = {
+    habits: 'habits',
+    positions: 'habits and positions',
+    through_lines: 'habits, positions and through-lines',
+  };
+  return names[stage];
+}
 
 export async function compilePerson(deps: CompileDeps, person: CompilablePerson): Promise<Outcome> {
   // Composed here as well as in the loop, so a direct caller records the truth too.
@@ -222,7 +244,16 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     };
   }
 
-  const compileId = await beginCompile(deps.db, person.id, version, deps.extractor);
+  // A marker from an earlier attempt at this Person, under this compiler version. Reopens
+  // that attempt's compile row rather than starting another: its habits/positions/
+  // through-lines rows are already committed, and beginning a fresh row here would leave
+  // them orphaned under a compile_id nothing ever promotes or resumes into again.
+  const marker = await resumeMarkerFor(deps.db, person.id, version);
+  const reopened = marker && (await reopenCompile(deps.db, marker.compile_id, person.id));
+  if (marker && !reopened) await clearResumeMarker(deps.db, person.id);
+
+  const compileId = reopened || (await beginCompile(deps.db, person.id, version, deps.extractor));
+  const resumedFrom = reopened ? marker!.stage : undefined;
 
   try {
     const voice = voiceLayer(items);
@@ -248,43 +279,74 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
 
     // Reasoning: chosen from the menu rather than written. Same evidence rule, same place
     // in the order — what changed is that the words a reader gets are authored in the repo.
-    const habits = await compileHabits(notes, deps.synthesiser);
-    await writeLayer(deps.db, compileId, {
-      layer: 'reasoning',
-      basis: 'inferred',
-      descriptive_md: habits.descriptive_md,
-      evidence: habits.evidence,
-    });
+    //
+    // Skipped on a resume that reached any stage: every stage implies habits already ran,
+    // and its layer row is already committed under the compile_id just reopened. Nothing
+    // downstream reads the `habits` value itself — only the row, which this attempt never
+    // touches — so there is nothing to reconstruct here, unlike positions below.
+    if (!resumedFrom) {
+      const habits = await compileHabits(notes, deps.synthesiser);
+      await writeLayer(deps.db, compileId, {
+        layer: 'reasoning',
+        basis: 'inferred',
+        descriptive_md: habits.descriptive_md,
+        evidence: habits.evidence,
+      });
+      await writeResumeMarker(deps.db, person.id, compileId, version, 'habits', null);
+    }
 
     // The growing layer, next, because it is the one that scales with the Corpus and the
     // one a Compile can most afford to lose: a synthesis endpoint that gives out here has
     // left three complete Core layers in the rows, and the gate will still refuse to
     // publish the Compile — but the failure is legible rather than a Persona missing a
     // limb for reasons nobody can reconstruct.
-    const grouped = await compilePositions(notes, deps.synthesiser);
-    const positionIds = await writePositions(deps.db, compileId, grouped.positions);
-
-    // The statements, embedded — what `fit` grades on, and the reason two Positions drawn
-    // from one Item can be told apart at all. Before the gate, because the check that no two
-    // Positions in one answer carry the same score reads these rows.
     //
-    // A statement the endpoint would not embed is a statement with no vector, and the gate
-    // refuses to publish a Compile where some Positions are graded and others are not — so
-    // this either writes all of them or the Persona is not published, and yesterday's keeps
-    // answering. Silently grading half an answer is the one outcome not on the table.
-    if (deps.embedder) {
-      const statements = grouped.positions.map((position) => position.statement);
-      const vectors = await deps.embedder.embed(statements);
+    // Skipped on a resume that already reached 'positions' or 'through_lines' — the rows
+    // `writePositions` and `writeStatementVectors` wrote are already committed, and a
+    // second pass would insert them a second time. `grouped` is reconstructed from the
+    // marker's payload instead of the rows, because Revisions below needs a claim's
+    // paraphrase and a citation only ever carries its verbatim quote — see
+    // `serializePositionSet`.
+    let grouped: PositionSet;
+    let positionIds: Map<string, string>;
+    if (!resumedFrom || resumedFrom === 'habits') {
+      grouped = await compilePositions(notes, deps.synthesiser);
+      positionIds = await writePositions(deps.db, compileId, grouped.positions);
 
-      await writeStatementVectors(
+      // The statements, embedded — what `fit` grades on, and the reason two Positions drawn
+      // from one Item can be told apart at all. Before the gate, because the check that no two
+      // Positions in one answer carry the same score reads these rows.
+      //
+      // A statement the endpoint would not embed is a statement with no vector, and the gate
+      // refuses to publish a Compile where some Positions are graded and others are not — so
+      // this either writes all of them or the Persona is not published, and yesterday's keeps
+      // answering. Silently grading half an answer is the one outcome not on the table.
+      if (deps.embedder) {
+        const statements = grouped.positions.map((position) => position.statement);
+        const vectors = await deps.embedder.embed(statements);
+
+        await writeStatementVectors(
+          deps.db,
+          deps.embedder.model,
+          grouped.positions.flatMap((position, index) => {
+            const vector = vectors[index];
+            const id = positionIds.get(position.slug);
+            return vector && id ? [{ positionId: id, vector: vectorLiteral(vector) }] : [];
+          }),
+        );
+      }
+
+      await writeResumeMarker(
         deps.db,
-        deps.embedder.model,
-        grouped.positions.flatMap((position, index) => {
-          const vector = vectors[index];
-          const id = positionIds.get(position.slug);
-          return vector && id ? [{ positionId: id, vector: vectorLiteral(vector) }] : [];
-        }),
+        person.id,
+        compileId,
+        version,
+        'positions',
+        serializePositionSet(grouped),
       );
+    } else {
+      grouped = deserializePositionSet(marker!.payload as ReturnType<typeof serializePositionSet>);
+      positionIds = await positionIdsFor(deps.db, compileId);
     }
 
     if (grouped.dropped_uncitable > 0) {
@@ -298,21 +360,35 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     // rather than above them: a through-line rides with an answer that already matched, so it
     // needs no embedding, no citations and no place in the gate — and it may never be the
     // whole of an answer, which is the only reason it is allowed to be spoken flatly.
-    const inferred = await compileThroughLines(notes, deps.synthesiser);
-    const throughLines = await writeThroughLines(
-      deps.db,
-      compileId,
-      person.id,
-      inferred.through_lines,
-      inferred.candidates,
-    );
+    //
+    // Skipped on a resume that already reached 'through_lines'. Nothing downstream reads
+    // its output — only the rows, already committed — so there is nothing to reconstruct.
+    if (resumedFrom !== 'through_lines') {
+      const inferred = await compileThroughLines(notes, deps.synthesiser);
+      const throughLines = await writeThroughLines(
+        deps.db,
+        compileId,
+        person.id,
+        inferred.through_lines,
+        inferred.candidates,
+      );
 
-    log(
-      inferred.readings === 0
-        ? `braintrust: ${person.slug} has too little to divide, so through-lines are ranked on breadth alone.`
-        : `braintrust: ${throughLines} through-line(s) of ${person.slug} across ${inferred.readings} readings; ` +
-          `${inferred.dropped_single_reading} appeared in only one.`,
-    );
+      log(
+        inferred.readings === 0
+          ? `braintrust: ${person.slug} has too little to divide, so through-lines are ranked on breadth alone.`
+          : `braintrust: ${throughLines} through-line(s) of ${person.slug} across ${inferred.readings} readings; ` +
+            `${inferred.dropped_single_reading} appeared in only one.`,
+      );
+
+      await writeResumeMarker(
+        deps.db,
+        person.id,
+        compileId,
+        version,
+        'through_lines',
+        serializePositionSet(grouped),
+      );
+    }
 
     // The growth of a Corpus, visible before it becomes a failure. Positions are rows
     // rather than a prose layer, so this line is the only place an operator can watch a
@@ -385,6 +461,9 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     const verdict = checkCompile(await gateFacts(deps.db, person.id, compileId));
     if (!verdict.passed) {
       await rejectCompile(deps.db, compileId, verdict.reason!);
+      // Every stage a marker could point at has already run — rejected or not, there is
+      // nothing left downstream of this compile_id to resume into.
+      await clearResumeMarker(deps.db, person.id);
       return { kind: 'rejected', reason: verdict.reason! };
     }
 
@@ -461,6 +540,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       words_retrieved: coverage.evidence.words_retrieved,
       ...(coverage.evidence.window ? { window: coverage.evidence.window } : {}),
     });
+    await clearResumeMarker(deps.db, person.id);
 
     return {
       kind: 'compiled',
@@ -468,6 +548,7 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       items_measured: items.length,
       positions: grouped.positions.length,
       revisions,
+      ...(resumedFrom ? { resumed_from: resumedFrom } : {}),
     };
   } catch (error) {
     // The rows stay for inspection and the previous Persona is untouched — it was never

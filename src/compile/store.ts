@@ -775,11 +775,19 @@ export type WritableLayer = {
   evidence: unknown;
 };
 
+/**
+ * Upsert rather than insert. Voice and Coverage are free and rewritten on every Compile,
+ * including a resumed one where they already exist under the `compile_id` a marker is
+ * continuing — the unique `(compile_id, layer)` index would refuse a plain insert there.
+ */
 export async function writeLayer(db: Db, compileId: string, layer: WritableLayer): Promise<void> {
   await db.query(
     `insert into braintrust_persona_layers
        (compile_id, layer, basis, descriptive_md, generative_md, evidence)
-     values ($1, $2, $3, $4, $5, $6::jsonb)`,
+     values ($1, $2, $3, $4, $5, $6::jsonb)
+     on conflict (compile_id, layer) do update
+       set basis = excluded.basis, descriptive_md = excluded.descriptive_md,
+           generative_md = excluded.generative_md, evidence = excluded.evidence`,
     [
       compileId,
       layer.layer,
@@ -789,6 +797,133 @@ export async function writeLayer(db: Db, compileId: string, layer: WritableLayer
       JSON.stringify(layer.evidence),
     ],
   );
+}
+
+/** habits < positions < through_lines: any later stage implies every earlier one is done. */
+export type CompileStage = 'habits' | 'positions' | 'through_lines';
+
+export type CompileResumeMarker = {
+  compile_id: string;
+  stage: CompileStage;
+  payload: unknown;
+};
+
+/**
+ * How far a Compile got before it stopped, for this Person under this compiler version —
+ * or undefined for no marker, a marker left by a different version (discarded on read,
+ * since a resume carrying stale assumptions across a version change is worse than a fresh
+ * rebuild), or a database that cannot answer this query at all.
+ *
+ * **Fails open.** `braintrust_compile_resumes` is applied by hand and can postdate the
+ * code that reads it — see the table's own comment in schema.sql. A database error here
+ * is read as "no marker", the same as if the table had never existed, so a Compile falls
+ * back to exactly what it does with no resume machinery at all rather than throwing.
+ */
+export async function resumeMarkerFor(
+  db: Db,
+  personId: string,
+  compilerVersion: string,
+): Promise<CompileResumeMarker | undefined> {
+  try {
+    const { rows } = await db.query<{
+      compile_id: string;
+      compiler_version: string;
+      stage: CompileStage;
+      payload: unknown;
+    }>(
+      `select compile_id, compiler_version, stage, payload
+         from braintrust_compile_resumes where person_id = $1`,
+      [personId],
+    );
+
+    const row = rows[0];
+    if (!row) return undefined;
+    if (row.compiler_version !== compilerVersion) {
+      await clearResumeMarker(db, personId);
+      return undefined;
+    }
+    return { compile_id: row.compile_id, stage: row.stage, payload: row.payload };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Recorded once a stage's model calls are spent and its rows are committed, so a Compile
+ * that stops after this point has something to resume into instead of paying for them
+ * again. One row per Person — a later stage's marker simply replaces an earlier one.
+ *
+ * Never thrown: a resume marker is an optimisation over what a Compile does today, and
+ * losing one costs the next run a full rebuild — which is what happens with no marker at
+ * all — never the rebuild that just finished.
+ */
+export async function writeResumeMarker(
+  db: Db,
+  personId: string,
+  compileId: string,
+  compilerVersion: string,
+  stage: CompileStage,
+  payload: unknown,
+): Promise<void> {
+  try {
+    await db.query(
+      `insert into braintrust_compile_resumes
+         (person_id, compile_id, compiler_version, stage, payload, updated_at)
+       values ($1, $2, $3, $4, $5::jsonb, now())
+       on conflict (person_id) do update
+         set compile_id = excluded.compile_id, compiler_version = excluded.compiler_version,
+             stage = excluded.stage, payload = excluded.payload, updated_at = now()`,
+      [personId, compileId, compilerVersion, stage, JSON.stringify(payload ?? null)],
+    );
+  } catch {
+    // The table this depends on may not exist yet. See resumeMarkerFor.
+  }
+}
+
+/**
+ * A Compile that reached a terminal state — published or rejected — has nothing left to
+ * resume into: every stage a marker could point at already ran. Called from both, so a
+ * stale marker never outlives the compile_id it names.
+ */
+export async function clearResumeMarker(db: Db, personId: string): Promise<void> {
+  try {
+    await db.query(`delete from braintrust_compile_resumes where person_id = $1`, [personId]);
+  } catch {
+    // See resumeMarkerFor.
+  }
+}
+
+/**
+ * Puts a Compile a resume is continuing back to `running`, so the partial unique index
+ * still enforces one at a time. Undefined if the row is gone — the marker outlived what it
+ * pointed at (its Person was deleted, say), and the caller falls back to a fresh Compile.
+ *
+ * No status filter: the row this reopens is ordinarily `failed` (the normal path, a
+ * caught error) but may still be `running` if the process that wrote the marker was
+ * killed outright — the stale-rebuild reclaim already turns that into `failed` before
+ * this is reached, from the same caller, on an earlier line.
+ */
+export async function reopenCompile(
+  db: Db,
+  compileId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const { rows } = await db.query<{ id: string }>(
+    `update braintrust_compiles set status = 'running', finished_at = null, rejected_reason = null
+      where id = $1 and person_id = $2
+      returning id`,
+    [compileId, personId],
+  );
+  return rows[0]?.id;
+}
+
+/** The row ids `writePositions` issued in an earlier attempt, keyed the same way it returns. */
+export async function positionIdsFor(db: Db, compileId: string): Promise<Map<string, string>> {
+  const { rows } = await db.query<{ id: string; slug: string }>(
+    `select id, slug from braintrust_positions where compile_id = $1`,
+    [compileId],
+  );
+  return new Map(rows.map((row) => [row.slug, row.id]));
 }
 
 /**

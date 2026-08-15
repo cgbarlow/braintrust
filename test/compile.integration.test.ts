@@ -37,7 +37,12 @@ import { createDb, type Db, type PostgresDb, type TransactionalDb } from '../src
 import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { chunkItem } from '../src/retrieval/index.js';
 import { fakeEmbedder } from './support/embeddings.js';
-import { distinctStatement, fakeSynthesiser, idsFromDigest } from './support/synthesiser.js';
+import {
+  distinctStatement,
+  fakeSynthesiser,
+  idsFromDigest,
+  type FakeSynthesiser,
+} from './support/synthesiser.js';
 import { testDatabaseUrl as url } from './support/database.js';
 
 const GENERATION = 'test-reader@notes-1';
@@ -434,6 +439,176 @@ describe('compiling the core, against real Postgres', () => {
     );
     assert.equal(rows[0]!.status, 'failed');
     assert.match(rows[0]!.rejected_reason, /abandoned/);
+  });
+
+  describe('resuming a compile that lost a stage', () => {
+    /**
+     * The shape a real Compile losing `positions` to a timeout has: `habits` already
+     * succeeded once, `cluster` throws exactly once however many times this Corpus is
+     * compiled, and succeeds on whichever attempt comes after.
+     */
+    function synthesiserFailingPositionsOnce(): FakeSynthesiser {
+      const base = fakeSynthesiser();
+      let thrown = false;
+      return {
+        ...base,
+        async cluster(digest) {
+          if (!thrown) {
+            thrown = true;
+            throw new Error('the synthesiser went away mid-compile');
+          }
+          return base.cluster(digest);
+        },
+      };
+    }
+
+    it('keeps the output of a completed stage and does not repeat it on the next run', async () => {
+      const synthesiser = synthesiserFailingPositionsOnce();
+
+      const first = await compile({ synthesiser });
+      assert.deepEqual(first.compiled, []);
+      assert.equal(first.failed[0]!.person, 'nate');
+      assert.equal(synthesiser.calls.filter((c) => c.kind === 'habits').length, 1);
+      assert.equal(synthesiser.calls.filter((c) => c.kind === 'positions').length, 0);
+
+      const failed = await db.query<{ id: string }>(
+        `select id from braintrust_compiles where person_id = $1 and status = 'failed'`,
+        [personId],
+      );
+      const failedCompileId = failed.rows[0]!.id;
+      // The reasoning layer habits paid for survived the failure — the whole point.
+      const reasoning = await count(
+        `select count(*) from braintrust_persona_layers where compile_id = $1 and layer = 'reasoning'`,
+        [failedCompileId],
+      );
+      assert.equal(reasoning, 1);
+
+      const lines: string[] = [];
+      const second = await compile({ synthesiser, log: (line) => lines.push(line) });
+
+      assert.deepEqual(second.compiled, ['nate']);
+      // habits was not asked again; positions ran for the first time, on retry.
+      assert.equal(synthesiser.calls.filter((c) => c.kind === 'habits').length, 1);
+      assert.equal(synthesiser.calls.filter((c) => c.kind === 'positions').length, 1);
+      // The resumed compile is the same row the failed attempt opened, promoted in place —
+      // not a second one duplicating the habits it already committed.
+      assert.equal(await currentCompileId(), failedCompileId);
+      // The run summary says the saving happened, rather than reading like an ordinary
+      // rebuild that happened to be cheap.
+      // The marker names the last stage that *completed* — habits — not the one the
+      // resumed run is about to spend a model call on.
+      assert.ok(lines.some((line) => /resumed after an earlier attempt reached habits/.test(line)));
+      assert.ok(lines.some((line) => /so habits were not repeated/.test(line)));
+    });
+
+    it('produces the same positions and citations an uninterrupted compile would', async () => {
+      const synthesiser = synthesiserFailingPositionsOnce();
+      await compile({ synthesiser });
+      await compile({ synthesiser });
+
+      const compileId = (await currentCompileId())!;
+      const positions = await db.query<{ slug: string }>(
+        `select slug from braintrust_positions where compile_id = $1 order by slug`,
+        [compileId],
+      );
+      // fakeSynthesiser's default cluster() is a pure function of the claims in the
+      // digest — the same two groupings a single uninterrupted compile of this seed
+      // produces every time.
+      assert.deepEqual(
+        positions.rows.map((row) => row.slug),
+        ['judgement-is-the-scarce-thing', 'the-constraint-is-not-speed'],
+      );
+
+      for (const position of positions.rows) {
+        const citations = await count(
+          `select count(*) from braintrust_position_citations pc
+             join braintrust_positions p on p.id = pc.position_id
+            where p.compile_id = $1 and p.slug = $2`,
+          [compileId, position.slug],
+        );
+        assert.ok(citations > 0, `${position.slug} should cite something`);
+      }
+    });
+
+    it('discards a marker from a different compiler version rather than resuming from it', async () => {
+      // A compile row to host the marker, deliberately not the one this test's own
+      // compile() will produce — so nothing about it is touched except by the discard
+      // this test is proving.
+      const stray = await db.query<{ id: string }>(
+        `insert into braintrust_compiles (person_id, compiler_version, status) values ($1, 'x', 'failed') returning id`,
+        [personId],
+      );
+      await db.query(
+        `insert into braintrust_compile_resumes (person_id, compile_id, compiler_version, stage, payload)
+         values ($1, $2, 'a-version-nobody-runs', 'through_lines', null)`,
+        [personId, stray.rows[0]!.id],
+      );
+
+      const synthesiser = fakeSynthesiser();
+      const report = await compile({ synthesiser });
+
+      assert.deepEqual(report.compiled, ['nate']);
+      // Resuming from 'through_lines' would skip habits entirely. It ran, so this started
+      // fresh rather than trusting a marker left by a compiler version nothing here is.
+      assert.equal(synthesiser.calls.filter((c) => c.kind === 'habits').length, 1);
+      assert.equal(
+        await count('select count(*) from braintrust_compile_resumes where person_id = $1', [personId]),
+        0,
+      );
+    });
+
+    it('resumes a compile the stale-rebuild reclaim just took over, rather than starting fresh', async () => {
+      // A "process" that chose habits, wrote it, and was killed outright before it could
+      // fail cleanly — so the row is still 'running', six hours later, exactly like the
+      // stale-reclaim test above, but this one left a resume marker behind it too.
+      const version = compilerVersion({ revisions: false });
+      const stale = await db.query<{ id: string }>(
+        `insert into braintrust_compiles (person_id, compiler_version, status, started_at)
+         values ($1, $2, 'running', now() - interval '1 millisecond' * $3) returning id`,
+        [personId, version, STALE_COMPILE_MS + 60_000],
+      );
+      await db.query(
+        `insert into braintrust_persona_layers (compile_id, layer, basis, descriptive_md, evidence)
+         values ($1, 'reasoning', 'inferred',
+                 '**Inferred across 1 item — no single item asserts this.**' || chr(10) || chr(10) ||
+                 'Opens on the mistaken instinct, then closes on a procedure.',
+                 '{"entries":[{"label":"opens-on-the-mistaken-instinct","items":["post-0"],"items_traced":1}]}'::jsonb)`,
+        [stale.rows[0]!.id],
+      );
+      await db.query(
+        `insert into braintrust_compile_resumes (person_id, compile_id, compiler_version, stage, payload)
+         values ($1, $2, $3, 'habits', null)`,
+        [personId, stale.rows[0]!.id, version],
+      );
+
+      const synthesiser = fakeSynthesiser();
+      const report = await compile({ synthesiser });
+
+      assert.deepEqual(report.compiled, ['nate']);
+      assert.equal(synthesiser.calls.filter((c) => c.kind === 'habits').length, 0);
+      // Reclaimed to 'failed' by the stale check and then straight back to 'running' by
+      // the resume, on the way to the same 'current' row — the marker was not stranded
+      // by a reclaim that happened around it.
+      assert.equal(await currentCompileId(), stale.rows[0]!.id);
+    });
+
+    it('fails open: with the table absent, a compile behaves exactly as it does today', async () => {
+      await db.query('drop table braintrust_compile_resumes');
+      try {
+        const synthesiser = synthesiserFailingPositionsOnce();
+
+        const first = await compile({ synthesiser });
+        assert.deepEqual(first.compiled, []);
+
+        const second = await compile({ synthesiser });
+        assert.deepEqual(second.compiled, ['nate']);
+        // No marker was ever written, so nothing could be skipped: habits paid for
+        // twice, exactly as every Compile did before this table existed.
+        assert.equal(synthesiser.calls.filter((c) => c.kind === 'habits').length, 2);
+      } finally {
+        await db.query(await readFile(new URL('../schema.sql', import.meta.url), 'utf8'));
+      }
+    });
   });
 
   it('waits for an empty backlog rather than measuring half a corpus', async () => {

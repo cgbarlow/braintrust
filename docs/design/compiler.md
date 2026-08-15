@@ -771,6 +771,18 @@ Tuesday becoming a permanently stale Persona. A `running` Compile older than six
 as `failed` by the next run and taken over. **The daily clock is the recovery mechanism**, so a crash costs a
 day rather than a Persona.
 
+**Taking a Compile over is not starting it over.** `braintrust_compile_resumes` records the last of
+`habits` / `positions` / `through_lines` to finish and commit, one row per Person, discarded on any
+`compiler_version` mismatch. The next attempt at that Person reopens the same `compile_id` — the same
+`running` row the six-hour reclaim above just took over, if that is how it died — and skips straight to
+the stage still owed, rather than re-asking a model for work already paid for and already on the rows. A
+Position's citation carries a claim's verbatim quote, never the paraphrase Revisions compares statements
+on, so a marker past `positions` carries that paraphrase in its own payload rather than trying to
+reconstruct it from rows that were never asked to hold it. **This table is applied by hand like every
+other,** so every read and write of it fails open: absent, stale, or unreadable, a Compile behaves exactly
+as it did before this existed — a crash still costs a day, just not the model calls the day before it
+already bought.
+
 **"Non-empty" for an inferred layer means it lists something, not that it has prose.** The likeliest way this
 gate fires in practice is a synthesis that came back with nothing usable — and the layer that produces is not
 blank. It is a marker, a sentence saying so, and no entries. A check on prose would pass it. So an inferred
