@@ -139,7 +139,20 @@ describe('the coverage layer', () => {
     // absence in somebody's published work is not a thing it can see from here.
     assert.match(descriptive_md, /ran into trouble getting the captions for 3 videos/);
     assert.match(descriptive_md, /it did not get the words/);
-    assert.doesNotMatch(descriptive_md, /have no caption|fact about the video/);
+    assert.doesNotMatch(descriptive_md, /fact about the video/);
+
+    // The per-source tally is part of this layer and says the same thing in five
+    // characters. It shipped reading `3 no captions` four lines under the sentence
+    // above, and a reader takes the short one — so the tally names what braintrust
+    // did, like every other entry beside it.
+    assert.match(descriptive_md, /3 captions not retrieved/);
+
+    // **The guard is on the whole layer, not on the prose.** The assertion this
+    // replaces forbade only the long phrasings — `have no caption`, `no captions on`
+    // — so the tally sailed through it while making the identical claim. Every honest
+    // way of putting this is about braintrust's attempt, and none of them needs the
+    // words below, which is what makes a blanket ban the right shape here.
+    assert.doesNotMatch(descriptive_md, /no captions?\b/i);
   });
 
   it('reports items not yet read as work outstanding rather than as a gap', () => {
