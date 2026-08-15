@@ -204,6 +204,67 @@ export function assertionById(id: string): AssertionDefinition | undefined {
 }
 
 /**
+ * A fault name that is **not** an interrogation assertion.
+ *
+ * The registry above is everything the schedule asks. These are the other names braintrust
+ * can open a fault under — a tool, or a failure found on the ingest path — each carrying the
+ * same two facts an assertion carries: what passing guarantees, and what it withdraws. A fault
+ * may only open under a name this module knows, so a fault never carries text the registry did
+ * not write. See {@link faultById}.
+ *
+ * `source_consecutive_failures` is matched by prefix: the fault name embeds the source id
+ * (`source_consecutive_failures:<id>`), because a fault is about one Source's streak and must
+ * not be confused with another's. Everything else is an exact name.
+ */
+export type RegisteredFault = {
+  id: string;
+  guarantees: string;
+  withdraws: string[];
+};
+
+export const REGISTERED_FAULTS: RegisteredFault[] = [
+  {
+    id: 'verify_sources',
+    guarantees:
+      'a listener who asks where a claim came from is answered by the record: every sentence ' +
+      'a persona wrote that names a source is in that source, the record’s own field labels ' +
+      'are never counted as claims, and a Position is verified as what a Position is',
+    withdraws: ['reasoning'],
+  },
+  {
+    id: 'persona_stuck_behind_compiler',
+    guarantees:
+      'a persona is rebuilt within a bounded number of cycles of the rules being assembled, ' +
+      'so nobody is served a persona that is known to be behind',
+    withdraws: [],
+  },
+  {
+    id: 'source_consecutive_failures',
+    guarantees:
+      'a Source that keeps refusing braintrust is counted and, at the threshold, blocked — ' +
+      'the rest of the corpus is unaffected and the block is unset by the first success',
+    withdraws: [],
+  },
+];
+
+/**
+ * What any fault name means: the assertion that carries it, or a registered fault.
+ *
+ * **This is the only place that decides what a fault's guarantee and withdrawal list are.**
+ * The filing path and the read path resolve through this function and nowhere else, so a
+ * fault can never render "unknown — this assertion no longer exists in the code": a name it
+ * does not know is refused at the moment a fault would open, not explained away at filing
+ * time.
+ */
+export function faultById(id: string): RegisteredFault | undefined {
+  const assertion = assertionById(id);
+  if (assertion) return { id: assertion.id, guarantees: assertion.guarantees, withdraws: assertion.withdraws };
+  return REGISTERED_FAULTS.find(
+    (fault) => id === fault.id || id.startsWith(`${fault.id}:`),
+  );
+}
+
+/**
  * **The central guarantee of the whole design, and the only one that has to be measured.**
  *
  * Everything else braintrust does rests on this: the free layer carries no conclusions, so a

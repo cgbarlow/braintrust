@@ -24,8 +24,10 @@ import type { Db } from '../db.js';
 import { nothingMatched, NEAREST_ON_EMPTY, RETRIEVAL_FLOOR, type UnreadItem } from '../find.js';
 import { loadPersona } from '../personas.js';
 import { NOT_READ } from '../recent.js';
+import { BraintrustError } from '../errors.js';
 import {
   ASSERTIONS,
+  faultById,
   type AssertionDefinition,
   type InterrogationSubject,
   type Interrogator,
@@ -49,10 +51,18 @@ import {
   servingFleet,
 } from './store.js';
 
-export { ASSERTIONS, assertionById, assertionIds, INTERROGATION_VERSION } from './assertions.js';
+export {
+  ASSERTIONS,
+  assertionById,
+  assertionIds,
+  faultById,
+  INTERROGATION_VERSION,
+  REGISTERED_FAULTS,
+} from './assertions.js';
 export type {
   AssertionDefinition,
   AssertionScope,
+  RegisteredFault,
   Interrogation,
   Interrogator,
   InterrogationSubject,
@@ -359,19 +369,28 @@ async function tell(
   const faults = await openFaults(deps.db);
 
   for (const filing of faultsToFile(faults, now)) {
-    const assertion = (deps.assertions ?? ASSERTIONS).find(
-      (one) => one.id === filing.fault.assertion,
-    );
+    // The registry is the only place that decides what a fault means. A fault whose name the
+    // registry does not know should never have been opened — it would have been refused at
+    // `openFault` — so reaching one here is a bug in the ledger to fail loudly on rather
+    // than an assertion to file with "unknown" in the place of its guarantee.
+    const registered = faultById(filing.fault.assertion);
+    if (!registered) {
+      throw new BraintrustError(
+        `braintrust cannot file a fault for an assertion the registry does not know ` +
+          `(${filing.fault.assertion}). It should not have been possible to open it; see ` +
+          `openFault.`,
+      );
+    }
     const input = {
       assertion: filing.fault.assertion,
-      guarantees: assertion?.guarantees ?? 'unknown — this assertion no longer exists in the code',
+      guarantees: registered.guarantees,
       person: filing.fault.person,
       subject: filing.fault.person ?? 'the fleet',
       detail: filing.fault.detail,
       compilerVersion,
       interrogator: deps.interrogator.generation,
       firstFailedAt: filing.fault.first_failed_at,
-      withdraws: assertion?.withdraws ?? [],
+      withdraws: registered.withdraws,
     };
 
     const issue =

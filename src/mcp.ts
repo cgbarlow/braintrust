@@ -486,16 +486,29 @@ export function buildServer({
         'answers. braintrust checks each sentence the persona wrote against the item ' +
         'the persona claimed for it, and returns the record in its own words.\n\n' +
         'Every sentence comes back **sourced**, **unsourced**, or **never claimed**. ' +
-        '"sourced" means the sentence is in the item body. "unsourced" means the item ' +
-        'exists but the sentence is not in it. "never claimed" means the persona offered ' +
-        'no source for that sentence, or the item it named does not exist.\n\n' +
+        '"sourced" means the sentence is in the item (or is a Position braintrust holds ' +
+        'for the person). "unsourced" means the item exists but the sentence is not in ' +
+        'it. "never claimed" means the persona offered no source for that sentence, or ' +
+        'the source named resolves to nothing braintrust can check.\n\n' +
+        '**Asked to hand over the record, a persona hands over the record — and that ' +
+        'passes.** A handover is lines like `*Title:* "…"`, `*URL:* https://…`, ' +
+        '`*Published at:* 2026-07-23` and `*Quote:* "…"`. The record\'s own field labels ' +
+        'are never verified as quotations: each line is checked against the item\'s own ' +
+        'field, and a quotation submitted with its label attached is verified on the ' +
+        'quotation, not on the label.\n\n' +
+        '**A Position is checked against what a Position is.** A Position is synthesised ' +
+        'across many items, so no single item contains it — a sentence that is one of the ' +
+        'person\'s Positions comes back sourced with a note saying so, and a citation that ' +
+        'resolves to nothing is refused as unanswerable, never reported as the persona ' +
+        'naming a source that does not exist.\n\n' +
         'Send the persona\'s **whole reply** plus — per sentence — the source the ' +
         'persona claimed for it. braintrust does not select which sentences to check: ' +
         'the sentence most likely to be invented is the one least likely to be ' +
         'volunteered, so letting the model choose what to submit hands the selection ' +
         'to the thing being checked.\n\n' +
-        '**No model call, no judge, no opinion.** Verification is a single `indexOf` ' +
-        'against the stored item body — the same objective check the eval suite uses.\n\n' +
+        '**No model call, no judge, no opinion.** Verification is an `indexOf` against the ' +
+        'stored item body after whitespace and case are normalised — the same objective ' +
+        'check the eval suite uses.\n\n' +
         '**A failed check opens a deduped issue and the persona keeps serving unchanged.** ' +
         'The fault is the compiler\'s, not the persona\'s, and one live call to a ' +
         'non-reproducible synthesiser is evidence rather than proof.\n\n' +

@@ -980,6 +980,15 @@ version against one subject rather than once per Persona in the fleet — *whoev
 stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The two
 persona-scoped assertions run per compile: one is a fact about a person, and the other hunts unknowns.
 
+**A fault may only open under a name this registry knows.** The six assertions above are everything the
+interrogation asks, but not every fault braintrust opens is an interrogation assertion: the `verify_sources`
+tool, a persona stuck behind the compiler, and a source's consecutive failures all open faults. They carry
+`REGISTERED_FAULTS` entries in the same module — each with the same two facts an assertion carries, what
+passing guarantees and what it withdraws — so a Fault report never renders "unknown — this assertion no
+longer exists in the code", and a name the registry does not know is **refused at `openFault`**, loudly, the
+moment it would be created, rather than explained away when the issue is filed
+([#277](https://github.com/cgbarlow/braintrust/issues/277)).
+
 **The schedule is compiler change, a weekly sweep, and one fault at a time.**
 ([#276](https://github.com/cgbarlow/braintrust/issues/276)) The version arm asks whether braintrust's own
 change broke something; the sweep exists because the synthesiser is a third party that moves with no version

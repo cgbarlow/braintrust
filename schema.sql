@@ -479,7 +479,10 @@ create table if not exists braintrust_faults (
 comment on table braintrust_faults is
   'One row per live fault. The row is the deduplication: a fault already open '
   'opens no second issue, however many runs re-observe it. Deleted when the '
-  'assertion passes — cleared by a pass, never by an issue being closed.';
+  'assertion passes — cleared by a pass, never by an issue being closed. '
+  'assertion is a name the assertion registry knows; a fault under any other '
+  'name is refused at openFault, so a report never has to explain its own '
+  'missing information.';
 
 comment on column braintrust_faults.first_failed_at is
   'Never moved once set. It is the clock the one-day limit runs on, and a fault '
