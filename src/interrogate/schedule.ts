@@ -65,6 +65,40 @@ export type Due = {
 /** One serving Persona, and the two facts that decide whether it is due. */
 export type FleetSubject = { person: string; compiled_at: string | null };
 
+/** One (assertion, subject) pair the schedule can decide about, before a clock speaks. */
+type Candidate = {
+  assertion: AssertionDefinition;
+  person: string | null;
+  subject: string;
+  compiledAt: string | null;
+};
+
+function candidates(input: {
+  fleet: FleetSubject[];
+  hardest: string | null;
+  assertions?: AssertionDefinition[];
+}): Candidate[] {
+  const assertions = input.assertions ?? ASSERTIONS;
+  const list: Candidate[] = [];
+
+  for (const assertion of assertions) {
+    const subjects =
+      assertion.scope === 'persona'
+        ? input.fleet.map((member) => ({
+            person: member.person,
+            subject: member.person,
+            compiledAt: member.compiled_at,
+          }))
+        : input.hardest === null
+          ? []
+          : [{ person: null, subject: input.hardest, compiledAt: null }];
+
+    for (const one of subjects) list.push({ assertion, ...one });
+  }
+
+  return list;
+}
+
 /**
  * What is due now.
  *
@@ -105,35 +139,88 @@ export function dueAssertions(input: {
   /** The open Faults, which are the population asked again now. Defaults to none. */
   faults?: Fault[];
 }): Due[] {
-  const assertions = input.assertions ?? ASSERTIONS;
-  const due: Due[] = [];
   const open = new Set((input.faults ?? []).map((fault) => faultKey(fault.assertion, fault.person)));
+  const due: Due[] = [];
 
-  for (const assertion of assertions) {
-    const subjects: { person: string | null; subject: string; compiledAt: string | null }[] =
-      assertion.scope === 'persona'
-        ? input.fleet.map((member) => ({
-            person: member.person,
-            subject: member.person,
-            compiledAt: member.compiled_at,
-          }))
-        : input.hardest === null
-          ? []
-          : [{ person: null, subject: input.hardest, compiledAt: null }];
-
-    for (const { person, subject, compiledAt } of subjects) {
-      const why = whyDue(
-        input.last.find((run) => run.assertion === assertion.id && run.person === person),
-        input.compilerVersion,
-        compiledAt,
-        input.now,
-        open.has(faultKey(assertion.id, person)),
-      );
-      if (why) due.push({ assertion, person, subject, why });
-    }
+  for (const { assertion, person, subject, compiledAt } of candidates(input)) {
+    const why = whyDue(
+      input.last.find((run) => run.assertion === assertion.id && run.person === person),
+      input.compilerVersion,
+      compiledAt,
+      input.now,
+      open.has(faultKey(assertion.id, person)),
+    );
+    if (why) due.push({ assertion, person, subject, why });
   }
 
   return due;
+}
+
+/**
+ * Why nothing was due, when the schedule turned every assertion down.
+ *
+ * **The summary needs the reason, not just the count.** "Nothing was due" and "the job did
+ * not reach the interrogation" are different facts that read the same on a silent line, and
+ * the schedule is the only place that knows which clock still had time on it. So the reason
+ * is rendered here, next to the clocks, rather than guessed at in the log.
+ *
+ * `considered` is how many (assertion, subject) pairs the schedule held back — the whole
+ * population, the way the cycle's summary counts every Source rather than only the polled.
+ * When a fleet has nobody in it there is nothing to interrogate at all, and that is itself
+ * the reason.
+ */
+export type NothingDue = {
+  considered: number;
+  why: string;
+};
+
+/** The schedule's explanation for why nothing was due, or null when something was. */
+export function nothingWasDue(input: {
+  fleet: FleetSubject[];
+  hardest: string | null;
+  last: LastRun[];
+  compilerVersion: string;
+  now: number;
+  assertions?: AssertionDefinition[];
+  faults?: Fault[];
+}): NothingDue | null {
+  const open = new Set((input.faults ?? []).map((fault) => faultKey(fault.assertion, fault.person)));
+  const list = candidates(input);
+
+  for (const { assertion, person, compiledAt } of list) {
+    const due = whyDue(
+      input.last.find((run) => run.assertion === assertion.id && run.person === person),
+      input.compilerVersion,
+      compiledAt,
+      input.now,
+      open.has(faultKey(assertion.id, person)),
+    );
+    // Something is due, so this run is not the quiet one and needs no quiet line.
+    if (due !== null) return null;
+  }
+
+  if (list.length === 0) {
+    return { considered: 0, why: 'no persona is serving, so there was nothing to ask' };
+  }
+
+  // Every candidate was asked on this compiler version, inside the weekly window, after its
+  // last rebuild, with no fault open — the conjunction `whyDue` returns null for. Each clause
+  // holds for every candidate, because any candidate it failed for would be due.
+  //
+  // **The fault clause is about the ledger, not the candidates.** A fault keyed to nobody in
+  // the fleet (a persona that stopped serving, or an assertion the registry no longer asks)
+  // never clears — it is never re-asked — so it can sit in the ledger while every candidate
+  // still has none. Claiming "no fault is open" then would be a false sentence in the run
+  // whose whole purpose is to say the truthful one, so say what is actually true.
+  const faultClause =
+    open.size === 0
+      ? 'no fault is open'
+      : 'no fault is open on anyone being asked';
+  return {
+    considered: list.length,
+    why: 'the weekly sweep has not come round, no compiler version moved, ' +
+      `nothing was recompiled, and ${faultClause}`,
+  };
 }
 
 function whyDue(

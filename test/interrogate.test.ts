@@ -26,6 +26,7 @@ import {
   ESCALATES_AFTER_MS,
   faultById,
   faultsToFile,
+  nothingWasDue,
   REGISTERED_FAULTS,
   runInterrogation,
   SILENCE_REPORTS_AFTER_MS,
@@ -1061,6 +1062,82 @@ describe('the schedule', () => {
   });
 });
 
+describe('why nothing is due', () => {
+  const COMPILED = '2026-08-01T00:00:00.000Z';
+  const fleet = [
+    { person: 'nate-b-jones', compiled_at: COMPILED },
+    { person: 'chris-barlow', compiled_at: COMPILED },
+  ];
+  const slugs = fleet.map((one) => one.person);
+  /** Everything just asked, a minute ago, on this compiler version. */
+  const justAsked: LastRun[] = dueAssertions({
+    fleet,
+    hardest: slugs[0]!,
+    last: [],
+    compilerVersion: 'v1',
+    now: NOW,
+  }).map((one): LastRun => ({
+    assertion: one.assertion.id,
+    person: one.person,
+    compiler_version: 'v1',
+    ran_at: new Date(NOW - 60_000).toISOString(),
+  }));
+
+  it('names the clocks that held everything back, and the size of the population', () => {
+    const nothing = nothingWasDue({ fleet, hardest: slugs[0]!, last: justAsked, compilerVersion: 'v1', now: NOW });
+
+    assert.equal(nothing!.considered, 8);
+    assert.match(nothing!.why, /weekly sweep has not come round/);
+    assert.match(nothing!.why, /no compiler version moved/);
+    assert.match(nothing!.why, /nothing was recompiled/);
+    assert.match(nothing!.why, /no fault is open/);
+  });
+
+  it('has nothing to say when something is due', () => {
+    // A minute-old ask on an older compiler is not nothing-due — the run is about to ask.
+    const moved = justAsked.map((one): LastRun => ({ ...one, compiler_version: 'v0' }));
+    assert.equal(nothingWasDue({ fleet, hardest: slugs[0]!, last: moved, compilerVersion: 'v1', now: NOW }), null);
+
+    // Nor is an open fault — it is the strongest reason to ask, whatever the clocks say.
+    const openFault = justAsked;
+    assert.equal(
+      nothingWasDue({
+        fleet,
+        hardest: slugs[0]!,
+        last: openFault,
+        faults: [{ ...fault({ assertion: DISCLOSURE_ASSERTION }) }],
+        compilerVersion: 'v1',
+        now: NOW,
+      }),
+      null,
+    );
+  });
+
+  it('says an empty fleet is the reason, rather than a clock', () => {
+    const nothing = nothingWasDue({ fleet: [], hardest: null, last: [], compilerVersion: 'v1', now: NOW });
+
+    assert.equal(nothing!.considered, 0);
+    assert.match(nothing!.why, /no persona is serving/);
+  });
+
+  it('does not claim a clean ledger when a fault lingers for someone not served', () => {
+    // A fault on a departed persona never clears — it is never re-asked — so it can sit in
+    // the ledger while nothing is due. The sentence must not say "no fault is open".
+    const nothing = nothingWasDue({
+      fleet,
+      hardest: slugs[0]!,
+      last: justAsked,
+      faults: [{ ...fault({ assertion: FAKING_ASSERTION, person: 'someone-departed' }) }],
+      compilerVersion: 'v1',
+      now: NOW,
+    });
+
+    assert.equal(nothing!.considered, 8);
+    assert.match(nothing!.why, /no fault is open on anyone being asked/);
+    assert.doesNotMatch(nothing!.why, /and no fault is open\./);
+  });
+});
+
 describe('an assertion with an open fault is due on the next run', () => {
   const COMPILED = '2026-08-01T00:00:00.000Z';
   const fleet = [
@@ -1166,6 +1243,25 @@ describe('an assertion with an open fault is due on the next run', () => {
       [[RECEIPT_ID, 'nate-b-jones', 'fault_open', true]],
     );
     assert.equal(db.faults.size, 0);
+    // Something was asked, so there is no quiet-line reason to carry.
+    assert.equal(report.not_due, null);
+  });
+
+  it('carries the reason a run asked nothing at all', async () => {
+    const db = interrogatingDb({ fleet: seededFleet, last: justAsked });
+
+    const report = await runInterrogation({
+      db,
+      interrogator: stubInterrogator(),
+      issues: recordingFiler(),
+      compilerVersion: 'v1',
+      now: NOW,
+      log: () => {},
+    });
+
+    assert.deepEqual(report.asked, []);
+    assert.equal(report.not_due!.considered, 8);
+    assert.match(report.not_due!.why, /weekly sweep has not come round/);
   });
 
   it('runs the whole loop: asking it and failing again opens no second issue and restarts no clock', async () => {
@@ -1750,6 +1846,7 @@ describe('the line the job logs', () => {
       filed: [],
       silenced: [DISCLOSURE_ASSERTION],
       outage: { assertions: [DISCLOSURE_ASSERTION], issue: 'https://example.invalid/issues/1' },
+      not_due: null,
     });
 
     assert.match(line!, /1 could not be asked/);
@@ -1772,11 +1869,49 @@ describe('the line the job logs', () => {
       filed: [],
       silenced: [],
       outage: null,
+      not_due: null,
     });
 
     assert.match(line!, /3 assertion\(s\)/);
     assert.match(line!, /2 because a fault is open/);
     assert.match(line!, /1 on the weekly sweep/);
+  });
+
+  it('says nothing was due, and why, when the schedule held every assertion back', () => {
+    const line = summariseInterrogation({
+      compiler_version: 'compiler-1',
+      asked: [],
+      failing: [],
+      cleared: [],
+      filed: [],
+      silenced: [],
+      outage: null,
+      not_due: {
+        considered: 8,
+        why: 'the weekly sweep has not come round, no compiler version moved, nothing was recompiled, and no fault is open',
+      },
+    });
+
+    assert.match(line!, /nothing was due/);
+    assert.match(line!, /0 of 8 assertions were asked/);
+    assert.match(line!, /weekly sweep has not come round/);
+    assert.match(line!, /no fault is open/);
+  });
+
+  it('says an empty fleet is why, in the same line', () => {
+    const line = summariseInterrogation({
+      compiler_version: 'compiler-1',
+      asked: [],
+      failing: [],
+      cleared: [],
+      filed: [],
+      silenced: [],
+      outage: null,
+      not_due: { considered: 0, why: 'no persona is serving, so there was nothing to ask' },
+    });
+
+    assert.match(line!, /nothing was due/);
+    assert.match(line!, /no persona is serving/);
   });
 });
 
