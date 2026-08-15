@@ -980,10 +980,18 @@ version against one subject rather than once per Persona in the fleet — *whoev
 stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The two
 persona-scoped assertions run per compile: one is a fact about a person, and the other hunts unknowns.
 
-**The schedule is compiler change plus a weekly sweep.** The version arm asks whether braintrust's own change
-broke something; the sweep exists because the synthesiser is a third party that moves with no version of
-braintrust's changing at all. The persona-scoped assertion has a **third trigger the other three do not: a
+**The schedule is compiler change, a weekly sweep, and one fault at a time.**
+([#276](https://github.com/cgbarlow/braintrust/issues/276)) The version arm asks whether braintrust's own
+change broke something; the sweep exists because the synthesiser is a third party that moves with no version
+of braintrust's changing at all. The persona-scoped assertion has a **third trigger the other three do not: a
 rebuild** — it is judged against the claims braintrust holds for somebody, and a Compile changes those.
+The fourth trigger belongs to **any assertion with an open Fault**: it is re-asked on the next run, whatever
+the sweep clock says. Shipping a fix is none of the other arms — the `reasoning` layer behind the
+`the_persona_can_source_its_claims` faults from 2026-08-11 stayed withdrawn for a week because nothing but
+the sweep could re-ask the assertion that failed — so the population currently costing a reader something is
+asked again the run after the fix lands, and a pass clears the Fault and restores the layer with no rebuild.
+The extra cost is bounded by what is broken: it is zero when nothing is failing, and it reaches a maintainer
+the day the assertion gets its answer instead of at the end of the week.
 
 ### Receipt checking: the assertion that hunts unknowns
 
@@ -1079,7 +1087,9 @@ many runs re-observe it, and it clears on a **pass** rather than on the issue be
 **A day is the outer limit**, measured in time rather than attempts because a job that stops running stops
 counting attempts. Past it, the affected layer goes **absent** from what is served — silently, exactly like a
 layer withheld for a rules change, because there is no second kind of silence — and a second issue opens. A
-passing interrogation restores it with no rebuild.
+passing interrogation restores it with no rebuild — and because the assertion is **re-asked on the next run
+while its Fault is open** ([#276](https://github.com/cgbarlow/braintrust/issues/276)), a fix ships and the
+layer comes back within a day, and the answer to *did the fix work* is a day old rather than a week old.
 
 **The receipt-checking assertion costs roughly twenty model calls a week for the whole fleet.** One call per
 persona per sweep to ask the question; the verification path has no model call in it. This is the same

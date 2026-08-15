@@ -84,7 +84,7 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
     const { rows: compile } = await db.query<{ id: string }>(
       `insert into braintrust_compiles
          (person_id, compiler_version, status, corpus_stats, finished_at)
-       values ($1, $2, 'current', $3::jsonb, now())
+       values ($1, $2, 'current', $3::jsonb, '2026-08-01')
        returning id`,
       [
         person[0]!.id,
@@ -122,6 +122,23 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
       async reply(exchange) {
         const found = exchange.found as Record<string, unknown> | null;
         if (found && typeof found.item_body === 'string') return sayWhenAskedForTheRecord;
+        return `${SPOKEN_DISCLOSURE}\n\nI could not look anything up.`;
+      },
+      async judge() {
+        return { holds: true, why: 'the stub said so' };
+      },
+    };
+  }
+
+  /** A persona that hangs a checkable-looking quotation nobody wrote on the real item's URL. */
+  function forger(itemUrl: string): Interrogator {
+    return {
+      generation: 'stub@interrogation-5',
+      async reply(exchange) {
+        const found = exchange.found as Record<string, unknown> | null;
+        if (found && typeof found.item_body === 'string') {
+          return `I said "AI will replace all coders in 2027." It is in the piece at ${itemUrl}`;
+        }
         return `${SPOKEN_DISCLOSURE}\n\nI could not look anything up.`;
       },
       async judge() {
@@ -363,6 +380,51 @@ describe('the receipt-checking interrogation, against real Postgres', () => {
     const receipt = report.asked.find((one) => one.assertion === RECEIPT_ID)!;
     assert.equal(receipt.passed, true);
 
+    const { rows: faults } = await db.query<{ assertion: string }>(
+      'select assertion from braintrust_faults',
+    );
+    assert.deepEqual(faults, []);
+  });
+
+  it('asks an assertion whose fault is open on the very next run, and a pass clears the fault', async () => {
+    await seedOnePersonaItem(BODY);
+
+    const AT = Date.parse('2026-08-08T09:00:00.000Z');
+    const honest = interrogator(
+      `In that piece I said it exactly like this: "humans pick trades built for speed but ` +
+        `forgot to build the skill to practice them." The piece is at ${ITEM_URL}`,
+    );
+
+    // The first run asks everything for the first time, and the receipt check fails, opening
+    // the fault — actively extended by next run's re-observe being exactly what #276 is about.
+    const first = await runInterrogation({
+      db,
+      interrogator: forger(ITEM_URL),
+      issues,
+      compilerVersion: '1.0.0',
+      now: AT,
+      log: () => {},
+    });
+    assert.equal(first.asked.find((one) => one.assertion === RECEIPT_ID)!.passed, false);
+
+    // The very next run, at the same instant: same compiler version, nothing rebuilt, a week
+    // of sweep left. None of the four clock triggers can explain a re-ask — the open fault
+    // is the only reason it is asked at all, and it is the only thing asked.
+    const second = await runInterrogation({
+      db,
+      interrogator: honest,
+      issues,
+      compilerVersion: '1.0.0',
+      now: AT,
+      log: () => {},
+    });
+    assert.equal(second.asked.length, 1);
+    assert.deepEqual(second.asked.map((one) => [one.assertion, one.why, one.passed]), [
+      [RECEIPT_ID, 'fault_open', true],
+    ]);
+
+    // A pass clears the fault, so the layer returns and the next run is quiet again — the
+    // answer about whether the fix worked, a day after the fix, not a week later.
     const { rows: faults } = await db.query<{ assertion: string }>(
       'select assertion from braintrust_faults',
     );

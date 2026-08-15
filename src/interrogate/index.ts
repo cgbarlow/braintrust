@@ -140,6 +140,9 @@ export async function runInterrogation(deps: InterrogationDeps): Promise<Interro
     // Whoever the base model knows best, stood in for by the largest Corpus. See ./schedule.ts.
     hardest: fleet[0]?.person ?? null,
     last: await lastInterrogations(deps.db),
+    // The live Faults are the population asked again now: the ones currently costing a
+    // reader something, which shrink to nothing when braintrust is healthy. See ./schedule.ts.
+    faults: await openFaults(deps.db),
     compilerVersion,
     now,
     ...(deps.assertions ? { assertions: deps.assertions } : {}),
@@ -463,6 +466,17 @@ async function tellAboutTheSilence(
   );
 }
 
+/** The reasons an assertion was asked, in the order they read naturally on one line. */
+const ASKED_WHY_WORDS: Record<Due['why'], string> = {
+  never_asked: 'never asked',
+  compiler_moved: 'because the compiler moved',
+  recompiled: 'because a persona was rebuilt',
+  // The reason the extra calls exist at all: a fault is live, and a reader is paying for it
+  // until one of these passes. Distinguishing it from the sweep keeps the cost legible.
+  fault_open: 'because a fault is open',
+  weekly_sweep: 'on the weekly sweep',
+};
+
 /** One line for a job nobody watches. Silence when nothing was due is the normal case. */
 export function summariseInterrogation(report: InterrogationReport): string | null {
   if (report.asked.length === 0 && report.filed.length === 0 && report.outage === null) return null;
@@ -470,10 +484,21 @@ export function summariseInterrogation(report: InterrogationReport): string | nu
   const failed = report.asked.filter((one) => one.passed === false);
   const unreached = report.asked.filter((one) => one.passed === null);
 
+  // What pushed each ask out, so a maintainer can read *why there were calls today* — the
+  // fault-open ones are the extra cost and the sweep ones are the standing weekly rate.
+  const askedWhy = (
+    ['never_asked', 'compiler_moved', 'recompiled', 'fault_open', 'weekly_sweep'] as const
+  )
+    .map((why) => ({ why, count: report.asked.filter((one) => one.why === why).length }))
+    .filter((one) => one.count > 0)
+    .map((one) => `${one.count} ${ASKED_WHY_WORDS[one.why]}`)
+    .join(', ');
+
   return [
     `braintrust: interrogated itself on ${report.asked.length} assertion(s) — ` +
       `${report.asked.length - failed.length - unreached.length} passed, ${failed.length} failed` +
-      `${unreached.length > 0 ? `, ${unreached.length} could not be asked` : ''}.`,
+      `${unreached.length > 0 ? `, ${unreached.length} could not be asked` : ''}` +
+      `${askedWhy.length > 0 ? ` (${askedWhy})` : ''}.`,
     ...failed.map((one) => `  ${one.assertion}: ${one.detail}`),
     ...report.filed.map(
       (one) =>

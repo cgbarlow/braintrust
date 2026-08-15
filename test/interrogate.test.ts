@@ -1059,6 +1059,168 @@ describe('the schedule', () => {
   });
 });
 
+describe('an assertion with an open fault is due on the next run', () => {
+  const COMPILED = '2026-08-01T00:00:00.000Z';
+  const fleet = [
+    { person: 'nate-b-jones', compiled_at: COMPILED },
+    { person: 'chris-barlow', compiled_at: COMPILED },
+  ];
+  const slugs = fleet.map((one) => one.person);
+  /** The same fleet in the shape the fake database keeps it. */
+  const seededFleet = [
+    { person: 'nate-b-jones', items: 34 },
+    { person: 'chris-barlow', items: 12 },
+  ];
+  const RECEIPT_ID = 'the_persona_can_source_its_claims';
+
+  /** Everything just asked, an hour ago, on this compiler version: inside the weekly window. */
+  const justAsked: LastRun[] = dueAssertions({
+    fleet,
+    hardest: slugs[0]!,
+    last: [],
+    compilerVersion: 'v1',
+    now: NOW,
+  }).map((one): LastRun => ({
+    assertion: one.assertion.id,
+    person: one.person,
+    compiler_version: 'v1',
+    ran_at: new Date(NOW - 60 * 60 * 1000).toISOString(),
+  }));
+
+  const withFault = (assertion: string, person: string | null = null) =>
+    dueAssertions({ fleet, hardest: slugs[0]!, last: justAsked, compilerVersion: 'v1', now: NOW, faults: [fault({ assertion, person })] });
+
+  it('asks the assertion holding the fault now, whatever the sweep clock says', () => {
+    const due = withFault(RECEIPT_ID, 'nate-b-jones');
+
+    // Nothing is due on any clock: everything was asked today on this compiler version,
+    // nobody was rebuilt and the sweep is a week away. The fault is the only reason — and
+    // it is the strongest one.
+    assert.deepEqual(
+      due.map((one) => [one.assertion.id, one.person, one.why]),
+      [[RECEIPT_ID, 'nate-b-jones', 'fault_open']],
+    );
+  });
+
+  it('does not spread to the same assertion for anyone else, or to a sibling assertion', () => {
+    const due = withFault(RECEIPT_ID, 'nate-b-jones');
+
+    // One Person is failing, so one Person is re-asked — not the whole fleet, and not the
+    // other persona-scoped assertion. The cost is bounded by what is broken.
+    assert.deepEqual(
+      due.map((one) => [one.assertion.id, one.person]).sort(),
+      [[RECEIPT_ID, 'nate-b-jones']],
+    );
+  });
+
+  it('asks a compiler-scoped assertion once, against the hardest subject, when its fault is open', () => {
+    // A compiler fault is one fact about the fleet: the fault key carries no person, and
+    // the re-ask carries none either.
+    const due = withFault(DISCLOSURE_ASSERTION);
+
+    assert.deepEqual(
+      due.map((one) => [one.assertion.id, one.person, one.subject, one.why]),
+      [[DISCLOSURE_ASSERTION, null, slugs[0], 'fault_open']],
+    );
+  });
+
+  it('leaves an assertion with no open fault untouched', () => {
+    // Five of the six original reasons survive this rule: with no faults anywhere, the
+    // schedule is exactly what it was — and everything just asked on this compiler version
+    // stays unasked.
+    assert.deepEqual(
+      dueAssertions({ fleet, hardest: slugs[0]!, last: justAsked, compilerVersion: 'v1', now: NOW }),
+      [],
+    );
+  });
+
+  it('asks again once a fault opens, then nothing once it clears', () => {
+    const before: LastRun[] = justAsked;
+    assert.deepEqual(dueAssertions({ fleet, hardest: slugs[0]!, last: before, compilerVersion: 'v1', now: NOW }), []);
+
+    const opening = withFault(FAKING_ASSERTION, 'nate-b-jones');
+    assert.deepEqual(opening.map((one) => [one.assertion.id, one.person, one.why]), [[FAKING_ASSERTION, 'nate-b-jones', 'fault_open']]);
+
+    // The pass deleted the row, so the very same schedule says nothing again.
+    assert.deepEqual(dueAssertions({ fleet, hardest: slugs[0]!, last: before, compilerVersion: 'v1', now: NOW }), []);
+  });
+
+  it('runs the whole loop: a pass clears the fault, so the next run is quiet again', async () => {
+    const db = interrogatingDb({ fleet: seededFleet, last: justAsked, faults: [{ assertion: RECEIPT_ID, person: 'nate-b-jones' }] });
+    const issues = recordingFiler();
+
+    const report = await runInterrogation({
+      db,
+      interrogator: stubInterrogator(),
+      issues,
+      compilerVersion: 'v1',
+      now: NOW,
+      log: () => {},
+    });
+
+    // Exactly one extra call — the faulted assertion — recorded as such, and it passed.
+    assert.deepEqual(
+      report.asked.map((one) => [one.assertion, one.person, one.why, one.passed]),
+      [[RECEIPT_ID, 'nate-b-jones', 'fault_open', true]],
+    );
+    assert.equal(db.faults.size, 0);
+  });
+
+  it('runs the whole loop: asking it and failing again opens no second issue and restarts no clock', async () => {
+    const db = interrogatingDb({
+      fleet: seededFleet,
+      last: justAsked,
+      faults: [
+        {
+          assertion: FAKING_ASSERTION,
+          person: 'nate-b-jones',
+          first_failed_at: new Date(NOW - 3 * DAY).toISOString(),
+          reported_at: new Date(NOW - 3 * DAY).toISOString(),
+          escalated_at: new Date(NOW - 2 * DAY).toISOString(),
+        },
+      ],
+    });
+    const issues = recordingFiler();
+
+    const report = await runInterrogation({
+      db,
+      interrogator: stubInterrogator({ reply: 'Quests beat goals, obviously.', holds: false }),
+      issues,
+      compilerVersion: 'v1',
+      now: NOW,
+      log: () => {},
+    });
+
+    // The fault is re-observed, but the row is the deduplication: no opening, and the
+    // escalation already fired once — never again. The clock it ran on is untouched.
+    assert.deepEqual(report.filed, []);
+    assert.ok(report.asked.some((one) => one.assertion === FAKING_ASSERTION && one.passed === false));
+    const kept = [...db.faults.values()][0]!;
+    assert.equal(new Date(kept.first_failed_at as Date).getTime(), NOW - 3 * DAY);
+  });
+
+  it('a silence concludes nothing and makes nothing due under this rule', async () => {
+    // The silence ledger is joined to the fault ledger nowhere. A check that could not be
+    // asked must not become a reason to ask more — it is somebody else's outage.
+    const db = interrogatingDb({
+      fleet: seededFleet,
+      last: justAsked,
+      silences: [{ assertion: FAKING_ASSERTION, person: 'nate-b-jones' }],
+    });
+
+    const report = await runInterrogation({
+      db,
+      interrogator: stubInterrogator({ throws: 'HTTP 500' }),
+      issues: recordingFiler(),
+      compilerVersion: 'v1',
+      now: NOW,
+      log: () => {},
+    });
+    assert.deepEqual(report.asked, []);
+    assert.equal(db.faults.size, 0);
+  });
+});
+
 describe('a failing interrogation', () => {
   const failing = () => stubInterrogator({ reply: 'Quests beat goals, obviously.', holds: false });
 
@@ -1590,6 +1752,29 @@ describe('the line the job logs', () => {
 
     assert.match(line!, /1 could not be asked/);
     assert.match(line!, /unasked for over a day/);
+  });
+
+  it('tells an assertion asked because a fault is open from one asked on the weekly sweep', () => {
+    // The extra calls have to be legible: a maintainer watching the log needs to see that
+    // five of today's asks are the cost of the fault that is already costing readers a
+    // layer, and that the standing sweep is still the standing sweep.
+    const line = summariseInterrogation({
+      compiler_version: 'compiler-1',
+      asked: [
+        { assertion: 'the_persona_can_source_its_claims', person: 'nate-b-jones', subject: 'n', why: 'fault_open', passed: true, detail: 'd' },
+        { assertion: DISCLOSURE_ASSERTION, person: null, subject: 'n', why: 'weekly_sweep', passed: true, detail: 'd' },
+        { assertion: FAKING_ASSERTION, person: null, subject: 'n', why: 'fault_open', passed: true, detail: 'd' },
+      ],
+      failing: [],
+      cleared: [],
+      filed: [],
+      silenced: [],
+      outage: null,
+    });
+
+    assert.match(line!, /3 assertion\(s\)/);
+    assert.match(line!, /2 because a fault is open/);
+    assert.match(line!, /1 on the weekly sweep/);
   });
 });
 
