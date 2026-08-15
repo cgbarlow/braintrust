@@ -261,6 +261,36 @@ create unique index if not exists braintrust_compiles_one_current_idx
 create unique index if not exists braintrust_compiles_one_running_idx
   on braintrust_compiles (person_id) where status = 'running';
 
+-- One row per Person: how far a Compile got before it stopped, so the next run can pick
+-- up at the stage that was still owed instead of paying for the whole rebuild again.
+--
+-- **Read with "schema is applied by hand" in mind.** Code ships on merge and this table
+-- does not, so there is a window where new code runs against a database that has not
+-- been touched yet. Every read and write of this table fails open: absent or unreadable,
+-- a Compile behaves exactly as it does with no resume machinery at all. See
+-- src/compile/store.ts.
+create table if not exists braintrust_compile_resumes (
+  person_id         uuid primary key references braintrust_people(id) on delete cascade,
+  compile_id        uuid not null references braintrust_compiles(id) on delete cascade,
+  compiler_version  text not null,
+  stage             text not null
+                      check (stage in ('habits', 'positions', 'through_lines')),
+  -- Null for a stage with no downstream reader. Populated for 'positions' (and carried
+  -- forward to 'through_lines') because a Position's claim carries its verbatim quote —
+  -- what a citation shows — never the paraphrase Revisions compares statements on, and
+  -- that paraphrase exists nowhere else once the process that built it is gone.
+  payload           jsonb,
+  updated_at        timestamptz not null default now()
+);
+
+comment on column braintrust_compile_resumes.compiler_version is
+  'A marker from a different compiler version is discarded rather than resumed — '
+  'stale assumptions carried across a version change are worse than a fresh rebuild.';
+
+comment on column braintrust_compile_resumes.stage is
+  'The last stage that completed. habits < positions < through_lines: any later stage '
+  'implies every earlier one is already done and already written under compile_id.';
+
 create table if not exists braintrust_persona_layers (
   id              uuid primary key default gen_random_uuid(),
   compile_id      uuid not null references braintrust_compiles(id) on delete cascade,
@@ -567,6 +597,7 @@ begin
     'braintrust_embeddings',
     'braintrust_item_notes',
     'braintrust_compiles',
+    'braintrust_compile_resumes',
     'braintrust_persona_layers',
     'braintrust_positions',
     'braintrust_position_citations',

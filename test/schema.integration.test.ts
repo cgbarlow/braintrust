@@ -38,6 +38,7 @@ const TABLES = [
   'braintrust_position_citations',
   'braintrust_positions',
   'braintrust_persona_layers',
+  'braintrust_compile_resumes',
   'braintrust_compiles',
   'braintrust_item_notes',
   'braintrust_embeddings',

@@ -179,6 +179,30 @@ export type PositionSet = {
   claims: Map<string, ClaimRef[]>;
 };
 
+/** {@link PositionSet}, with `claims` turned into something `JSON.stringify` keeps. */
+export type SerializedPositionSet = Omit<PositionSet, 'claims'> & {
+  claims: Record<string, ClaimRef[]>;
+};
+
+/**
+ * For a resume marker's payload — see docs/design/compiler.md and `braintrust_compile_resumes`.
+ *
+ * **Why this and not a re-read of the rows `writePositions` already wrote.** A citation
+ * carries a claim's verbatim quote, because that is what a reader is shown; Revisions
+ * compares claims on `claim.statement`, the model's paraphrase, which is never a citation
+ * field and exists nowhere once the process that produced it is gone. Round-tripping the
+ * whole `PositionSet` through the marker is what lets a resumed Compile call Revisions
+ * with the same claims an uninterrupted one would, rather than a citation-shaped
+ * approximation of them.
+ */
+export function serializePositionSet(set: PositionSet): SerializedPositionSet {
+  return { ...set, claims: Object.fromEntries(set.claims) };
+}
+
+export function deserializePositionSet(serialized: SerializedPositionSet): PositionSet {
+  return { ...serialized, claims: new Map(Object.entries(serialized.claims)) };
+}
+
 /**
  * Every claim in the Corpus, numbered. The ref is braintrust's own and sequential across
  * the whole set rather than per pass, so a merge cannot smuggle a ref from one pass into
