@@ -28,7 +28,7 @@
 import type { Db } from '../db.js';
 import { subjectFor } from '../disclosure.js';
 import { BraintrustError } from '../errors.js';
-import { claimsHeldFor, openFault } from '../interrogate/store.js';
+import { claimsHeldFor, clearFault, openFault } from '../interrogate/store.js';
 
 export type ClaimCheck = {
   /** One sentence from the persona's reply. */
@@ -202,6 +202,25 @@ export async function verifySources(
     } catch (error) {
       log(
         `braintrust: could not record verification fault for ${person} — ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  } else {
+    // **A fault is cleared by passing, which is the promise the fault report already makes.**
+    // Every Fault report ends "braintrust clears it when the assertion passes, not when this
+    // issue is closed" — and until now this fault could only ever open. Nothing in the
+    // scheduled run re-checks it either, so a `verify_sources` fault outlived any fix to the
+    // detector that raised it, kept re-printing the evidence it was opened on, and escalated
+    // on schedule into withdrawing `reasoning` from a persona that had stopped failing.
+    //
+    // Measured: on 2026-08-15 the fixed detector verified 20 of 20 sentences across all five
+    // serving Personas, and all three open faults survived it unchanged.
+    // See https://github.com/cgbarlow/braintrust/issues/283.
+    try {
+      await clearFault(db, ASSERTION, person);
+    } catch (error) {
+      log(
+        `braintrust: could not clear the verification fault for ${person} — ` +
           `${error instanceof Error ? error.message : String(error)}`,
       );
     }
