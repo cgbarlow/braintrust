@@ -653,6 +653,52 @@ describe('the assertions braintrust makes about itself', () => {
       assert.match(result.detail, /quoted nothing from it/);
     });
 
+    it('reads a mark of the title’s own leading sentence as a name, not a forged citation — issue #293', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      // nate-b-jones's house style: a title written as more than one sentence. The whole-title
+      // exemption alone misses this — a persona naming the piece by its first sentence is
+      // still naming it, not quoting the body, and the fix has to recognise that.
+      const twoClock = {
+        title:
+          'Your AI bet can be right and still run out of money. Grab the two-clock prompt: what ' +
+          'has to be true, how long it really takes, who controls your runway, what pays today.',
+        url: 'https://example.com/two-clock-prompt',
+        body_text:
+          'The two-clock prompt is simple: what has to be true, how long it really takes, and ' +
+          'who controls your runway.',
+      };
+      const reply =
+        `In "Your AI bet can be right and still run out of money." I laid out the two-clock ` +
+        `prompt: "The two-clock prompt is simple: what has to be true, how long it really ` +
+        `takes, and who controls your runway." — https://example.com/two-clock-prompt`;
+      const result = await receipt.run(aSubject([twoClock]), stubInterrogator({ reply }));
+      assert.equal(result.passed, true);
+    });
+
+    it('still fails a span that merely shares a short opening with the title, so the exemption stays narrow', async () => {
+      const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
+      // Same multi-sentence title as #293, but the marked span is cut mid-sentence — not at
+      // a boundary the title itself has. That must not be read as naming the piece: it goes
+      // to the body check like any other marked span, and a span that is not in the body
+      // still fails as a forged citation.
+      const twoClock = {
+        title:
+          'Your AI bet can be right and still run out of money. Grab the two-clock prompt: what ' +
+          'has to be true, how long it really takes, who controls your runway, what pays today.',
+        url: 'https://example.com/two-clock-prompt',
+        body_text:
+          'The two-clock prompt is simple: what has to be true, how long it really takes, and ' +
+          'who controls your runway.',
+      };
+      const reply =
+        `I quoted it as "Your AI bet can be right and still run out of" — ` +
+        `https://example.com/two-clock-prompt`;
+      const result = await receipt.run(aSubject([twoClock]), stubInterrogator({ reply }));
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /not in the item it names/);
+      assert.match(result.detail, /forged citation/);
+    });
+
     it('reads a source named without the scheme, and one spelled with www, as the same item', async () => {
       const receipt = ASSERTIONS.find((one) => one.id === RECEIPT_ID)!;
       const schemeLess = await receipt.run(

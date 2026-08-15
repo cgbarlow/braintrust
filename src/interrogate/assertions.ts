@@ -707,18 +707,40 @@ function quotedSpans(reply: string): string[] {
 const MIN_MARKED_QUOTATION_LENGTH = 8;
 
 /**
- * Whether a marked span is the item's own title rather than a quotation from its body.
+ * Whether a marked span names the item — either the whole title, or the title's own
+ * leading sentence(s) — rather than quoting its body.
  *
  * A persona asked for the record often names the piece in the same breath it quotes it —
  * `In "Speed versus skill" I said …` — and the title is not a span of the body, so a title
- * in marks is a name, not a quotation. It must therefore neither satisfy the check nor
- * convict it: a fabrication still fails, and a handover that names its piece honestly is
- * not misread as a forged citation. Compared punctuation-tolerantly, the same way a named
- * source is — a comma glued to the title inside the marks is still the title.
+ * in marks is a name, not a quotation. The same holds for a piece whose title is itself
+ * written as more than one sentence: naming it by its first sentence (or first several) is
+ * still naming it, not quoting the body. See https://github.com/cgbarlow/braintrust/issues/293.
+ *
+ * The match is anchored on a sentence boundary the *title itself* has — never an arbitrary
+ * character count — so a span that merely shares a short opening with the title, without
+ * ending where the title ends a sentence, is not exempted here: it still goes to the body
+ * check, where a genuine forgery still fails. Compared punctuation-tolerantly, the same way
+ * a named source is — a comma glued to the span's end is still the same name.
  */
 function isItemTitle(span: string, title: string): boolean {
   const bare = (text: string) => text.replace(/^([(\[])+|[),.;:!?]+$/g, '');
-  return bare(span) === bare(normaliseText(title));
+  const bareSpan = bare(span);
+  return titleLeadingSentences(normaliseText(title)).some((prefix) => bare(prefix) === bareSpan);
+}
+
+/**
+ * A title's own leading-sentence prefixes, plus the whole title — cut only where the title
+ * itself ends a sentence (`.`, `!`, or `?` followed by whitespace or the end of the string).
+ * A title with no internal sentence break, or none at all, yields just the whole title,
+ * which is the exemption this check has always granted. `text` is already normalised.
+ */
+function titleLeadingSentences(text: string): string[] {
+  const prefixes: string[] = [];
+  for (const match of text.matchAll(/[.!?]+(?=\s|$)/g)) {
+    prefixes.push(text.slice(0, match.index! + match[0].length));
+  }
+  if (prefixes[prefixes.length - 1] !== text) prefixes.push(text);
+  return prefixes;
 }
 
 /**
