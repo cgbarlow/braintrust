@@ -52,7 +52,14 @@ export type Due = {
   person: string | null;
   /** Who it is actually asked against. Never null: an assertion needs a Persona to hold. */
   subject: string;
-  why: 'never_asked' | 'compiler_moved' | 'recompiled' | 'weekly_sweep';
+  /**
+   * Why it is being asked now. `fault_open` is the population that is currently costing
+   * a reader something — it is due again now because a fault is live, whatever the sweep
+   * clock says — the only trigger **none of the four others is**: shipping a fix to the
+   * assertion that failed is not a compiler change, so without it the answer to *did the
+   * fix work* stays a week away. See https://github.com/cgbarlow/braintrust/issues/276.
+   */
+  why: 'never_asked' | 'compiler_moved' | 'recompiled' | 'fault_open' | 'weekly_sweep';
 };
 
 /** One serving Persona, and the two facts that decide whether it is due. */
@@ -61,9 +68,10 @@ export type FleetSubject = { person: string; compiled_at: string | null };
 /**
  * What is due now.
  *
- * **On compiler change plus a weekly sweep**, and the two arms answer different questions:
- * the version arm asks whether braintrust's own change broke something, the sweep asks
- * whether somebody else's did.
+ * **On compiler change, a weekly sweep, and one fault at a time.** The version arm asks
+ * whether braintrust's own change broke something, the sweep asks whether somebody else's
+ * did, and the fault arm asks the current failing population whether **the fix worked** —
+ * the one question none of the clock arms can answer sooner than the sweep permits.
  *
  * `hardest` is who the compiler-scoped assertions are asked against — *whoever the base model
  * knows best*, since three of them are true or false about braintrust and the fourth is the
@@ -75,6 +83,17 @@ export type FleetSubject = { person: string; compiled_at: string | null };
  * is judged against the claims braintrust holds for somebody, and a Compile changes those, so
  * *once per compiler version* would be asking about a Persona that no longer exists. The
  * compiler-scoped three are about the payload's shape and a rebuild does not move it.
+ *
+ * **An assertion with an open Fault has a fifth trigger, and it overrides all four clocks:
+ * `fault_open`.** A Fault is a live condition braintrust cannot repair from inside — only a
+ * code change clears it, and shipping that change is none of `never_asked`,
+ * `compiler_moved`, `recompiled` or `weekly_sweep`. So the exact assertions that are open
+ * are due again on the next run and every run after until one passes: that population is
+ * what is already costing every Persona it names a layer, it bounds the extra cost (it
+ * shrinks to nothing when braintrust is healthy), and a pass clears the Fault and restores
+ * the layer with no rebuild — see https://github.com/cgbarlow/braintrust/issues/276.
+ * **The other arms stay untouched:** an assertion with no open Fault is still asked only on
+ * the four original triggers, and a Silence never reaches here because it is not a Fault.
  */
 export function dueAssertions(input: {
   fleet: FleetSubject[];
@@ -83,9 +102,12 @@ export function dueAssertions(input: {
   compilerVersion: string;
   now: number;
   assertions?: AssertionDefinition[];
+  /** The open Faults, which are the population asked again now. Defaults to none. */
+  faults?: Fault[];
 }): Due[] {
   const assertions = input.assertions ?? ASSERTIONS;
   const due: Due[] = [];
+  const open = new Set((input.faults ?? []).map((fault) => faultKey(fault.assertion, fault.person)));
 
   for (const assertion of assertions) {
     const subjects: { person: string | null; subject: string; compiledAt: string | null }[] =
@@ -105,6 +127,7 @@ export function dueAssertions(input: {
         input.compilerVersion,
         compiledAt,
         input.now,
+        open.has(faultKey(assertion.id, person)),
       );
       if (why) due.push({ assertion, person, subject, why });
     }
@@ -118,7 +141,11 @@ function whyDue(
   compilerVersion: string,
   compiledAt: string | null,
   now: number,
+  faultOpen = false,
 ): Due['why'] | null {
+  // A fault is the strongest reason to ask: it is what a reader is currently paying for,
+  // and the fix that clears it ships outside every clock this function consults.
+  if (faultOpen) return 'fault_open';
   if (!last) return 'never_asked';
   if (last.compiler_version !== compilerVersion) return 'compiler_moved';
   if (compiledAt !== null && Date.parse(last.ran_at) < Date.parse(compiledAt)) return 'recompiled';
