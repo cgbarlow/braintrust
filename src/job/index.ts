@@ -34,6 +34,20 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const db = createDb(config.databaseUrl);
 
+  // **Whether anything found tonight could be filed is said at startup, not after a
+  // fault has been found and dropped.** A job that refuses to ingest because it cannot
+  // file issues costs more than it saves, so the run proceeds — it just says plainly,
+  // up front, what it can and cannot do with a failure.
+  if (config.issues) {
+    console.log(`${SERVER_NAME}: faults will be filed to ${config.issues.repo}.`);
+  } else {
+    console.warn(
+      `${SERVER_NAME}: no issue tracker is configured — BRAINTRUST_ISSUES_REPO and ` +
+        'BRAINTRUST_ISSUES_TOKEN are unset, so nothing a fault finds tonight can reach a ' +
+        'maintainer. The run continues; only the telling is lost.',
+    );
+  }
+
   // Being killed mid-run costs nothing, but exiting cleanly costs nothing either: a
   // platform that caps a cron run sends SIGTERM first, and the current fetch is the only
   // work in flight.
@@ -46,7 +60,13 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => stop('SIGTERM'));
   process.on('SIGINT', () => stop('SIGINT'));
 
-  console.log(`${SERVER_NAME} ${SERVER_VERSION}: ingest run starting.`);
+  // Which code is actually executing: the job host names the commit the running image
+  // was built from, baked in at build time and handed over as BRAINTRUST_COMMIT
+  // (scripts/btjob.sh). Absent, the log line simply does not name one.
+  const runCommit = process.env.BRAINTRUST_COMMIT?.trim();
+  console.log(
+    `${SERVER_NAME} ${SERVER_VERSION}${runCommit ? ` (built from ${runCommit})` : ''}: ingest run starting.`,
+  );
 
   try {
     const fetcher = createFetcher();

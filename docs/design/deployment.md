@@ -68,6 +68,15 @@ to rotate, so evasion is closed off by construction rather than by policy.
 **Which host is not decided.** Any container platform with a cron primitive satisfies the shape.
 [Render](https://render.com)'s Web Service + Cron Job pair is the obvious candidate; Fly or Railway would do.
 
+**A merged fix reaches the job host on its own.** A scheduled run is a stale image run unless the host moves
+itself: the run that actually executes the job (`scripts/btjob.sh`) fetches `origin/main` before building and,
+whenever the working tree moved, rebuilds the image from it. Nothing new is a no-op that says so. A failed
+fetch or build is reported loudly while the previous working image runs anyway — the night's ingest never
+waits on the update, and a half-built tree is never executed. **Every run names the commit the image was built
+from** (baked in as an image label at build time), so which code ran is answerable from the log rather than by
+inspecting the host. The run's exit status is the container's, so whatever health reporting reads it sees a
+failure rather than a log line saying one.
+
 ## 3. Configuration
 
 braintrust is configured by environment, and **nothing here has a default that could act on its own.**
@@ -80,7 +89,27 @@ braintrust is configured by environment, and **nothing here has a default that c
 | **Note-extractor model** | Base URL, model id, optional key, for the one genuinely expensive job. **No default**, and required. |
 | **Issue tracker** | Repo and token, for the faults braintrust finds in itself and cannot repair. **Optional, and its absence is loud** — see below. |
 
-Exact variable names are a build detail.
+**The environment, named — all eight variables.**
+
+| Variable | Status | What it is |
+|---|---|---|
+| `BRAINTRUST_DATABASE_URL` | required | Supabase session pooler, port 5432 (§5). |
+| `BRAINTRUST_MCP_KEY` | required | The `?key=` shared secret (§4). |
+| `BRAINTRUST_EMBEDDINGS_BASE_URL` | required | The `/v1/embeddings` endpoint. |
+| `BRAINTRUST_EMBEDDINGS_MODEL` | required | The model whose vectors are already in the column. |
+| `BRAINTRUST_EXTRACTOR_BASE_URL` | required | The `/v1/chat/completions` endpoint behind notes and synthesis. |
+| `BRAINTRUST_EXTRACTOR_MODEL` | required | The Note extractor's model. |
+| `BRAINTRUST_ISSUES_REPO` | both or neither | `owner/repo` for the faults only a person clears. |
+| `BRAINTRUST_ISSUES_TOKEN` | both or neither | Token with `issues: write` on that repo. |
+
+Six are required; the issue-filing pair is optional because its absence must not stop a deployment over a
+channel it may never need — but it is **both or neither, and its absence is loud** (see below). **#272's list
+named six and never carried the issue-filing pair to the job host — the direct cause of runs whose faults
+printed `NOBODY WAS TOLD` and were filed nowhere.**
+
+**The job host carries the same eight.** The launchd agent's `.env` on the container host is this list plus,
+typically, the API keys for hosted embeddings and extractor endpoints. When the pair is missing there, the
+scheduled run announces it at startup and still ingests.
 
 **The issue tracker is optional because braintrust runs unattended, and noisy because it runs unmaintained
 otherwise.** braintrust interrogates itself weekly and on every compiler change (compiler.md §8); a failure
@@ -243,7 +272,15 @@ registration has to work against an empty database.
 2. Configure the environment (§3) for both deployments.
 3. Deploy the **web service** from the repo. It refuses to start if the embeddings endpoint is unconfigured or
    mismatched.
-4. Deploy the **scheduled job** from the same repo, once a day.
+4. Deploy the **scheduled job** from the same repo, once a day. The scheduled job is
+   [`scripts/btjob.sh`](../../scripts/btjob.sh) on a container host: a launchd agent runs it with `--quiet`
+   daily, it updates the host to current `main`, rebuilds the image when the tree moved, and runs the job in a
+   container. The launchd definition lives in the repo as
+   [`scripts/com.braintrust.job.plist`](../../scripts/com.braintrust.job.plist); installing it is one
+   documented command (`cp scripts/com.braintrust.job.plist ~/Library/LaunchAgents/ && launchctl bootstrap
+   gui/$(id -u) ~/Library/LaunchAgents/com.braintrust.job.plist`). Add `BRAINTRUST_ISSUES_REPO` and
+   `BRAINTRUST_ISSUES_TOKEN` to the host's `.env` or the run says, up front, that nothing it finds can reach
+   anybody.
 5. Register the MCP server with an AI client using `?key=…`, and follow the first Person through
    [`braintrust_follow_person`](./mcp-surface.md#4-braintrust_follow_person). **The first run after following
    is the backfill** — about half an hour for a prolific channel.
