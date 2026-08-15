@@ -33,7 +33,13 @@ import {
   type Interrogator,
 } from './assertions.js';
 import { escalationIssue, faultIssue, silenceIssue, type IssueFiler } from './issues.js';
-import { dueAssertions, faultsToFile, silencesToFile, type Due } from './schedule.js';
+import {
+  dueAssertions,
+  faultsToFile,
+  nothingWasDue,
+  silencesToFile,
+  type Due,
+} from './schedule.js';
 import {
   clearFault,
   clearSilence,
@@ -82,6 +88,7 @@ export {
   ESCALATES_AFTER_MS,
   faultKey,
   faultsToFile,
+  nothingWasDue,
   silenceKey,
   SILENCE_REPORTS_AFTER_MS,
   silencesToFile,
@@ -91,6 +98,7 @@ export {
   type Fault,
   type FleetSubject,
   type LastRun,
+  type NothingDue,
   type Silence,
 } from './schedule.js';
 export { escalatedFaults, openFaults, openSilences, servingFleet } from './store.js';
@@ -129,6 +137,8 @@ export type InterrogationReport = {
   silenced: string[];
   /** The one issue a day-long outage files, if this run is the one that filed it. */
   outage: { assertions: string[]; issue: string | null } | null;
+  /** Why nothing was due, when this run asked nothing. Null on any run that asked. */
+  not_due: { considered: number; why: string } | null;
 };
 
 /**
@@ -145,18 +155,22 @@ export async function runInterrogation(deps: InterrogationDeps): Promise<Interro
   const compilerVersion = deps.compilerVersion ?? COMPILER_VERSION;
 
   const fleet = await servingFleet(deps.db);
-  const due = dueAssertions({
+  const last = await lastInterrogations(deps.db);
+  // The live Faults are the population asked again now: the ones currently costing a
+  // reader something, which shrink to nothing when braintrust is healthy. See ./schedule.ts.
+  const faults = await openFaults(deps.db);
+  const schedule = {
     fleet,
     // Whoever the base model knows best, stood in for by the largest Corpus. See ./schedule.ts.
     hardest: fleet[0]?.person ?? null,
-    last: await lastInterrogations(deps.db),
-    // The live Faults are the population asked again now: the ones currently costing a
-    // reader something, which shrink to nothing when braintrust is healthy. See ./schedule.ts.
-    faults: await openFaults(deps.db),
+    last,
+    faults,
     compilerVersion,
     now,
     ...(deps.assertions ? { assertions: deps.assertions } : {}),
-  });
+  };
+
+  const due = dueAssertions(schedule);
 
   const report: InterrogationReport = {
     compiler_version: compilerVersion,
@@ -166,6 +180,8 @@ export async function runInterrogation(deps: InterrogationDeps): Promise<Interro
     filed: [],
     silenced: [],
     outage: null,
+    // The reason rides on the run, or the summary would have to guess why nothing came due.
+    not_due: nothingWasDue(schedule),
   };
 
   for (const item of due) {
@@ -496,9 +512,22 @@ const ASKED_WHY_WORDS: Record<Due['why'], string> = {
   weekly_sweep: 'on the weekly sweep',
 };
 
-/** One line for a job nobody watches. Silence when nothing was due is the normal case. */
+/** One line for a job nobody watches. Nothing-due is the normal case, and it is a line. */
 export function summariseInterrogation(report: InterrogationReport): string | null {
-  if (report.asked.length === 0 && report.filed.length === 0 && report.outage === null) return null;
+  const empty = report.asked.length === 0 && report.filed.length === 0 && report.outage === null;
+
+  if (empty && report.not_due) {
+    // **Named as an outcome, not a quiet success**, the way the ingest summary names a run
+    // that polled no Source. A daily job finds nothing to ask most days, and a silent line
+    // reads the same as a run the job never reached or one that threw — so the schedule's
+    // reason gets its own line, turning "nothing happened" into "nothing was due, here is
+    // the clock that held it back".
+    return (
+      `braintrust: nothing was due — 0 of ${report.not_due.considered} assertions were asked; ` +
+      `${report.not_due.why}.`
+    );
+  }
+  if (empty) return null;
 
   const failed = report.asked.filter((one) => one.passed === false);
   const unreached = report.asked.filter((one) => one.passed === null);
