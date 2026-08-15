@@ -153,6 +153,31 @@ describe('what a run can tell about its own model calls', () => {
   });
 
   /**
+   * Found live: a merge call logged as "39,918 chars in, 715,023 out" — eighteen times its
+   * input — which reads as the model generating far more than it was asked for. It was not:
+   * a streamed answer's raw body is mostly the JSON envelope repeated once per chunk, not
+   * prose, and that envelope grows with chunk count rather than with what was said.
+   */
+  it("reports the answer's own size, not the size of the stream it arrived wrapped in", async () => {
+    const content = JSON.stringify({ positions: [] });
+    // One SSE event per character — the shape a token-by-token endpoint actually streams —
+    // so the wire is many times longer than the content it carries.
+    const bloated = streamed(content, 1);
+    assert.ok(bloated.length > content.length * 10, 'the fixture must actually be bloated');
+
+    const lines: string[] = [];
+    const wire = endpoint(bloated);
+    await createSynthesiser(CONFIG, wire.fetcher, undefined, (line) => lines.push(line)).cluster('[c1] a claim');
+
+    assert.match(lines[0]!, new RegExp(`${content.length} chars out`));
+    assert.doesNotMatch(
+      lines[0]!,
+      new RegExp(`${bloated.length.toLocaleString()} chars out`),
+      'must report the joined answer, not the raw wire bytes it arrived on',
+    );
+  });
+
+  /**
    * The distinction has to survive into the failure, because that is where it is needed:
    * a pass is long because the Corpus is large and the merge because the passes were many,
    * and the fix for one makes the other worse.

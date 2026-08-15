@@ -472,7 +472,7 @@ export function createSynthesiser(
 
     log?.(
       `braintrust: ${job} — ${digest.length.toLocaleString()} chars in, ` +
-        `${body.length.toLocaleString()} out, ${Math.round((Date.now() - started) / 1000)}s.`,
+        `${answerLength(body).toLocaleString()} chars out, ${Math.round((Date.now() - started) / 1000)}s.`,
     );
     return readContent(body, url, job);
   }
@@ -557,6 +557,30 @@ function readContent(body: string, url: string, job: string): string {
   }
 
   return content;
+}
+
+/**
+ * The size a call actually answered with — never the size of the wire it answered over.
+ *
+ * **A streamed answer's raw body is not its length.** Every delta arrives wrapped in its
+ * own JSON envelope (`data: {"choices":[{"delta":{"content":"…"}}]}\n\n`), repeated once
+ * per chunk a model streams — so a raw byte count is mostly that scaffolding, not prose,
+ * and grows with how many pieces the answer was cut into rather than with what it says.
+ * Found live: a merge call logged as "39,918 chars in, 715,023 out" reads as a model
+ * generating eighteen times its input, when the joined answer behind it is a fraction of
+ * that — the same shape {@link readContent} already extracts, computed the same way and
+ * never thrown from, because a call worth reporting the size of is not always one whose
+ * content parsed.
+ */
+function answerLength(body: string): number {
+  try {
+    if (isEventStream(body)) return joinStream(body).length;
+    const parsed = JSON.parse(body) as ChatResponse;
+    const content = parsed.choices?.[0]?.message?.content;
+    return typeof content === 'string' ? content.length : 0;
+  } catch {
+    return 0;
+  }
 }
 
 /** Tolerant about the wrapper — a fenced block, a sentence either side — and nothing else. */
