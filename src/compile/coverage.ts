@@ -210,7 +210,14 @@ function describe(evidence: CoverageEvidence): string {
       if (source.skipped_short > 0) parts.push(`${source.skipped_short} short`);
       if (source.skipped_window > 0) parts.push(`${source.skipped_window} outside the window`);
       if (source.skipped_not_a_post > 0) parts.push(`${source.skipped_not_a_post} not posts`);
-      if (source.skipped_no_captions > 0) parts.push(`${source.skipped_no_captions} no captions`);
+      // **A tally is read as hard as a sentence, and this one sits four lines below a
+      // sentence that contradicts it.** The gap prose above says braintrust ran into
+      // trouble getting the captions; `34 no captions` says the videos have none. Both
+      // ship in the same layer, and the short one is the one a reader takes. Every other
+      // entry here names what braintrust did — read, skipped, failed — so this one names
+      // that too, rather than describing somebody's published work.
+      if (source.skipped_no_captions > 0)
+        parts.push(`${source.skipped_no_captions} captions not retrieved`);
       if (source.failed > 0) parts.push(`${source.failed} failed`);
       if (source.pending > 0) parts.push(`${source.pending} pending`);
       lines.push(`- \`${source.platform}:${source.handle}\` — ${parts.join(', ')}.`);
