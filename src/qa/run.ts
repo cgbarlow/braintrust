@@ -9,10 +9,10 @@
 
 import { findPositions, type FindDeps } from '../find.js';
 import type { Interrogator } from '../interrogate/index.js';
-import { grounded, renderAnswer, RUBRIC, type QAOutcome } from './score.js';
+import { grounded, reached, renderAnswer, RUBRIC, type QAOutcome } from './score.js';
 import type { GoldenQuestion } from './sample.js';
 
-/** Enough citations to judge a reply without paying to render every one. */
+/** Enough positions to judge a reply without paying to render every one. */
 const ANSWER_LIMIT = 5;
 
 export async function runQuestion(
@@ -20,8 +20,14 @@ export async function runQuestion(
   deps: FindDeps,
   interrogator: Interrogator,
 ): Promise<QAOutcome> {
+  // **`full: true` is for the measurement, not for the reader.** Without it ../find.ts
+  // bounds each Position's citations to the four most recent, so a Position resting on
+  // twenty items showed four — and the one item whose title asked the question was
+  // invisible unless it happened to be among them. The grounding check was scoring
+  // recency. ../qa/score.ts still renders only what a default call would return, so what
+  // the judge reads is unchanged.
   const payload = await findPositions(
-    { person: question.person, query: question.query, limit: ANSWER_LIMIT },
+    { person: question.person, query: question.query, limit: ANSWER_LIMIT, full: true },
     deps,
   );
 
@@ -45,7 +51,8 @@ export async function runQuestion(
     query: question.query,
     item_url: question.item_url,
     fit: payload.positions[0]?.fit ?? null,
-    grounded: grounded(payload, question.item_url),
+    grounded: grounded(payload, question.citation_urls),
+    reached: reached(payload, question.citation_urls),
     passed,
     detail,
   };

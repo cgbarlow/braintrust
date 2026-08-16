@@ -17,6 +17,14 @@
  * it for every model braintrust talks to. One judge call per question, ~10 questions per
  * Person — enough to catch a regression without spending an evening's budget on it.
  *
+ * **Three columns, and they are not three views of one number.** *answered well* is the
+ * judge's verdict on the reply a reader would have been handed. *grounded* is whether that
+ * reply rests on the item the question was drawn from. *reached* is whether retrieval found
+ * that item at all, shown or not. Grounded below reached is a ranking problem; reached low
+ * is a retrieval one; both high with *answered well* low is neither. A single number could
+ * not tell those apart, and for a while this harness reported one that told them apart
+ * wrongly — see ../qa/score.ts.
+ *
  * **On demand only.** Nothing here schedules, gates a Compile, or files an issue — it is an
  * operator's report, the same standing as ../eval and ../calibrate.
  *
@@ -68,6 +76,8 @@ async function main(): Promise<void> {
 
     let totalAsked = 0;
     let totalPassed = 0;
+    let totalGrounded = 0;
+    let totalReached = 0;
 
     for (const person of people) {
       const questions = await goldenQuestions(db, person, args.sample);
@@ -87,9 +97,17 @@ async function main(): Promise<void> {
 
       totalAsked += card.asked;
       totalPassed += card.passed;
+      totalGrounded += card.grounded;
+      totalReached += card.reached;
     }
 
-    if (totalAsked > 0) console.log(`TOTAL: ${totalPassed}/${totalAsked} answered well.`);
+    if (totalAsked > 0) {
+      console.log(
+        `TOTAL: ${totalPassed}/${totalAsked} answered well, ` +
+          `${totalGrounded}/${totalAsked} grounded, ` +
+          `${totalReached}/${totalAsked} reached.`,
+      );
+    }
   } finally {
     await db.close();
   }

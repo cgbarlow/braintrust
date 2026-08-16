@@ -10,7 +10,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DEFAULT_SAMPLE, readArgs } from '../src/qa/args.js';
-import { formatScorecard, grounded, renderAnswer, RUBRIC, scoreOutcomes, type QAOutcome } from '../src/qa/score.js';
+import {
+  formatScorecard,
+  grounded,
+  reached,
+  renderAnswer,
+  RUBRIC,
+  scoreOutcomes,
+  type QAOutcome,
+} from '../src/qa/score.js';
 import type { Citation, FindPayload, FoundPosition } from '../src/find.js';
 
 const citation = (over: Partial<Citation> = {}): Citation => ({
@@ -54,6 +62,7 @@ const outcome = (over: Partial<QAOutcome> = {}): QAOutcome => ({
   item_url: 'https://example.test/item-1',
   fit: 'close',
   grounded: true,
+  reached: true,
   passed: true,
   detail: 'stub verdict',
   ...over,
@@ -66,6 +75,18 @@ describe('rendering an answer for the judge', () => {
     assert.match(rendered, /The constraint is never speed\./);
     assert.match(rendered, /close/);
     assert.match(rendered, /a genuine quote/);
+  });
+
+  it('names who the persona is, because the rubric rules on "this person"', () => {
+    assert.match(renderAnswer(payload()), /braintrust model of P/);
+  });
+
+  it('shows what a default call would return, not every citation `full: true` fetched', () => {
+    const many = Array.from({ length: 7 }, (_, at) => citation({ quote: `quote ${at}` }));
+    const rendered = renderAnswer(payload({ positions: [position({ citations: many })] }));
+
+    assert.equal(rendered.match(/^Citation: /gm)?.length, 4, 'bounded to DEFAULT_CITATIONS');
+    assert.doesNotMatch(rendered, /quote 4/);
   });
 
   it('says nothing matched, rather than describing an empty list', () => {
@@ -86,16 +107,59 @@ describe('rendering an answer for the judge', () => {
 });
 
 describe('the grounding check', () => {
+  const itemUrls = ['https://example.test/item-1'];
+
   it('is true when the top position cites the item the question was drawn from', () => {
-    assert.equal(grounded(payload(), 'https://example.test/item-1'), true);
+    assert.equal(grounded(payload(), itemUrls), true);
   });
 
   it('is false when the citation points somewhere else', () => {
-    assert.equal(grounded(payload(), 'https://example.test/some-other-item'), false);
+    assert.equal(grounded(payload(), ['https://example.test/some-other-item']), false);
   });
 
   it('is false when nothing matched, rather than throwing', () => {
-    assert.equal(grounded(payload({ positions: [] }), 'https://example.test/item-1'), false);
+    assert.equal(grounded(payload({ positions: [] }), itemUrls), false);
+  });
+
+  it('matches a batched item on the post permalink the citation actually carries', () => {
+    // The item is a whole Bluesky day; the citation resolves to one skeet inside it. An
+    // equality test against the item's own url would score this ungrounded forever.
+    const batched = payload({
+      positions: [position({ citations: [citation({ url: 'https://bsky.test/post/abc' })] })],
+    });
+
+    assert.equal(grounded(batched, ['https://bsky.test/day/2026-01-01']), false);
+    assert.equal(
+      grounded(batched, ['https://bsky.test/day/2026-01-01', 'https://bsky.test/post/abc']),
+      true,
+    );
+  });
+
+  it('looks past the first citation, so a right answer is not scored on recency', () => {
+    const later = citation({ url: 'https://example.test/something-newer' });
+    const asked = citation({ url: 'https://example.test/item-1' });
+
+    assert.equal(grounded(payload({ positions: [position({ citations: [later, asked] })] }), itemUrls), true);
+  });
+});
+
+describe('whether retrieval reached the item at all', () => {
+  const itemUrls = ['https://example.test/item-1'];
+  const elsewhere = position({ citations: [citation({ url: 'https://example.test/other' })] });
+
+  it('is true when a lower-ranked position cites it, where grounded is false', () => {
+    const ranked = payload({ positions: [elsewhere, position()] });
+
+    assert.equal(grounded(ranked, itemUrls), false, 'the shown answer does not rest on it');
+    assert.equal(reached(ranked, itemUrls), true, 'but retrieval did find it — a ranking problem');
+  });
+
+  it('is false when nothing returned cites it, which is not a ranking problem', () => {
+    assert.equal(reached(payload({ positions: [elsewhere] }), itemUrls), false);
+  });
+
+  it('is false when nothing matched', () => {
+    assert.equal(reached(payload({ positions: [] }), itemUrls), false);
   });
 });
 
@@ -124,6 +188,14 @@ describe('the scorecard', () => {
   it('counts grounding independently of the verdict', () => {
     const card = scoreOutcomes('p', [outcome({ passed: false, grounded: true })]);
     assert.equal(card.grounded, 1, 'a bad answer can still be about the right item');
+  });
+
+  it('counts reaching the item separately from resting the answer on it', () => {
+    const card = scoreOutcomes('p', [outcome({ grounded: false, reached: true })]);
+
+    assert.equal(card.grounded, 0);
+    assert.equal(card.reached, 1);
+    assert.match(formatScorecard(card), /1\/1 where retrieval reached that item at all/);
   });
 
   it('prints the failures, so a run nobody watches still says what to look at', () => {
