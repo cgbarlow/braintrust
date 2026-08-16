@@ -116,6 +116,15 @@ braintrust's corpus; nothing here motivates finding out.
 negative. #299's ticket 3 — one `EXPLAIN`, then one `SET LOCAL hnsw.ef_search` — remains the correct
 first move, and MNEMOS's `HNSW_EF_DEFAULT = 128` is a useful independent datapoint on where to set it.**
 
+> **Correction, 2026-08-16, from running the `EXPLAIN`.** The second half of that verdict is wrong.
+> braintrust's HNSW index is **never used** — the person filter arrives through a join, so the
+> `ORDER BY … LIMIT 480` sits above it and the planner sequentially scans every stored vector.
+> `hnsw.ef_search` is therefore a knob on nothing: the candidate set is identical at 40, 200, 500 and
+> under `iterative_scan = relaxed_order`, and identical again to a forced exact scan. MNEMOS's 128 has
+> nothing to be a starting value *for* until the query shape changes. Measured in
+> [issue-303-index-reach.md](issue-303-index-reach.md); the first half of the verdict stands, and
+> stands more strongly, because the reranker is now downstream of a stage that is already exact.
+
 ## 2. Titles are never embedded — does its indexing help?
 
 **Answer: its indexing is identical to braintrust's on this axis and helps not at all. Its *lexical
@@ -302,6 +311,10 @@ default of 40, where `src/find.ts` asks for 480 and 400 rows.
 **Build cost: one `SET LOCAL` line**, exactly as ticket 3 already proposes. The steal is the number and
 the confirmation, not the code.
 
+> **Correction, 2026-08-16.** Withdrawn. This steal is unavailable: the index the knob would tune is
+> never scanned, so setting it changes no row braintrust returns. See
+> [issue-303-index-reach.md](issue-303-index-reach.md) §1.
+
 ### 3. One outcome vocabulary spanning the harness and the persona
 
 `usage_detector.py:8-24` labels every retrieved item `used` / `ignored` / `contradicted` / `unknown`,
@@ -359,8 +372,9 @@ stronger); the governance suppression layer (needs per-corpus human tuning).
   the same way; neither is conclusive.
 - **Every benchmark figure quoted here.** `benchmarks/outputs/` is gitignored (`.gitignore:45`), so the
   raw artifacts are absent from the repository and the numbers are as-reported in Markdown.
-- **Whether braintrust's HNSW index is being used at all, and at what `ef_search`.** Still one
-  `EXPLAIN (ANALYZE)`, as #299 said. Nothing in this assessment changes that being the first move.
+- ~~**Whether braintrust's HNSW index is being used at all, and at what `ef_search`.**~~ **Settled
+  2026-08-16: it is not used at all, at any `ef_search`.** See
+  [issue-303-index-reach.md](issue-303-index-reach.md).
 
 ---
 

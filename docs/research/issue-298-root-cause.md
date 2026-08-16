@@ -126,6 +126,16 @@ the code, and every constant comment in `src/find.ts:70-95`, believes it is rank
 | **C. Ask a question instead of a title** | The harness measures retrieval on the query shape users actually send | Draw the query from `braintrust_item_notes.claims[].statement`, already stored. **Zero new model calls**, stays fully autonomous | Loses the "a title is unarguably real" property `src/qa/sample.ts:5-9` was built for. Weaker as a fixed benchmark, far better as a measurement |
 | **D. Add a reranker over the top-k | Best ranking available | One model call per question, every question, forever | Dead on arrival — this is the call-count creep the product owner kills |
 
+> **Correction, 2026-08-16, from running the `EXPLAIN`.** Option A is dead, and this note's own hedge
+> is what killed it: the planner *was* already doing exact search. The HNSW index is never scanned at
+> all — the person filter arrives through a join, so the `ORDER BY … LIMIT 480` sits above it and
+> Postgres sequentially scans all 8,170 vectors. The candidate set is identical at `ef_search` 40,
+> 200, 500, under `iterative_scan = relaxed_order`, and under a forced exact scan. So the paragraph
+> above is wrong in its arithmetic — an `ef_search` of 40 leaves nothing per person, because nothing
+> is being cut by `ef_search`. Retrieval reaches exactly as far as the code claims; what it returns is
+> the best a brute-force search could return. Measured in
+> [issue-303-index-reach.md](issue-303-index-reach.md).
+
 **Pick A, then C, then B.** A is the cheap/accurate middle ground and it is a test as much as a fix:
 one `EXPLAIN` settles whether the index is even being used. C makes the number mean something. B is
 real work that should wait until A and C say it is still needed. D is not a candidate.
@@ -374,6 +384,12 @@ answer produces finding 3's frame collapse. The same one-line fix would move all
 
 **Pick A, then B.** B is what makes the next occurrence take a minute instead of a session.
 
+> **Correction, 2026-08-16.** A was the no-op its own trade-off column allowed for. B stands, and is
+> now the whole of this finding's fix — with one measured addition: the floor is what cuts an item out
+> of the candidate set in every case where an item is missing from it (4 of 45 golden questions), and
+> two of those four clear by less than 0.011. See [issue-303-index-reach.md](issue-303-index-reach.md)
+> §2.
+
 **Confidence: moderate on the mechanism, high on the observation.** What would raise it: two read-only
 queries.
 
@@ -502,6 +518,12 @@ post-scan filters. Start with `EXPLAIN`, not a patch — if the planner is alrea
 this is a no-op and the ticket closes cheaply. If it is not, one `SET LOCAL` line moves findings 1, 3
 and 6 together. Zero model calls either way.
 *Independent of 1 and 2. Highest ceiling of anything on this list.*
+
+> **Closed 2026-08-16 as the cheap branch.** The planner is already doing exact search, so this was a
+> no-op and no patch was written. The ceiling was zero, not the highest on the list. Where the 34
+> failures actually go: 13 to items no Position cites, 11 to a Position ranked below another, 6 to a
+> Position that never made the five, 4 to the floor, 0 to the index.
+> [issue-303-index-reach.md](issue-303-index-reach.md).
 
 **4. `npm run qa` measures what its column headers say.**
 *(Shared cause C. Covers finding 1's measurement half, finding 2 entirely.)*
