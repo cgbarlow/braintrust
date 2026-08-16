@@ -258,6 +258,12 @@ resolves to every tool (`cli.py:4458`, `model_tools.py:296-307`).
 An allowlist beats `agent.disabled_toolsets: [terminal, browser, files, web]` because a denylist goes
 stale every time Hermes adds a toolset, and this is a config nobody will revisit.
 
+> **Correction, 2026-08-16, from running it.** The key is `platform_toolsets`, not a top-level
+> `toolsets:` list — the latter is read by nothing on the CLI path and silently does nothing. The
+> allowlist shape and the MCP-server-name alias are right; the key is not. Full detail and the
+> measurement in [`issue-298-root-cause.md`](issue-298-root-cause.md) and
+> [`#301`](https://github.com/cgbarlow/braintrust/issues/301).
+
 ---
 
 ## 4. Finding 5 — one real violation, one false alarm

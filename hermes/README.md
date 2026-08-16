@@ -39,6 +39,9 @@ mcp_servers:
     tools:
       exclude: [braintrust_follow_person, braintrust_unfollow_person]
 
+platform_toolsets:
+  cli: [braintrust]
+
 tools:
   tool_search:
     enabled: "off"
@@ -52,6 +55,13 @@ spends real money on the extractor while unfollowing throws a corpus away. `brai
 human-gated in the surface anyway, so excluding it costs nothing; excluding `unfollow` is the one that
 matters. `braintrust_refresh_persona` stays — it is AI-callable by design, and an agent noticing its own
 persona is stale and rebuilding it is exactly the behaviour that surface was built for.
+
+**`platform_toolsets` is what keeps a browser, a terminal and a filesystem out of a persona's reach.**
+Without it the profile inherits the global `hermes-cli` set: a persona answering from a compiled corpus
+carries forty tools it must never call, and the skills index of every skill on the host. Measured on this
+repo's own profiles, scoping cut the fixed prompt from ~25,600 characters to ~9,450 and removed ~55 KB of
+tool schema per session. **It is `platform_toolsets`, not a top-level `toolsets:` list** — a profile-level
+`toolsets:` key is read by nothing on the CLI path and silently does nothing.
 
 **`tool_search` is the top-level key, beside `mcp_servers`** — not the `tools` block inside the server. Set
 it now rather than after a broken session: left on, it can put the braintrust tools out of a small model's

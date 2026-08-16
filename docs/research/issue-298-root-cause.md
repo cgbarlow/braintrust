@@ -281,6 +281,24 @@ toolsets: [braintrust]
 
 Note `toolsets: []` would be wrong — an empty list is falsy and resolves to *all tools*.
 
+> **Correction, 2026-08-16, from running it.** The key above is wrong. A profile-level `toolsets:`
+> list is read by nothing on the CLI path and silently does nothing: with it set, a live
+> `bt-chris-barlow` session still listed `terminal`, `browser_*`, `read_file` and `write_file` among
+> its tools. `cli.py:4458` takes its `toolsets` argument from the `-t` flag, falling back to
+> `_get_platform_tools(CLI_CONFIG, "cli")` (`cli.py:18095`), which reads **`platform_toolsets`**
+> (`hermes_cli/tools_config.py:2232`) and never the top-level key. The working line is:
+>
+> ```yaml
+> platform_toolsets:
+>   cli: [braintrust]
+> ```
+>
+> Verified the same way: the profile then lists braintrust's seven tools and nothing else. This is
+> what the section below gets right — the allowlist shape, the MCP-server-name alias, and the reason
+> a denylist is worse — with the wrong key. The whole finding was filed **"confidence: high, nothing
+> here is inferred"**, and it was still wrong, because reading the resolution path is not the same as
+> running it. See [`#301`](https://github.com/cgbarlow/braintrust/issues/301).
+
 **Solution options**
 
 | Option | What the user gets | Cost | Trade-off |
