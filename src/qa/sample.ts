@@ -21,6 +21,14 @@ export type GoldenQuestion = {
   query: string;
   item_id: string;
   item_url: string;
+  /**
+   * **Every url a citation of this item can carry**, which is not the same as the item's
+   * own url. ../find.ts renders a citation as `coalesce(pc.post_url, i.url)` so a batched
+   * Bluesky day resolves to the individual post the quote fell inside. Comparing an answer
+   * against `i.url` alone therefore scored every batched item ungrounded no matter how good
+   * the answer was. Collected here, once, so the comparison cannot go wrong later.
+   */
+  citation_urls: string[];
 };
 
 /**
@@ -30,8 +38,17 @@ export type GoldenQuestion = {
  * fetched, has no natural-language topic to ask about.
  */
 export async function goldenQuestions(db: Db, person: string, limit: number): Promise<GoldenQuestion[]> {
-  const { rows } = await db.query<{ id: string; title: string; url: string }>(
-    `select i.id, i.title, i.url
+  const { rows } = await db.query<{ id: string; title: string; url: string; citation_urls: string[] }>(
+    `select i.id, i.title, i.url,
+            array_remove(
+              array[i.url] || coalesce(
+                (select array_agg(distinct coalesce(pc.post_url, i.url))
+                   from braintrust_position_citations pc
+                  where pc.item_id = i.id),
+                array[]::text[]
+              ),
+              null
+            ) as citation_urls
        from braintrust_items i
        join braintrust_sources s on s.id = i.source_id
        join braintrust_people p on p.id = s.person_id
@@ -44,5 +61,11 @@ export async function goldenQuestions(db: Db, person: string, limit: number): Pr
     [person, limit],
   );
 
-  return rows.map((row) => ({ person, query: row.title, item_id: row.id, item_url: row.url }));
+  return rows.map((row) => ({
+    person,
+    query: row.title,
+    item_id: row.id,
+    item_url: row.url,
+    citation_urls: row.citation_urls,
+  }));
 }

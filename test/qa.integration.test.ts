@@ -216,7 +216,29 @@ describe('the golden-question eval, against real Postgres', () => {
     assert.equal(outcome.passed, true);
     assert.equal(outcome.detail, 'stub verdict');
     assert.equal(outcome.grounded, true, 'the top position should cite the very item the question was drawn from');
+    assert.equal(outcome.reached, true, 'and retrieval plainly reached it');
     assert.ok(outcome.fit, 'a position came back, so it has a fit grade');
+  });
+
+  it('scores a batched item on the post permalink, not the day it was read in', async () => {
+    const [asked] = await goldenQuestions(db, 'p', 1);
+
+    // What a Bluesky day looks like once compiled: every citation resolves to the
+    // individual skeet the quote fell inside, so the item's own url appears nowhere in the
+    // answer. Compared against that url alone, a perfect answer scored ungrounded.
+    await db.query(`update braintrust_position_citations set post_url = $2 where item_id = $1`, [
+      asked!.item_id,
+      'https://example.test/skeet-1',
+    ]);
+
+    const [question] = await goldenQuestions(db, 'p', 1);
+    assert.ok(
+      question!.citation_urls.includes('https://example.test/skeet-1'),
+      'the golden set collects the urls a citation can actually carry',
+    );
+
+    const outcome = await runQuestion(question!, { db, embedder, retrieval }, stubInterrogator({ holds: true }));
+    assert.equal(outcome.grounded, true);
   });
 
   it('records a judge that could not be reached as unjudged, not failed', async () => {
