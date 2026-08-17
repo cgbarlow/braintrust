@@ -58,7 +58,7 @@ import { SERVER_NAME } from '../mcp.js';
 import { createFetcher } from '../net/fetch.js';
 import { checkDimension, createEmbedder, createQueryGate } from '../retrieval/index.js';
 import { readArgs } from './args.js';
-import { formatBars } from './bars.js';
+import { formatBars, type PersonBars } from './bars.js';
 import { measurePersonaBars } from './measure.js';
 import { runNegativeQuestion, runQuestion } from './run.js';
 import { goldenQuestions } from './sample.js';
@@ -67,14 +67,15 @@ import {
   formatNegativeCard,
   formatRungs,
   formatScorecard,
+  RUNGS,
   scoreNegatives,
   scoreOutcomes,
   sumNegativeCards,
-  sumRungs,
   type NegativeCard,
   type NegativeOutcome,
   type PersonScorecard,
   type QAOutcome,
+  type Rung,
 } from './score.js';
 
 async function main(): Promise<void> {
@@ -113,6 +114,7 @@ async function main(): Promise<void> {
 
     const cards: PersonScorecard[] = [];
     const negativeCards: NegativeCard[] = [];
+    const measurements: PersonBars[] = [];
 
     for (const person of people) {
       const questions = await goldenQuestions(db, person, args.sample);
@@ -152,24 +154,37 @@ async function main(): Promise<void> {
       // The bars are measured free, over every titled retrieved item — no judge call is
       // spent on the pass decided here, and nothing is decided about serving.
       const bars = await measurePersonaBars(db, person, { db, embedder, retrieval });
+      measurements.push(bars);
       console.log(formatBars(bars));
       console.log('');
     }
 
     if (cards.length > 0) {
-      const asked = cards.reduce((total, card) => total + card.asked, 0);
-      const covered = cards.reduce((total, card) => total + card.covered, 0);
+      const sampleAsked = cards.reduce((total, card) => total + card.asked, 0);
       const passed = cards.reduce((total, card) => total + card.passed, 0);
       const failed = cards.reduce((total, card) => total + card.failed, 0);
       const unjudged = cards.reduce((total, card) => total + card.unjudged, 0);
-      const grounded = cards.reduce((total, card) => total + card.grounded, 0);
       const empty = cards.reduce((total, card) => total + card.empty, 0);
+      const judgedCount = sampleAsked - empty;
+
+      // **The fleet's headline is the whole-corpus free column, never the sample-of-ten
+      // rate** — the exact mistake #330 exists to close (§5.4). The bars pass asked every
+      // titled retrieved item per persona, so these counts are summed over the corpus; the
+      // judge's figures below keep their own bounded sample size beside them.
+      const corpusAsked = measurements.reduce((total, m) => total + m.asked, 0);
+      const covered = measurements.reduce((total, m) => total + m.covered, 0);
+      const grounded = measurements.reduce((total, m) => total + m.grounded, 0);
+      const corpusRungs = Object.fromEntries(
+        RUNGS.map((rung) => [rung, measurements.reduce((total, m) => total + (m.rungs[rung] ?? 0), 0)]),
+      ) as Record<Rung, number>;
       const pct = covered > 0 ? ` (${Math.round((grounded / covered) * 100)}%)` : '';
       console.log(
-        `TOTAL: grounded ${grounded}/${covered}${pct} over the covered denominator; ` +
-          `judge said ${passed}/${asked - empty} answered well, ` +
+        `TOTAL: grounded ${grounded}/${covered}${pct} over the covered corpus of ` +
+          `${corpusAsked} titled items — coverage, not a quality verdict; ` +
+          `judge said ${judgedCount > 0 ? `${passed}/${judgedCount}` : passed} answered well ` +
+          `across ${sampleAsked} judged question(s) (${empty} answered nothing), ` +
           `${failed} failed, ${unjudged} could not be judged; ` +
-          `${empty} answered nothing — ${formatRungs(sumRungs(cards))}.`,
+          `one rung each — ${formatRungs(corpusRungs)}.`,
       );
       if (negativeCards.length > 0) {
         console.log(formatNegativeCard(sumNegativeCards(negativeCards)));
