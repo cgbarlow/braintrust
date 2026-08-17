@@ -57,6 +57,17 @@ if grep -q 'braintrust_[a-z]' "$template"; then
   exit 1
 fi
 
+# A template that still tells a persona to stop being the persona is the fault this
+# script exists to clear, not something to spread. Dropping the frame is what makes an
+# empty answer read as a system reporting a miss; an honest empty answer stays in voice
+# and says it has nothing it can stand behind — see issue #324. Refuse rather than
+# overwrite good profiles with it.
+if grep -qi 'stop being the persona' "$template"; then
+  echo "refusing to apply: the template still tells a persona to stop being the persona." >&2
+  echo "the fix is not on main yet — see issue #324." >&2
+  exit 1
+fi
+
 shopt -s nullglob
 profiles=("$PROFILES_DIR"/bt-*)
 if [ ${#profiles[@]} -eq 0 ]; then

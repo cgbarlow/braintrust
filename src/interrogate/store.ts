@@ -19,7 +19,7 @@
 
 import type { Db } from '../db.js';
 import { BraintrustError } from '../errors.js';
-import { faultById } from './assertions.js';
+import { ASSERTIONS, faultById } from './assertions.js';
 import { faultKey, silenceKey, type Fault, type LastRun, type Silence } from './schedule.js';
 
 export type InterrogationRun = {
@@ -373,7 +373,15 @@ export async function openSilences(db: Db, log = console.error): Promise<Silence
     const { rows } = await db.query<SilenceRow>(
       `select * from braintrust_silences order by first_failed_at asc, silence_key asc`,
     );
-    return rows.map(asSilence);
+    // **A silence for an assertion the schedule no longer asks is not a silence.**
+    // `silencesToFile` files nothing once *any* row is reported, and a row under an id that
+    // has since been retired is never cleared — the schedule never asks under it, so
+    // `clearSilence` never fires. Left in the ledger it would permanently mute the outage
+    // arm for every real check after it. Dropping rows here is what keeps a retired or
+    // unknown assertion from ever costing the checks that still exist.
+    return rows
+      .map(asSilence)
+      .filter((one) => ASSERTIONS.some((assertion) => assertion.id === one.assertion));
   }, log);
 }
 

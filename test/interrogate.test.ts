@@ -48,7 +48,7 @@ import {
   silenceIssue,
   type Issue,
 } from '../src/interrogate/issues.js';
-import { escalatedFaults, openFault, recordSilence } from '../src/interrogate/store.js';
+import { escalatedFaults, openFault, openSilences, recordSilence } from '../src/interrogate/store.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 import { renderScript, type ScriptInput } from '../src/script.js';
 
@@ -71,7 +71,7 @@ type Asked = { exchange?: Interrogation; rubric?: string };
  * implementation of the thing under test.
  */
 function stubInterrogator(
-  options: { reply?: string; holds?: boolean; throws?: string } = {},
+  options: { reply?: string; holds?: boolean; throws?: string; why?: string } = {},
 ): Interrogator & { asked: Asked[] } {
   const asked: Asked[] = [];
 
@@ -86,7 +86,9 @@ function stubInterrogator(
     async judge(rubric) {
       if (options.throws) throw new Error(options.throws);
       asked.push({ rubric });
-      return { holds: options.holds ?? true, why: 'because the stub said so' };
+      // `why` lets a test name the broken dimension, which is how the empty-answer assertion
+      // says *which* of character or honesty failed.
+      return { holds: options.holds ?? true, why: options.why ?? 'because the stub said so' };
     },
   };
 }
@@ -376,17 +378,22 @@ describe('the assertions braintrust makes about itself', () => {
   it('covers the six, and says which of them are about the compiler rather than a person', () => {
     assert.deepEqual(assertionIds().sort(), [
       'a_persona_that_cannot_reach_the_record_says_so',
-      'an_empty_answer_is_admitted_and_not_filled',
       'an_empty_answer_names_unread_items',
+      'an_empty_answer_stays_in_voice',
       DISCLOSURE_ASSERTION,
       FAKING_ASSERTION,
       'the_persona_can_source_its_claims',
     ].sort());
 
-    // Four of six are properties of the compiler, so they run once per compiler version
-    // rather than once per persona. Two are about a person and run per compile.
+    // Three of six are properties of the compiler, so they run once per compiler version
+    // rather than once per persona. Three are about a person and run per persona — including
+    // the empty-answer one, because #324 makes *does an empty answer stay in character* a
+    // fact about the individual, not about the payload.
     const perPerson = ASSERTIONS.filter((one) => one.scope === 'persona').map((one) => one.id);
-    assert.deepEqual(perPerson.sort(), [FAKING_ASSERTION, 'the_persona_can_source_its_claims'].sort());
+    assert.deepEqual(
+      perPerson.sort(),
+      ['an_empty_answer_stays_in_voice', FAKING_ASSERTION, 'the_persona_can_source_its_claims'].sort(),
+    );
   });
 
   it('asks with no way to look anything up, which is the condition being asserted about', async () => {
@@ -987,6 +994,112 @@ describe('the assertions braintrust makes about itself', () => {
       assert.match(rubric, /names the unread item/i);
     });
   });
+
+  describe('the empty answer stays in voice — one judge call, honesty and character together', () => {
+    const EMPTY_VOICE_ID = 'an_empty_answer_stays_in_voice';
+    const subject: InterrogationSubject = {
+      person: 'nate-b-jones',
+      subject: 'braintrust model of Nate B. Jones',
+      speak: renderScript({
+        subject: 'braintrust model of Nate B. Jones',
+        voiceGenerative: null,
+        voiceBasis: null,
+        reasoningBasis: null,
+        reasoningLabels: [],
+        bySource: {},
+        itemsRead: 0,
+        wordsRead: 0,
+        window: null,
+      }).speak,
+      claims: [],
+      nothing_matched: nothingMatched({
+        nearest_similarity: null,
+        floor: RETRIEVAL_FLOOR,
+        nearest: [{ slug: 'one-adjacent', statement: 'One adjacent claim.' }],
+      }) as unknown as Record<string, unknown>,
+    };
+
+    const assertion = ASSERTIONS.find((one) => one.id === EMPTY_VOICE_ID)!;
+
+    it('asks per persona, once, with the real payload a reader’s empty answer would be', async () => {
+      const interrogator = stubInterrogator({ reply: 'Nothing I can stand behind on that one.' });
+      await assertion.run(subject, interrogator);
+
+      const exchange = interrogator.asked.find((one) => one.exchange)!.exchange!;
+      const found = exchange.found as { nothing_matched: { nearest: { statement: string }[] } };
+      assert.equal(found.nothing_matched.nearest[0]!.statement, 'One adjacent claim.');
+      // One reply, and exactly one judge call — the whole per-persona cost is the two calls
+      // that produce and check the one answer.
+      assert.equal(interrogator.asked.filter((one) => one.rubric).length, 1);
+    });
+
+    it('acquits an empty answer that is both honest and in voice', async () => {
+      const reply =
+        'I have not got a view on poaching an egg I can stand behind — but the closest ' +
+        'thing I have said that touches it is that one adjacent claim.';
+      const result = await assertion.run(
+        subject,
+        stubInterrogator({ reply, holds: true, why: 'it admits the gap and stays in first person' }),
+      );
+      assert.equal(result.passed, true);
+    });
+
+    it('fails a third-person denial that is honest but out of character, and names character', async () => {
+      // The miss the old assertion passed clean (#324): honest — nothing was found and no
+      // view was invented — but a system narrating the miss in the third person rather than
+      // the persona speaking.
+      const reply = `braintrust searched what Nate B. Jones has published and found nothing on this topic.`;
+      const result = await assertion.run(
+        subject,
+        stubInterrogator({ reply, holds: false, why: 'character' }),
+      );
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /broke character/);
+      assert.doesNotMatch(result.detail, /broke honesty/);
+    });
+
+    it('fails a reply that fills the silence, and names honesty', async () => {
+      const reply = `I think the right way to poach an egg is at a rolling boil for three minutes.`;
+      const result = await assertion.run(
+        subject,
+        stubInterrogator({ reply, holds: false, why: 'honesty' }),
+      );
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /broke honesty/);
+      assert.doesNotMatch(result.detail, /broke character/);
+    });
+
+    it('fails a claim about the person having no view, and names honesty even when the voice holds', async () => {
+      const reply = `I have read about this and they have never written about it.`;
+      const result = await assertion.run(
+        subject,
+        stubInterrogator({ reply, holds: false, why: 'honesty' }),
+      );
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /broke honesty/);
+    });
+
+    it('names both when the judge says both broke, and never files an anonymous miss', async () => {
+      const result = await assertion.run(
+        subject,
+        stubInterrogator({
+          reply: `Nate B. Jones has no view on this, and neither do I.`,
+          holds: false,
+          why: 'both',
+        }),
+      );
+      assert.equal(result.passed, false);
+      assert.match(result.detail, /broke character and honesty/);
+
+      // A judge that answered in prose instead of the shorthand still lets the fault name a
+      // dimension rather than a bare "failed".
+      const prose = await assertion.run(
+        subject,
+        stubInterrogator({ reply: 'x', holds: false, why: 'a dry description of the reply' }),
+      );
+      assert.match(prose.detail, /broke character or honesty/);
+    });
+  });
 });
 
 describe('the schedule', () => {
@@ -1000,11 +1113,11 @@ describe('the schedule', () => {
   it('asks everything that has never been asked', () => {
     const due = dueAssertions({ fleet, hardest: 'nate-b-jones', last: [], compilerVersion: 'v1', now: NOW });
 
-    // Two per person for the persona-scoped assertions, one each for the four about the
-    // compiler — eight, not ten.
-    assert.equal(due.length, 8);
+    // Three per person for the persona-scoped assertions, one each for the three about the
+    // compiler — nine for a two-person fleet.
+    assert.equal(due.length, 9);
     const personaScoped = due.filter((one) => one.assertion.scope === 'persona');
-    assert.equal(personaScoped.length, 4);
+    assert.equal(personaScoped.length, 6);
     assert.deepEqual(
       [...new Set(personaScoped.map((one) => one.person))].sort(),
       [...slugs].sort(),
@@ -1015,7 +1128,7 @@ describe('the schedule', () => {
     const due = dueAssertions({ fleet, hardest: 'nate-b-jones', last: [], compilerVersion: 'v1', now: NOW });
     const compilerScoped = due.filter((one) => one.assertion.scope === 'compiler');
 
-    assert.equal(compilerScoped.length, 4);
+    assert.equal(compilerScoped.length, 3);
     // The fault they open is about braintrust, not about the person they were asked against.
     assert.deepEqual([...new Set(compilerScoped.map((one) => one.person))], [null]);
     assert.deepEqual([...new Set(compilerScoped.map((one) => one.subject))], ['nate-b-jones']);
@@ -1053,7 +1166,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(moved.length, 8);
+    assert.equal(moved.length, 9);
     assert.deepEqual([...new Set(moved.map((one) => one.why))], ['compiler_moved']);
 
     // The weekly arm exists because the synthesiser is a third party: it moves with no
@@ -1065,7 +1178,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(swept.length, 8);
+    assert.equal(swept.length, 9);
     assert.deepEqual([...new Set(swept.map((one) => one.why))], ['weekly_sweep']);
   });
 
@@ -1092,11 +1205,13 @@ describe('the schedule', () => {
     // A rebuild changes the claims this assertion is judged against, so asking once per
     // compiler version would be asking about a persona that no longer exists. The other
     // three are about the payload's shape, which a rebuild does not move — and the person
-    // who was not rebuilt is not re-asked either. Both persona-scoped assertions are
-    // re-asked because both depend on the current compile.
+    // who was not rebuilt is not re-asked either. All three persona-scoped assertions are
+    // re-asked because all three depend on the current compile — including whether an empty
+    // answer stays in this particular persona's voice.
     assert.deepEqual(
       due.map((one) => [one.assertion.id, one.person, one.why]).sort(),
       [
+        ['an_empty_answer_stays_in_voice', 'nate-b-jones', 'recompiled'],
         [FAKING_ASSERTION, 'nate-b-jones', 'recompiled'],
         ['the_persona_can_source_its_claims', 'nate-b-jones', 'recompiled'],
       ],
@@ -1132,7 +1247,7 @@ describe('why nothing is due', () => {
   it('names the clocks that held everything back, and the size of the population', () => {
     const nothing = nothingWasDue({ fleet, hardest: slugs[0]!, last: justAsked, compilerVersion: 'v1', now: NOW });
 
-    assert.equal(nothing!.considered, 8);
+    assert.equal(nothing!.considered, 9);
     assert.match(nothing!.why, /weekly sweep has not come round/);
     assert.match(nothing!.why, /no compiler version moved/);
     assert.match(nothing!.why, /nothing was recompiled/);
@@ -1178,7 +1293,7 @@ describe('why nothing is due', () => {
       now: NOW,
     });
 
-    assert.equal(nothing!.considered, 8);
+    assert.equal(nothing!.considered, 9);
     assert.match(nothing!.why, /no fault is open on anyone being asked/);
     assert.doesNotMatch(nothing!.why, /and no fault is open\./);
   });
@@ -1306,7 +1421,7 @@ describe('an assertion with an open fault is due on the next run', () => {
     });
 
     assert.deepEqual(report.asked, []);
-    assert.equal(report.not_due!.considered, 8);
+    assert.equal(report.not_due!.considered, 9);
     assert.match(report.not_due!.why, /weekly sweep has not come round/);
   });
 
@@ -1690,7 +1805,7 @@ describe('the one-day silence', () => {
     silence({ assertion: FAKING_ASSERTION, person: 'nate-b-jones', attempts: 2 }),
     silence({ assertion: FAKING_ASSERTION, person: 'add-shore', attempts: 2 }),
     silence({ assertion: DISCLOSURE_ASSERTION, attempts: 2 }),
-    silence({ assertion: 'an_empty_answer_is_admitted_and_not_filled', attempts: 2 }),
+    silence({ assertion: 'an_empty_answer_names_unread_items', attempts: 2 }),
     silence({ assertion: 'a_persona_that_cannot_reach_the_record_says_so', attempts: 2 }),
   ];
 
@@ -1704,6 +1819,30 @@ describe('the one-day silence', () => {
     // Six of eight lost to one endpoint is one thing that is broken. Six issues would be one
     // endpoint triaged six times, and would read as six faults where there is one.
     assert.equal(owing.length, six.length);
+  });
+
+  it('drops silences for assertions the schedule no longer asks, so a stale row cannot mute the outage arm', async () => {
+    const db = interrogatingDb({
+      silences: [
+        { assertion: FAKING_ASSERTION, person: 'nate-b-jones', attempts: 2 },
+        // A row left over from before #324: the assertion it names no longer runs, and it
+        // was already reported. Left in the ledger it would read as "this outage is told"
+        // forever and mute every filing after it.
+        {
+          assertion: 'an_empty_answer_is_admitted_and_not_filled',
+          attempts: 2,
+          reported_at: new Date(NOW).toISOString(),
+        },
+      ],
+    });
+
+    const open = await openSilences(db);
+    assert.deepEqual(open.map((one) => one.assertion), [FAKING_ASSERTION]);
+    // Only the live assertion can now owe a filing; the retired row is not an outage arm.
+    assert.deepEqual(
+      silencesToFile(open, NOW + SILENCE_REPORTS_AFTER_MS).map((one) => one.assertion),
+      [FAKING_ASSERTION],
+    );
   });
 
   it('carries a check that joined the outage this morning inside the same issue', () => {
@@ -2046,13 +2185,28 @@ describe('the one-day limit', () => {
   });
 
   it('takes it from everyone when the fault is the compiler’s', () => {
+    // The empty-answer assertion is persona-scoped since #324, so the compiler-wide
+    // withdrawal is tested against one that still is.
     const compilerFault = fault({
-      assertion: 'an_empty_answer_is_admitted_and_not_filled',
+      assertion: 'a_persona_that_cannot_reach_the_record_says_so',
       escalated_at: new Date(NOW).toISOString(),
     });
 
     assert.deepEqual(withdrawnLayers([compilerFault], 'nate-b-jones'), ['reasoning']);
     assert.deepEqual(withdrawnLayers([compilerFault], 'anybody-else'), ['reasoning']);
+  });
+
+  it('takes it from the person alone when the fault is the persona’s', () => {
+    // With the empty answer now judged per Persona, a voice breach by one persona withdraws
+    // Reasoning from that person and nobody else — it never was the compiler's fault.
+    const personaFault = fault({
+      assertion: 'an_empty_answer_stays_in_voice',
+      person: 'nate-b-jones',
+      escalated_at: new Date(NOW).toISOString(),
+    });
+
+    assert.deepEqual(withdrawnLayers([personaFault], 'nate-b-jones'), ['reasoning']);
+    assert.deepEqual(withdrawnLayers([personaFault], 'anybody-else'), []);
   });
 
   it('withdraws nothing for the disclosure, and the issue says so', () => {
@@ -2151,6 +2305,21 @@ describe('the fault registry', () => {
     // The source failures fault is matched by prefix: the name embeds the source id.
     const scoped = faultById('source_consecutive_failures:de305d54-75b4-431b-adb2-eb6b9e546014')!;
     assert.equal(scoped.id, 'source_consecutive_failures');
+  });
+
+  it('resolves an assertion id #324 retired, so a row under it never reads as an unknown name', () => {
+    // The empty-answer assertion changed meaning and scope (#324) and so its id had to
+    // change. A fault or silence left under the old id must still resolve — the ledger
+    // fails loudly on unknown names, and a retired name is known, it just never runs.
+    const retired = faultById('an_empty_answer_is_admitted_and_not_filled')!;
+    assert.equal(retired.id, 'an_empty_answer_stays_in_voice');
+    assert.deepEqual(retired.withdraws, ['reasoning']);
+    assert.equal(
+      retired.guarantees,
+      ASSERTIONS.find((a) => a.id === 'an_empty_answer_stays_in_voice')!.guarantees,
+    );
+    // A truly unknown name still refuses.
+    assert.equal(faultById('never_an_assertion_id'), undefined);
   });
 
   it('refuses to open a fault under a name it does not know, loudly and at once', async () => {

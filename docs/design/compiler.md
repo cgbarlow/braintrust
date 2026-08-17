@@ -982,15 +982,18 @@ braintrust can do on its own clears it.
 |---|---|---|
 | `the_model_cannot_fake_this_individual` | persona | `reasoning` |
 | `the_persona_can_source_its_claims` | persona | `reasoning` |
+| `an_empty_answer_stays_in_voice` | persona | `reasoning` |
 | `the_first_reply_carries_the_disclosure` | compiler | — |
-| `an_empty_answer_is_admitted_and_not_filled` | compiler | `reasoning` |
 | `a_persona_that_cannot_reach_the_record_says_so` | compiler | `reasoning` |
 | `an_empty_answer_names_unread_items` | compiler | `reasoning` |
 
-**Four of the six are properties of the compiler rather than of the person**, so they run once per compiler
+**Three of the six are properties of the compiler rather than of the person**, so they run once per compiler
 version against one subject rather than once per Persona in the fleet — *whoever the base model knows best*,
-stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The two
-persona-scoped assertions run per compile: one is a fact about a person, and the other hunts unknowns.
+stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The three
+persona-scoped assertions run per Persona: one is a fact about a person, one hunts unknowns, and since #324
+one asks whether an empty answer stays in *that* Person's character as well as staying honest — a third-person
+denial is honest and still breaks the persona, so it is a fact about the individual and costs one judge call
+per Persona to check.
 
 **A fault may only open under a name this registry knows.** The six assertions above are everything the
 interrogation asks, but not every fault braintrust opens is an interrogation assertion: the `verify_sources`
@@ -1000,6 +1003,13 @@ passing guarantees and what it withdraws — so a Fault report never renders "un
 longer exists in the code", and a name the registry does not know is **refused at `openFault`**, loudly, the
 moment it would be created, rather than explained away when the issue is filed
 ([#277](https://github.com/cgbarlow/braintrust/issues/277)).
+
+**A renamed assertion keeps its old name resolving, so rows already in the ledger never read as unknown.**
+The empty-answer assertion's id changed in #324 as part of what it asks moving from the compiler's scope to
+the persona's. Rows the old name already left behind — a fault, or a silence that pre-dates the rename —
+resolve through the retirement map to the replaced assertion's meaning, and a silence for an assertion the
+schedule no longer asks is dropped at the ledger read, so a stale reported row can never permanently mute
+the outage arm.
 
 **The schedule is compiler change, a weekly sweep, and one fault at a time.**
 ([#276](https://github.com/cgbarlow/braintrust/issues/276)) The version arm asks whether braintrust's own
