@@ -245,6 +245,15 @@ export const REGISTERED_FAULTS: RegisteredFault[] = [
       'the rest of the corpus is unaffected and the block is unset by the first success',
     withdraws: [],
   },
+  {
+    id: 'corpus_coverage',
+    guarantees:
+      'a Persona whose current Compile formed Positions on less than half of its retrieved ' +
+      'items is reported to the maintainer before a reader finds out — a report that ' +
+      'withdraws nothing and never stops the Persona answering, because chasing coverage ' +
+      'would manufacture Positions the person does not hold',
+    withdraws: [],
+  },
 ];
 
 /**

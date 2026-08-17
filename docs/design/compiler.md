@@ -994,7 +994,8 @@ persona-scoped assertions run per compile: one is a fact about a person, and the
 
 **A fault may only open under a name this registry knows.** The six assertions above are everything the
 interrogation asks, but not every fault braintrust opens is an interrogation assertion: the `verify_sources`
-tool, a persona stuck behind the compiler, and a source's consecutive failures all open faults. They carry
+tool, a persona stuck behind the compiler, a source's consecutive failures, and a Persona whose current
+Compile formed Positions on less than half of its retrieved items all open faults. They carry
 `REGISTERED_FAULTS` entries in the same module — each with the same two facts an assertion carries, what
 passing guarantees and what it withdraws — so a Fault report never renders "unknown — this assertion no
 longer exists in the code", and a name the registry does not know is **refused at `openFault`**, loudly, the
