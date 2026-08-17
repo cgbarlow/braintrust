@@ -44,7 +44,7 @@ import {
 } from '../src/retrieval/index.js';
 import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 import { fakeEmbeddings, TEST_DIMENSION, testEmbeddingsConfig } from './support/embeddings.js';
-import { fakeSynthesiser, type FakeOptions } from './support/synthesiser.js';
+import { distinctStatement, fakeSynthesiser, type FakeOptions } from './support/synthesiser.js';
 import { testDatabaseUrl as url } from './support/database.js';
 
 const GENERATION = 'test-reader@notes-1';
@@ -323,8 +323,43 @@ describe('finding positions, against real Postgres', () => {
     );
   }
 
+  /**
+   * A statement about another subject, attached to the `evals` item's own position.
+   *
+   * The item's chunk — its body — matches a question about evals at the top of the scale,
+   * so the position enters the candidate set on the chunk; the statement shares no words
+   * with the question, so it grades `distant`. That is the coexistence the never-hide and
+   * two-jobs tests exist to pin, now that the minimum floor keeps an item whose chunk did
+   * not match out of the candidate set altogether.
+   */
+  const OFF_TOPIC = 'Lunar regolith chemistry dominates the returned samples of apollo.';
+
   /** Words nobody in this corpus wrote, and no question a reader would ask of it. */
   const OFF_CORPUS = 'bathymetry of a fjord during the krill migration';
+
+  /** The fixture's own sentence for the `evals` item's first claim, which OFF_TOPIC replaces. */
+  const EVALS_FIRST_CLAIM = 'Evals should be written before the harness that runs them.';
+
+  /**
+   * The graded compile, with one position's statement replaced by {@link OFF_TOPIC}.
+   *
+   * Which position is the `evals` item's first claim is derived from the fixture rather
+   * than spelled out, so the replacement stays on the right position if the fixture is
+   * ever reordered — `positionsFor` maps CLAIM_STATEMENTS by index, so the index of the
+   * statement IS the index of its claim.
+   */
+  async function gradedWithAStray(): Promise<void> {
+    const evalsFirst = CLAIM_STATEMENTS.indexOf(EVALS_FIRST_CLAIM);
+    assert.ok(evalsFirst >= 0, 'the fixture still knows the evals item first claim');
+
+    await graded((claims) =>
+      claims.map((claim, index) => ({
+        slug: `position-${index}`,
+        statement: index === evalsFirst ? OFF_TOPIC : CLAIM_STATEMENTS[index] ?? distinctStatement(index),
+        claims: [claim],
+      })),
+    );
+  }
 
   /**
    * One position per item, oldest last — the shape the revision tests need, because a
@@ -666,16 +701,20 @@ describe('finding positions, against real Postgres', () => {
    * braintrust quietly choosing what a reader may see, and the never-hide posture predates
    * this grade. What the grade changed is *place in the list*, which is where the harm was:
    * a reader reads down and quotes the top.
+   *
+   * The candidate here clears the gate on its item's chunk — the `evals` item *is* the
+   * question — and yet its statement answers nothing, which is what lets the posture be
+   * exercised under the floor the minimum now enforces: an item whose chunk never matched
+   * never becomes a candidate, so the only weak position a reader can be kept from is one
+   * whose words braintrust actually indexed.
    */
   it('returns a position that answers nothing, last and marked weak, rather than dropping it', async () => {
-    await graded();
+    await gradedWithAStray();
 
     const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
-    const offTopic = answer.positions.filter((position) =>
-      position.citations.every((citation) => citation.url === 'https://example.test/context'),
-    );
+    const offTopic = answer.positions.filter((position) => position.statement === OFF_TOPIC);
 
-    assert.ok(offTopic.length > 0, 'a position about another subject still came back');
+    assert.ok(offTopic.length > 0, 'a position that cleared the gate still came back');
     for (const position of offTopic) {
       assert.equal(position.fit, 'distant', `${position.slug} says plainly that it is no answer`);
       // Present, cited, and last — the three things together are the whole posture.
@@ -691,30 +730,34 @@ describe('finding positions, against real Postgres', () => {
    * **The gate stays on Chunks and the grade stays on statements.** Selecting what reaches
    * this Corpus and ranking what came back are different jobs, and conflating them is how
    * `fit` came to be graded on a quantity that describes the Item.
+   *
+   * The two jobs disagree on purpose here, inside one item: the `evals` chunk is the
+   * question, so everything that cites it is a candidate, and one of those positions'
+   * statements is about another subject. Selection let it in on the chunk; its own
+   * statement reads the verdict. Under the minimum, an item whose chunk did not match is
+   * not a candidate at all — that is the point of the floor, and it takes the *position*
+   * out of the equation, which is what selection is doing job number one of two for.
    */
   it('selects candidates on chunks and grades them on statements, which are different jobs', async () => {
-    await graded();
+    await gradedWithAStray();
 
-    // A question whose words are in the `context` item. Positions about evals are candidates
-    // only because a chunk matched; their statements say they are not answers.
-    const answer = await find({ query: await chunkTextOf('context'), limit: 50 });
+    const answer = await find({ query: await chunkTextOf('evals'), limit: 50 });
 
     const top = answer.positions[0]!;
     assert.ok(
-      top.citations.every((citation) => citation.url === 'https://example.test/context'),
+      top.citations.every((citation) => citation.url === 'https://example.test/evals'),
       'the best-graded position is the one whose own statement is about the question',
     );
 
-    // And the two jobs disagree, which is the point: positions about another subject are in
-    // the answer — a chunk match put them there — and their own statements say they are no
-    // answer. Selection let them in; grading tells the truth about them.
-    const elsewhere = answer.positions.filter((position) =>
-      position.citations.every((citation) => citation.url !== 'https://example.test/context'),
-    );
-    assert.ok(elsewhere.length > 0, 'the chunk gate admitted positions from other items');
+    // And the two jobs disagree, which is the point: a position whose statement is about
+    // another subject is in the answer — its item's chunk was the question — and its own
+    // statement says it is no answer. Selection let it in; grading tells the truth.
+    const stray = answer.positions.find((position) => position.statement === OFF_TOPIC);
+    assert.ok(stray, 'a chunk match admitted the position even though its statement answers nothing');
+    assert.equal(stray!.fit, 'distant', 'and the statement, not the chunk, reads the verdict');
     assert.ok(
-      elsewhere.every((one) => one.fit === 'distant'),
-      'and none of them is graded as an answer',
+      answer.positions.indexOf(stray!) === answer.positions.length - 1,
+      'and a statement that answers nothing ranks last',
     );
   });
 

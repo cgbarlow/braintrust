@@ -28,7 +28,9 @@ describe('the gate tightens for that reader, immediately', () => {
   });
 
   it('keeps a floor measured under the rules still in force', () => {
-    assert.equal(floorFor(0.46, COMPILER_VERSION), 0.46);
+    // 0.54 is above the minimum the gate now enforces, so this asserts the version rule
+    // rather than the minimum: under current rules the measured value is served unchanged.
+    assert.equal(floorFor(0.54, COMPILER_VERSION), 0.54);
   });
 
   it('tightens for a version it cannot read, and for one that was never recorded', () => {
@@ -41,6 +43,6 @@ describe('the gate tightens for that reader, immediately', () => {
     const [measurement, , positions, revisions] = rest!.split('.');
     const synthesisMoved = `${code}+${measurement}.core-99.${positions}.${revisions}`;
 
-    assert.equal(floorFor(0.46, synthesisMoved), 0.46);
+    assert.equal(floorFor(0.54, synthesisMoved), 0.54);
   });
 });

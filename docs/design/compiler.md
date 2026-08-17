@@ -1235,5 +1235,9 @@ was. This changes no behaviour; it makes the behaviour the decision rather than 
   only what a Persona that measured none falls back to. It was built at 0.35 — *below* the 0.44–0.52 range
   every measured floor has landed in, so the Persona that knew least about its gate was the most credulous.
   It is now a constant **above** that range, because **an unmeasured quantity takes its most conservative
-  value**. An empty answer still reports the nearest similarity it saw and the floor it had to clear, so the
-  number can be tuned from evidence rather than guessed at twice.
+  value**. And a measured floor now has a **minimum** of its own (`MINIMUM_RETRIEVAL_FLOOR`, 0.52): the two
+  smallest Corpora at 0.4427/0.4645 answered an off-domain question ten percent of the time, and raising them
+  recovered no grounded answers while clearing the negative set. A minimum rather than a flat offset, so a
+  Persona that measured a higher floor keeps its own number. An empty answer still reports the nearest
+  similarity it saw and the floor it had to clear, so the number can be tuned from evidence rather than
+  guessed at twice. The measurements are [issue #323](https://github.com/cgbarlow/braintrust/issues/323)'s.
