@@ -2139,10 +2139,17 @@ describe('the fault registry', () => {
     assert.ok(names.includes('verify_sources'));
     assert.ok(names.includes('persona_stuck_behind_compiler'));
     assert.ok(names.includes('source_consecutive_failures'));
+    assert.ok(names.includes('corpus_coverage'));
 
     const verify = faultById('verify_sources')!;
     assert.ok(verify.guarantees.length > 0);
     assert.deepEqual(verify.withdraws, ['reasoning']);
+
+    // Coverage is a report, not a gate: nothing is withdrawn however long it is open,
+    // because chasing coverage would manufacture Positions the person does not hold.
+    const coverage = faultById('corpus_coverage')!;
+    assert.ok(coverage.guarantees.length > 0);
+    assert.deepEqual(coverage.withdraws, []);
 
     // An assertion resolves through its own entry.
     const faking = faultById(FAKING_ASSERTION)!;

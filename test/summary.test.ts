@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 
 import { summarise, type CycleReport, type SourceReport } from '../src/ingest/cycle.js';
 import type { StuckRebuild } from '../src/compile/store.js';
+import type { CoverageCheck } from '../src/verify/index.js';
 
 function report(overrides: Partial<CycleReport> = {}): CycleReport {
   return {
@@ -21,6 +22,7 @@ function report(overrides: Partial<CycleReport> = {}): CycleReport {
     rebuild_pending: [],
     serving_behind: [],
     stuck: [] as StuckRebuild[],
+    coverage: [] as CoverageCheck[],
     stopped_early: false,
     corpus: {
       pending: 0,
@@ -352,6 +354,58 @@ describe('the run summary', () => {
 
       assert.match(idle, /nothing was due/);
       assert.match(idle, /stuck behind/);
+    });
+  });
+
+  describe('a persona whose current Compile covers less than half of what it read', () => {
+    const coverageReport = (covered: number, retrieved: number) =>
+      report({
+        serving_behind: [],
+        coverage: [
+          {
+            person: 'nate-b-jones',
+            retrieved,
+            covered,
+            covered_fraction: covered / retrieved,
+            failing: covered / retrieved < 0.5,
+          },
+        ],
+      });
+
+    it('says nothing when nobody is under-covered', () => {
+      assert.doesNotMatch(summarise(report()), /under-covered/);
+    });
+
+    it('names the below-floor persona and the fraction, and says it is a report not a gate', () => {
+      const summary = summarise(coverageReport(2, 5));
+
+      assert.match(summary, /under-covered: nate-b-jones \(40% covered\)/);
+      assert.match(summary, /issue filed/);
+      // The line that keeps the finding from sounding like the persona stopped answering.
+      assert.match(summary, /a report, not a gate/);
+    });
+
+    it('says so even on a run where nothing was due', () => {
+      const idle = summarise(
+        report({
+          sources: [],
+          notes: undefined,
+          compile: undefined,
+          serving_behind: [],
+          coverage: [
+            {
+              person: 'nate-b-jones',
+              retrieved: 524,
+              covered: 236,
+              covered_fraction: 236 / 524,
+              failing: true,
+            },
+          ],
+        }),
+      );
+
+      assert.match(idle, /nothing was due/);
+      assert.match(idle, /under-covered: nate-b-jones \(45% covered\)/);
     });
   });
 });

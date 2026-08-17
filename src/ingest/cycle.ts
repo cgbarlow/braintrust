@@ -90,6 +90,7 @@ import {
 } from './items.js';
 import { fetchPolitely, sleep, type Pause } from './pace.js';
 import { PaywallChanged, retrieveSubstackPost, walkArchive } from './substack.js';
+import { checkCoverage, type CoverageCheck } from '../verify/index.js';
 import { NoCaptions, retrieveYoutubeCaptions, videoMetadata, walkChannel } from './youtube.js';
 
 /**
@@ -250,6 +251,18 @@ export type CycleReport = {
    * Empty is what a healthy run reports.
    */
   stuck: StuckRebuild[];
+  /**
+   * The coverage report, measured after the run did its work: Personas whose current
+   * Compile's Positions cite less than half of their retrieved items.
+   *
+   * **A report, not a gate.** The fault it opens withdraws nothing and no Persona stops
+   * answering, and it is not a coverage target — chasing it manufactures Positions the
+   * person does not hold. It exists so a maintainer reads that most of a corpus was
+   * never formed a position on before a reader does.
+   *
+   * Empty is what a healthy run reports.
+   */
+  coverage: CoverageCheck[];
 };
 
 export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
@@ -406,6 +419,12 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     });
   }
 
+  // 8. The coverage report. After the compile, so the check measures the current Compile
+  // this run just had the chance to promote. One SQL query per fleet, no model call, and
+  // it never stops anyone answering — the fault opens on an under-covered Persona and
+  // clears when coverage passes the floor again.
+  const coverage = await checkCoverage(deps.db, { log });
+
   const report: CycleReport = {
     started: started.toISOString(),
     finished: now().toISOString(),
@@ -421,6 +440,7 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
     ...(compile ? { compile } : {}),
     serving_behind,
     stuck,
+    coverage,
   };
 
   // Said out loud, every run. A persona that has differed on part of its compiler version
@@ -439,6 +459,19 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
       `braintrust: ${report.stuck.map((s) => s.person_slug).join(', ')} ` +
         `${report.stuck.length === 1 ? 'has' : 'have'} been behind for two or more cycles. ` +
         'An issue will be filed and the persona speaks its own limit.',
+    );
+  }
+
+  // A report, not a gate: the fault is already open for these, and nothing here stops
+  // anyone answering. Said out loud because a coverage number an issue was filed on is
+  // exactly a finding the run summary has to name.
+  const underCovered = report.coverage.filter((one) => one.failing);
+  if (underCovered.length > 0) {
+    log(
+      `braintrust: coverage report — ${underCovered
+        .map((one) => `${one.person} (${Math.round(one.covered_fraction! * 100)}% of what it read is covered)`)
+        .join(', ')}. An issue was filed so a maintainer reads it before a reader does; no ` +
+        'persona stops answering and nothing was withdrawn.',
     );
   }
 
@@ -1348,10 +1381,11 @@ export function summarise(report: CycleReport): string {
     (compile.compiled.length === 0 && compile.failed.length === 0 && compile.rejected.length === 0);
   // **Before the idle shortcut, because this is the one thing an idle run can still be
   // wrong about.** A run where nothing was due is exactly when a persona left behind by a
-  // rules change goes unnoticed — and the stuck-rebuild check is the same: it fires even
-  // on an idle run, because the daily clock is the recovery mechanism.
+  // rules change goes unnoticed — and the stuck-rebuild and coverage checks are the same:
+  // they fire even on an idle run, because the daily clock is the recovery mechanism.
   const behind = servingBehindLine(report);
   const stuck = stuckBehindLine(report);
+  const coverage = coverageLine(report);
 
   if (report.sources.length === 0 && idleIndex && idleNotes && idleCompile) {
     // **Named as an outcome, not a quiet success.** A scheduled run that polled nothing is
@@ -1362,7 +1396,7 @@ export function summarise(report: CycleReport): string {
     const none = `braintrust: nothing was due — 0 of ${
       report.not_due + report.paused + report.sources.length
     } source${report.not_due + report.paused + report.sources.length === 1 ? '' : 's'} were polled.`;
-    const extras = [behind, stuck].filter((line): line is string => line !== null);
+    const extras = [behind, stuck, coverage].filter((line): line is string => line !== null);
     return extras.length > 0 ? `${none}\n${extras.join('\n')}` : none;
   }
 
@@ -1465,6 +1499,7 @@ export function summarise(report: CycleReport): string {
   // `const stuck = stuckBehindLine(report)` already computed above the idle shortcut.
   if (behind) lines.push(behind);
   if (stuck) lines.push(stuck);
+  if (coverage) lines.push(coverage);
 
   if (report.stopped_early) lines.push('  stopped early; the next run continues from these rows');
 
@@ -1492,5 +1527,20 @@ function stuckBehindLine(report: CycleReport): string | null {
   return (
     `  stuck behind the compiler: ${report.stuck.map((s) => s.person_slug).join(', ')} ` +
     `— behind for ${report.stuck[0]!.cycles_behind}+ cycles, issue filed, spoken to readers`
+  );
+}
+
+/**
+ * The coverage check. A Persona whose current Compile formed Positions on less than half
+ * of its retrieved items is reported to the maintainer — a report, never a gate: the
+ * Persona keeps answering and nothing is withdrawn.
+ */
+function coverageLine(report: CycleReport): string | null {
+  const under = report.coverage.filter((one) => one.failing);
+  if (under.length === 0) return null;
+  return (
+    `  under-covered: ${under
+      .map((one) => `${one.person} (${Math.round(one.covered_fraction! * 100)}% covered)`)
+      .join(', ')} — issue filed; a report, not a gate`
   );
 }
