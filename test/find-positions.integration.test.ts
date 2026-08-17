@@ -34,6 +34,7 @@ import {
   NEAREST_ON_EMPTY,
   speakableProseIn,
 } from '../src/find.js';
+import { vectorLiteral } from '../src/retrieval/embed.js';
 import {
   chunkItem,
   createEmbedder,
@@ -588,7 +589,7 @@ describe('finding positions, against real Postgres', () => {
     assert.equal(answer.nothing_matched, undefined);
   });
 
-  it('carries the number each position was graded from, and orders the answer by it', async () => {
+  it('carries the number each position was graded from, and orders the answer by the blend', async () => {
     await graded();
 
     const answer = await find({ query: await chunkTextOf('evals') });
@@ -601,11 +602,37 @@ describe('finding positions, against real Postgres', () => {
     assert.ok(top.similarity! <= 1);
     assert.equal(top.similarity, Math.round(top.similarity! * 1000) / 1000);
 
-    // **Grade and order are the same number, so they cannot disagree.** The list used to be
-    // ordered by the best chunk of the best item behind each position — which orders answers
-    // the way a reader would 51% of the time, where 50% is a coin.
-    const scores = answer.positions.map((one) => one.similarity!);
-    assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
+    // **The list is ordered by the 60/40 blend** — `0.6 * statement_similarity + 0.4 *
+    // (1 - distance)` per #311 — with the statement score one of the two inputs, never the
+    // whole of the order. Recompute each position's blend from the number it carries and
+    // the distance the search chose, and the answer must match it exactly.
+    const [vector] = await embedder.embed([await chunkTextOf('evals')]);
+    const literal = vectorLiteral(vector!);
+    const { rows: distances } = await db.query<{ slug: string; distance: string }>(
+      `select p.slug, min(items.distance)::text as distance
+         from braintrust_positions p
+         join braintrust_position_citations pc on pc.position_id = p.id
+         join (
+           select c.item_id, min(e.embedding <=> $2::vector) as distance
+             from braintrust_embeddings e
+             join braintrust_chunks c on c.id = e.chunk_id
+            where e.model = $3
+            group by c.item_id
+         ) items on items.item_id = pc.item_id
+        where p.slug = any($1::text[])
+        group by p.slug`,
+      [answer.positions.map((one) => one.slug), literal, MODEL],
+    );
+    const bySlug = new Map(distances.map((row) => [row.slug, Number(row.distance)]));
+    const blend = (position: (typeof answer.positions)[number]) =>
+      0.6 * position.similarity! + 0.4 * (1 - bySlug.get(position.slug)!);
+
+    const order = [...answer.positions].sort((a, b) => blend(b) - blend(a)).map((one) => one.slug);
+    assert.deepEqual(
+      answer.positions.map((one) => one.slug),
+      order,
+      'the answer is in the blended order, statement score and item distance together',
+    );
   });
 
   /**
@@ -1047,6 +1074,91 @@ describe('finding positions, against real Postgres', () => {
     // And relevance still decides the order: the one-line post beats four hours of
     // adjacent material, on its single best passage against the lecture's single best.
     assert.equal(answer.positions[0]!.citations[0]!.url, `https://example.test/${SHARP}`);
+  });
+
+  /**
+   * **A Position that cites the item asked about outranks one whose statement alone
+   * matches — the whole of [#311](https://github.com/cgbarlow/braintrust/issues/311).**
+   *
+   * Two positions, two items, one query. The *broad* position's statement is the query
+   * verbatim (`alpha bravo charlie`, so a statement-only rank puts it first), but the item
+   * behind it shares only two of the three words — the broad, central Position. The
+   * *specific* position's statement stops at `alpha bravo` (so it *loses* a statement-only
+   * rank), but the item behind it is the item the question is about: its chunk IS the
+   * query, at distance zero. The 60/40 blend must put the citing position first where the
+   * statement alone would not.
+   *
+   * Both items are tuned to clear any floor this Compile might measure, so the test is
+   * about the reordering rather than about the gate.
+   */
+  it('puts a position citing the item asked about above one only the statement matches', async () => {
+    const QUERY = 'alpha bravo charlie';
+
+    // The item the question is about, newest so its claim is grouped first. Its body IS
+    // the question, so its best chunk sits at distance zero.
+    const askedAbout = await addItem(
+      {
+        external_id: 'asked-about',
+        published_at: '2030-01-02',
+        title: QUERY,
+        body: QUERY,
+      },
+      [{ statement: 'The asked-about claim.', quote: QUERY, chunk_id: null, start_ms: null }],
+    );
+    // A broad, central item sharing the question only lightly: two of three words, so it
+    // clears the gate while keeping a wide distance gap over the asked-about item.
+    const central = await addItem(
+      {
+        external_id: 'central',
+        published_at: '2030-01-01',
+        title: 'Everything and its neighbour',
+        body: 'alpha bravo delta echo',
+      },
+      [{ statement: 'The central claim.', quote: 'alpha bravo delta echo', chunk_id: null, start_ms: null }],
+    );
+
+    await graded((claims) => [
+      // The specific position: its statement is close to the question, not identical to it.
+      { slug: 'specific', statement: 'alpha bravo', claims: [claims[0]!] },
+      // The broad position: its statement IS the question, verbatim.
+      { slug: 'broad', statement: QUERY, claims: [claims[1]!] },
+      // The fixture's own positions, unchanged, so the Compile still measures a floor.
+      ...claims.slice(2).map((claim, index) => ({
+        slug: `position-${index}`,
+        statement: CLAIM_STATEMENTS[index] ?? `Position ${index}, as braintrust would put it.`,
+        claims: [claim],
+      })),
+    ]);
+
+    const answer = await find({ query: QUERY, limit: 50 });
+    const bySlug = new Map(answer.positions.map((one) => [one.slug, one]));
+    const broadPosition = bySlug.get('broad');
+    const specificPosition = bySlug.get('specific');
+
+    // **Nothing is dropped by the reordering.** The floor is the only reason a Position
+    // leaves the set, and the floor happens before this — both positions are here, in some
+    // order, because both items cleared it.
+    assert.ok(broadPosition, 'the broad position survived the rank change');
+    assert.ok(specificPosition, 'the specific position survived the rank change');
+
+    // The disagreement, on the numbers each carried: the broad statement out-scores the
+    // specific one, so a statement-only rank would have put the broad position first.
+    assert.ok(
+      broadPosition.similarity! > specificPosition.similarity!,
+      `statement-only rank: ${broadPosition.slug} ${broadPosition.similarity} should beat ` +
+        `${specificPosition.slug} ${specificPosition.similarity}`,
+    );
+
+    // …and the blended rank puts the citing position first.
+    assert.ok(
+      answer.positions.indexOf(specificPosition) < answer.positions.indexOf(broadPosition),
+      'the position citing the item asked about is first under the 60/40 blend',
+    );
+
+    // Each cites the item built for it, not the other's.
+    assert.equal(specificPosition.citations[0]!.url, `https://example.test/asked-about`);
+    assert.equal(broadPosition.citations[0]!.url, `https://example.test/central`);
+    assert.ok(askedAbout !== central, 'the two items are distinct rows');
   });
 
 
