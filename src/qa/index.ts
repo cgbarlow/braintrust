@@ -35,6 +35,13 @@
  * payload. The off-domain questions are authored in ../qa/negative.ts, extendable without
  * touching the harness.
  *
+ * **Two passes, and only one of them judged.** The ladder above rides the ~10 judged
+ * sample. Beside it, every persona is measured **free** on the bars — grounded over the
+ * covered questions of its whole corpus, off-domain false answers (the same `OFF_DOMAIN`
+ * set and the same *anything came back* rule as the negative columns), coverage — with no
+ * judge call spent and nothing filed: the bars reconcile against the fault rail in the
+ * scheduled job (`src/job/index.ts`), and this command only reports.
+ *
  * **On demand only.** Nothing here schedules, gates a Compile, or files an issue — it is an
  * operator's report, the same standing as ../eval and ../calibrate.
  *
@@ -51,6 +58,8 @@ import { SERVER_NAME } from '../mcp.js';
 import { createFetcher } from '../net/fetch.js';
 import { checkDimension, createEmbedder, createQueryGate } from '../retrieval/index.js';
 import { readArgs } from './args.js';
+import { formatBars } from './bars.js';
+import { measurePersonaBars } from './measure.js';
 import { runNegativeQuestion, runQuestion } from './run.js';
 import { goldenQuestions } from './sample.js';
 import { nearMissQuestions, OFF_DOMAIN } from './negative.js';
@@ -139,6 +148,11 @@ async function main(): Promise<void> {
         negativeCards.push(scoreNegatives(person, negativeOutcomes));
         console.log(`${formatNegativeCard(negativeCards[negativeCards.length - 1]!)}`);
       }
+
+      // The bars are measured free, over every titled retrieved item — no judge call is
+      // spent on the pass decided here, and nothing is decided about serving.
+      const bars = await measurePersonaBars(db, person, { db, embedder, retrieval });
+      console.log(formatBars(bars));
       console.log('');
     }
 

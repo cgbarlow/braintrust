@@ -2153,6 +2153,8 @@ describe('the fault registry', () => {
     assert.ok(names.includes('persona_stuck_behind_compiler'));
     assert.ok(names.includes('source_consecutive_failures'));
     assert.ok(names.includes('corpus_coverage'));
+    assert.ok(names.includes('grounded_bar'));
+    assert.ok(names.includes('off_domain_false_answers'));
 
     const verify = faultById('verify_sources')!;
     assert.ok(verify.guarantees.length > 0);
@@ -2171,6 +2173,13 @@ describe('the fault registry', () => {
     // The source failures fault is matched by prefix: the name embeds the source id.
     const scoped = faultById('source_consecutive_failures:de305d54-75b4-431b-adb2-eb6b9e546014')!;
     assert.equal(scoped.id, 'source_consecutive_failures');
+
+    // A bar fault withdraws no layer: a persona below a bar keeps serving unchanged, and
+    // the fault is the whole of what it costs. The person's name still rides the key.
+    assert.deepEqual(faultById('grounded_bar')!.withdraws, []);
+    assert.deepEqual(faultById('off_domain_false_answers')!.withdraws, []);
+    const barred = faultById('grounded_bar:chris-barlow')!;
+    assert.equal(barred.id, 'grounded_bar');
   });
 
   it('refuses to open a fault under a name it does not know, loudly and at once', async () => {

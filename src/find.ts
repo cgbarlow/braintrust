@@ -576,7 +576,21 @@ type CurrentCompile = {
   compiler_version: string | null;
 };
 
-export async function findPositions(args: FindArgs, deps: FindDeps): Promise<FindPayload> {
+/**
+ * One `find_positions` answer.
+ *
+ * **The third argument is the eval's, not the client's.** `withVector` carries a vector the
+ * caller already embedded for this exact question and is the same row `deps.embedder` would
+ * have produced — the embedder is deterministic for identical text, so the ranking served is
+ * unchanged (../qa/measure.ts relies on that). It exists so a free measurement over every
+ * titled item pays for one embedding per question instead of two: `findPositions` +
+ * `candidateRank` agree because they read the same vector.
+ */
+export async function findPositions(
+  args: FindArgs,
+  deps: FindDeps,
+  withVector?: number[],
+): Promise<FindPayload> {
   const slug = args.person.trim();
   const query = args.query.trim();
 
@@ -604,7 +618,7 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   const readiness = await deps.retrieval.check();
   if (!readiness.ready) throw new BraintrustError(readiness.reason!);
 
-  const [vector] = await deps.embedder.embed([query]);
+  const [vector] = withVector !== undefined ? [withVector] : await deps.embedder.embed([query]);
   if (!vector) {
     throw new BraintrustError(
       `The embeddings endpoint at ${deps.embedder.url} returned nothing for the question, so ` +

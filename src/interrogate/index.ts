@@ -65,6 +65,13 @@ export {
   INTERROGATION_VERSION,
   REGISTERED_FAULTS,
 } from './assertions.js';
+export {
+  reconcileBarFaults,
+  runBarChecks,
+  summariseBarChecks,
+  type BarFaultReport,
+  type BarFaultOutcome,
+} from './bars.js';
 export type {
   AssertionDefinition,
   AssertionScope,
