@@ -17,15 +17,19 @@ import type { Interrogator } from '../interrogate/index.js';
 import { vectorLiteral } from '../retrieval/embed.js';
 import {
   answeredNothing,
+  cameBack,
   grounded,
   reached,
   renderAnswer,
+  restsOn,
   rungFor,
   RUBRIC,
+  type NegativeOutcome,
   type QAOutcome,
   type RungFacts,
 } from './score.js';
 import type { GoldenQuestion } from './sample.js';
+import type { NegativeQuestion } from './negative.js';
 
 /** Enough positions to judge a reply without paying to render every one. */
 const ANSWER_LIMIT = 5;
@@ -177,6 +181,34 @@ async function rungFactsFor(
     inCandidateSet: rank > 0,
     reached: reached(payload, question.citation_urls),
     grounded: grounded(payload, question.citation_urls),
+  };
+}
+
+/**
+ * Asking one negative-set question — off-domain or near-miss — and measuring only what came
+ * back. **No judge call is spent on either set**: the measurement is *whether anything came
+ * back*, read straight off the payload, so a question braintrust has no keepable answer to
+ * is not charged a judge call to say so.
+ *
+ * `rested` is only meaningful for near-miss — an off-domain question has no golden item to
+ * rest on. Off-domain answers are false as a class, so the report needs no more than `came_back`.
+ */
+export async function runNegativeQuestion(
+  question: NegativeQuestion,
+  deps: FindDeps,
+): Promise<NegativeOutcome> {
+  const payload = await findPositions(
+    { person: question.person, query: question.query, limit: ANSWER_LIMIT, full: true },
+    deps,
+  );
+
+  return {
+    person: question.person,
+    query: question.query,
+    kind: question.kind,
+    came_back: cameBack(payload),
+    rested:
+      question.item !== undefined ? restsOn(payload, question.item.citation_urls) : false,
   };
 }
 

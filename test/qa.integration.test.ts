@@ -21,8 +21,9 @@ import type { Interrogator } from '../src/interrogate/index.js';
 import type { Verdict } from '../src/interrogate/assertions.js';
 import { chunkItem, createEmbedder, createQueryGate, storeEmbeddings, type QueryGate } from '../src/retrieval/index.js';
 import { goldenQuestions } from '../src/qa/sample.js';
-import { runQuestion } from '../src/qa/run.js';
-import { answeredNothing, groundedOf, RUNGS, reachedOf, scoreOutcomes, type QAOutcome } from '../src/qa/score.js';
+import { nearMissQuestions, OFF_DOMAIN } from '../src/qa/negative.js';
+import { runNegativeQuestion, runQuestion } from '../src/qa/run.js';
+import { answeredNothing, groundedOf, reachedOf, RUNGS, scoreOutcomes, type QAOutcome } from '../src/qa/score.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
 import { testDatabaseUrl as url } from './support/database.js';
@@ -187,6 +188,27 @@ describe('the golden-question eval, against real Postgres', () => {
     );
   }
 
+  /** A second persona's corpus, so a near-miss set has foreign titles to sample. */
+  async function addQItems(items: (typeof ITEMS)[number][]): Promise<void> {
+    const { rows } = await db.query<{ id: string }>(
+      `select id from braintrust_people where slug = 'q'`,
+    );
+    const personId = rows[0]!.id;
+
+    const source = await db.query<{ id: string }>(
+      `insert into braintrust_sources (person_id, platform, handle, discovery_url, backfill_floor,
+                                       backfill_complete)
+       values ($1, 'substack', 'q.example.test', 'https://example.test/qfeed', current_date - 3650, true)
+       returning id`,
+      [personId],
+    );
+
+    const previous = sourceId;
+    sourceId = source.rows[0]!.id;
+    for (const item of items) await addItem(item);
+    sourceId = previous;
+  }
+
   /** Says whatever it is told to. A live judge is interrogate.test.ts's job, not this one's. */
   function stubInterrogator(options: { holds?: boolean; throws?: boolean } = {}): Interrogator {
     return {
@@ -257,6 +279,77 @@ describe('the golden-question eval, against real Postgres', () => {
     assert.equal(outcome.passed, null);
     assert.match(outcome.detail, /judge unreachable/);
     assert.ok(RUNGS.includes(outcome.rung), 'the ladder is scored even when no verdict is possible');
+  });
+
+  it('spends no judge call on the negative sets — the measurement is whether anything came back', async () => {
+    // A judge that throws on call: if `runNegativeQuestion` ever reached one, this would
+    // fail loudly instead of silently being charged to the run's budget.
+    const interrogator = stubInterrogator({ throws: true });
+
+    for (const topic of OFF_DOMAIN) {
+      const outcome = await runNegativeQuestion({ ...topic, person: 'p' }, { db, embedder, retrieval });
+      assert.equal(outcome.came_back, false, `${topic.query} is off-domain for this corpus`);
+    }
+
+    // The same path, fed a real golden question through the negative runner, comes back
+    // non-empty without ever trying to rule on it.
+    const [golden] = await goldenQuestions(db, 'p', 1);
+    const near = await runNegativeQuestion(
+      { kind: 'near-miss', person: 'p', query: golden!.query, item: { source: 'p', item_id: golden!.item_id, item_url: golden!.item_url, citation_urls: golden!.citation_urls } },
+      { db, embedder, retrieval },
+    );
+    assert.equal(near.came_back, true, 'a question the corpus holds material for comes back');
+
+    let judged = 0;
+    try {
+      await interrogator.judge('x', 'y');
+    } catch {
+      judged += 1;
+    }
+    assert.equal(judged, 1, 'the judge is never what produces a negative-set measurement');
+  });
+
+  it('samples another persona\u2019s titles for near-miss, deterministically', async () => {
+    // A second persona with its own titled items, so there is a foreign set to sample —
+    // and enough alike that asking 'p' about 'q''s titles is a near miss, not off-domain.
+    await db.query(`insert into braintrust_people (slug, display_name) values ('q', 'Q')`);
+    await addQItems([
+      {
+        external_id: 'evals-q',
+        published_at: '2024-05-01',
+        title: 'Evals for a second team',
+        body:
+          'Evals for a second team. The first team wrote evals before the harness; the second team ' +
+          'knows why, and repeats it.',
+        claims: [{ statement: 'A second team repeats the evals habit.', quote: 'The second team knows why' }],
+      },
+    ]);
+
+    const pAsksQ = await nearMissQuestions(db, 'p', ['p', 'q'], 10);
+    const qAsksP = await nearMissQuestions(db, 'q', ['p', 'q'], 10);
+
+    assert.ok(pAsksQ.length > 0, 'a persona with titled items gets a near-miss set');
+    assert.ok(
+      pAsksQ.some((question) => question.query.includes('second team')),
+      'the near-miss set is the other persona\u2019s titles, not this one\u2019s',
+    );
+    assert.ok(
+      qAsksP.some((question) => question.query.includes('Evals precede')),
+      'and the reverse pairing asks the other persona this one\u2019s titles',
+    );
+    for (const question of pAsksQ) {
+      assert.equal(question.kind, 'near-miss');
+      assert.ok(question.item, 'a near-miss question names the item it was drawn from');
+      assert.equal(question.person, 'p', 'the question is asked of this persona');
+    }
+  });
+
+  it('asks nothing near-miss when there is no other persona to ask', async () => {
+    // A fleet or run of one persona has nobody else's titles — the near-miss set must not
+    // collapse into the persona's own golden titles (the "another persona" the set exists
+    // to measure would be a self-ask).
+    const alone = await nearMissQuestions(db, 'p', ['p'], 10);
+    assert.deepEqual(alone, []);
   });
 
   it('marks a question whose item no Position ever cites as uncovered', async () => {
