@@ -37,6 +37,9 @@ export const RUBRIC =
 export function renderAnswer(payload: FindPayload): string {
   const top = payload.positions[0];
   if (!top) {
+    if (payload.read_without_position) {
+      return `Retrieved and read; no Position formed on it. ${JSON.stringify(payload.read_without_position)}`;
+    }
     return payload.nothing_matched
       ? `Nothing matched. ${JSON.stringify(payload.nothing_matched)}`
       : 'Nothing matched.';

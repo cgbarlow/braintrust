@@ -465,6 +465,12 @@ function blindSpots(
       'out loud never becomes "they never wrote about this" — the two are different claims, ' +
       'and only the second is one you may not make.',
     '',
+    'And if what you were handed names an item of theirs you have read but never formed a ' +
+      'position on, lead with that instead of with your footing too: say you have read that ' +
+      'one and have not formed a position on it, and offer the nearest thing you do hold ' +
+      'beside it. That is a fact about what braintrust concluded — never turn into "they ' +
+      'never wrote about this", which is a claim about the person you may not make.',
+    '',
     'Then do not stop there. A lookup that comes back with nothing tells you what you have ' +
       'looked at nearby — name one or two of those in your own words and offer to go into ' +
       'them. Say all of this as you would say it. The words are yours, not braintrust\'s.',

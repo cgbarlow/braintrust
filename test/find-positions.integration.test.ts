@@ -831,6 +831,61 @@ describe('finding positions, against real Postgres', () => {
     assert.ok(UNCLAIMED.body.includes(answer.passages[0]!.text.slice(0, 40)));
   });
 
+  /**
+   * **The item best matching the question was read and no Position was formed on it.**
+   *
+   * The `pricing` item is indexed and read but cited by no Position — the exact fixture the
+   * empty-answer tests guard against. It is not an empty answer (`nothing_matched` would be
+   * a different shape), and it is not a normal answer (no Position rests on it). The answer
+   * keeps the raw passages reachable and names the item and the nearest things held, so the
+   * reader can tell *I've read that one and haven't formed a position on it* from *there is
+   * nothing close*.
+   */
+  it('names the read-but-unpositioned item when the best matching item cites no Position', async () => {
+    await graded();
+
+    const answer = await find({ query: await chunkTextOf('pricing') });
+
+    assert.ok(answer.read_without_position, 'the read-but-unpositioned state is marked');
+    assert.equal(answer.read_without_position!.item_title, 'A long aside about pricing');
+    assert.equal(answer.read_without_position!.url, 'https://example.test/pricing');
+    assert.equal(answer.read_without_position!.published_at, '2025-09-09');
+    assert.ok(answer.read_without_position!.nearest.length > 0, 'offers the nearest things held');
+
+    // Distinguishable from an empty answer: the item came close and was read, so
+    // `nothing_matched` is the other shape and is absent here.
+    assert.equal(answer.nothing_matched, undefined);
+
+    // Distinguishable from a normal answer: no Position cites it, so no Position is served.
+    assert.deepEqual(answer.positions, []);
+
+    // The nearest things are Position statements, the same sentences `nothing_matched`
+    // would offer — read from the record, never composed here.
+    const statements = await db.query<{ statement: string }>('select statement from braintrust_positions');
+    for (const one of answer.read_without_position!.nearest) {
+      assert.ok(statements.rows.some((row) => row.statement === one.statement));
+    }
+  });
+
+  /**
+   * **The uncovered item is a distinct shape, not a relabelled empty answer.** When the
+   * compiler measured no floor it still separates the two: `read_without_position` appears
+   * exactly when the best matching retrieved item is cited by nothing, and nothing else.
+   */
+  it('serves the read-without-position state only for the item found and uncited', async () => {
+    await graded();
+
+    // A genuinely covered topic answers normally: the best matching item is cited.
+    const covered = await find({ query: await chunkTextOf('evals') });
+    assert.deepEqual(covered.read_without_position, undefined);
+    assert.ok(covered.positions.length > 0);
+
+    // A question the corpus does not reach is the empty answer, not the uncovered item.
+    const nothing = await find({ query: OFF_CORPUS });
+    assert.ok(nothing.nothing_matched, 'an empty answer carries nothing_matched');
+    assert.deepEqual(nothing.read_without_position, undefined);
+  });
+
   it('bounds passages for readability and says what it held back; full returns the rest', async () => {
     // Enough indexed material with no claims against it that the default has to trim.
     for (let index = 0; index < 12; index += 1) {
