@@ -22,6 +22,7 @@ import type { Verdict } from '../src/interrogate/assertions.js';
 import { chunkItem, createEmbedder, createQueryGate, storeEmbeddings, type QueryGate } from '../src/retrieval/index.js';
 import { goldenQuestions } from '../src/qa/sample.js';
 import { runQuestion } from '../src/qa/run.js';
+import { groundedOf, RUNGS, reachedOf, scoreOutcomes, type QAOutcome } from '../src/qa/score.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
 import { testDatabaseUrl as url } from './support/database.js';
@@ -222,8 +223,9 @@ describe('the golden-question eval, against real Postgres', () => {
 
     assert.equal(outcome.passed, true);
     assert.equal(outcome.detail, 'stub verdict');
-    assert.equal(outcome.grounded, true, 'the top position should cite the very item the question was drawn from');
-    assert.equal(outcome.reached, true, 'and retrieval plainly reached it');
+    assert.equal(outcome.rung, 'grounded', 'the top position cites the very item the question was drawn from');
+    assert.equal(groundedOf(outcome.rung), true, 'the derived grounded flag still travels with the rung');
+    assert.equal(reachedOf(outcome.rung), true, 'and retrieval plainly reached it');
     assert.ok(outcome.fit, 'a position came back, so it has a fit grade');
   });
 
@@ -245,7 +247,7 @@ describe('the golden-question eval, against real Postgres', () => {
     );
 
     const outcome = await runQuestion(question!, { db, embedder, retrieval }, stubInterrogator({ holds: true }));
-    assert.equal(outcome.grounded, true);
+    assert.equal(outcome.rung, 'grounded', 'the batched item resolves, so the answer rests on it');
   });
 
   it('records a judge that could not be reached as unjudged, not failed', async () => {
@@ -254,5 +256,46 @@ describe('the golden-question eval, against real Postgres', () => {
 
     assert.equal(outcome.passed, null);
     assert.match(outcome.detail, /judge unreachable/);
+    assert.ok(RUNGS.includes(outcome.rung), 'the ladder is scored even when no verdict is possible');
+  });
+
+  it('marks a question whose item no Position ever cites as uncovered', async () => {
+    // A titled, retrieved item the compiler read and held — but formed no Position over.
+    // The body opens with its title, the way #323's raised 0.52 gate demands of a golden
+    // question (a title that shares no words with its body scores below the floor). The
+    // served answer is the #325 uncovered shape — read_without_position beside the raw
+    // passages — and what no compiled Position cites is exactly the uncovered rung.
+    await addItem({
+      external_id: 'unheld',
+      published_at: '2025-01-02',
+      title: 'Read aloud and never held',
+      body: 'Read aloud and never held. Most posts are read once and never turned into a position, and that is fine.',
+      claims: [],
+    });
+
+    const questions = await goldenQuestions(db, 'p', 100);
+    const [question] = questions.filter((one) => one.item_url === 'https://example.test/unheld');
+    assert.ok(question, 'the golden set asks about the item');
+
+    const outcome = await runQuestion(question!, { db, embedder, retrieval }, stubInterrogator({ holds: true }));
+    assert.equal(outcome.rung, 'uncovered');
+    assert.equal(outcome.passed, true, 'the verdict still sits beside the ladder, uncorrupted by it');
+  });
+
+  it('assigns one rung per real question, so the ladder sums to the questions asked', async () => {
+    const questions = await goldenQuestions(db, 'p', 10);
+    const outcomes: QAOutcome[] = [];
+    for (const question of questions) {
+      outcomes.push(await runQuestion(question, { db, embedder, retrieval }, stubInterrogator()));
+    }
+
+    const card = scoreOutcomes('p', outcomes);
+    assert.equal(card.asked, questions.length);
+    assert.equal(
+      RUNGS.reduce((sum, rung) => sum + card.rungs[rung], 0),
+      card.asked,
+      'each question lands on exactly one rung, end to end',
+    );
+    assert.ok(outcomes.every((outcome) => RUNGS.includes(outcome.rung)));
   });
 });

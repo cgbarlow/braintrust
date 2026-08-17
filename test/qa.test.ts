@@ -11,13 +11,22 @@ import { describe, it } from 'node:test';
 
 import { DEFAULT_SAMPLE, readArgs } from '../src/qa/args.js';
 import {
+  formatRungs,
   formatScorecard,
   grounded,
+  groundedOf,
   reached,
+  reachedOf,
   renderAnswer,
   RUBRIC,
+  rungFor,
+  RUNGS,
   scoreOutcomes,
+  sumRungs,
+  type PersonScorecard,
   type QAOutcome,
+  type Rung,
+  type RungFacts,
 } from '../src/qa/score.js';
 import type { Citation, FindPayload, FoundPosition } from '../src/find.js';
 
@@ -61,8 +70,7 @@ const outcome = (over: Partial<QAOutcome> = {}): QAOutcome => ({
   query: 'a question',
   item_url: 'https://example.test/item-1',
   fit: 'close',
-  grounded: true,
-  reached: true,
+  rung: 'grounded',
   passed: true,
   detail: 'stub verdict',
   ...over,
@@ -194,6 +202,119 @@ describe('the rubric', () => {
   });
 });
 
+describe('the ladder', () => {
+  const facts = (over: Partial<RungFacts> = {}): RungFacts => ({
+    silence: false,
+    cites: 1,
+    inCandidateSet: true,
+    reached: true,
+    grounded: true,
+    ...over,
+  });
+
+  it('is one enum of six, in the order the reasons are tried', () => {
+    assert.deepEqual(RUNGS, ['silence', 'uncovered', 'withheld', 'missed', 'outranked', 'grounded']);
+    assert.equal(new Set(RUNGS).size, RUNGS.length);
+  });
+
+  it('lands a silence fixture on silence, however much the corpus has on the item', () => {
+    assert.equal(rungFor(facts({ silence: true, cites: 9, inCandidateSet: true })), 'silence');
+  });
+
+  it('lands an uncovered fixture on uncovered, even when the item reached the candidate set', () => {
+    assert.equal(rungFor(facts({ cites: 0 })), 'uncovered');
+    assert.equal(rungFor(facts({ cites: 0, inCandidateSet: false })), 'uncovered');
+  });
+
+  it('lands a withheld fixture on withheld: a citing position exists but the floor kept the item out', () => {
+    assert.equal(rungFor(facts({ inCandidateSet: false, reached: false })), 'withheld');
+  });
+
+  it('lands a missed fixture on missed: a citing position exists and is ranked, but never shown', () => {
+    assert.equal(rungFor(facts({ reached: false })), 'missed');
+  });
+
+  it('lands an outranked fixture on outranked: a citing position was shown, just not first', () => {
+    assert.equal(rungFor(facts({ grounded: false })), 'outranked');
+  });
+
+  it('lands a grounded fixture on grounded', () => {
+    assert.equal(rungFor(facts()), 'grounded');
+  });
+
+  it('assigns the first true reason, so a rung is exclusive of every rung above it', () => {
+    assert.equal(rungFor(facts({ silence: true, cites: 0 })), 'silence', 'silence wins over uncovered');
+    assert.equal(rungFor(facts({ cites: 0, inCandidateSet: false })), 'uncovered', 'uncovered wins over withheld');
+    assert.equal(
+      rungFor(facts({ inCandidateSet: false, reached: false })),
+      'withheld',
+      'withheld wins over missed: the item was never in the candidate set',
+    );
+    assert.equal(rungFor(facts({ reached: false })), 'missed', 'missed wins over outranked');
+    assert.equal(
+      rungFor(facts({ grounded: false, reached: true })),
+      'outranked',
+      'outranked is the last reason before the answer is grounded',
+    );
+  });
+
+  it('derives reached from the ladder, never storing it beside it', () => {
+    for (const rung of RUNGS) {
+      assert.equal(
+        reachedOf(rung),
+        rung === 'outranked' || rung === 'grounded',
+        `${rung} should (not) count as reached`,
+      );
+      assert.equal(groundedOf(rung), rung === 'grounded', `${rung} should (not) count as grounded`);
+    }
+  });
+
+  it('carries one rung per outcome, so the six always sum to the questions asked', () => {
+    const card = scoreOutcomes('p', [
+      outcome({ rung: 'silence' }),
+      outcome({ rung: 'uncovered' }),
+      outcome({ rung: 'uncovered' }),
+      outcome({ rung: 'withheld' }),
+      outcome({ rung: 'missed' }),
+      outcome({ rung: 'outranked' }),
+      outcome({ rung: 'grounded' }),
+      outcome({ rung: 'grounded' }),
+    ]);
+
+    assert.equal(total(card.rungs), card.asked, 'one and only one rung per question');
+    assert.deepEqual(card.rungs, {
+      silence: 1,
+      uncovered: 2,
+      withheld: 1,
+      missed: 1,
+      outranked: 1,
+      grounded: 2,
+    });
+  });
+
+  it('renders the ladder in order, so the report can be verified against the questions asked', () => {
+    assert.equal(
+      formatRungs(outcomeCard().rungs).trim(),
+      'silence 0, uncovered 0, withheld 0, missed 0, outranked 0, grounded 1',
+    );
+  });
+
+  it('never puts a rung label in anything a reader or the judge is shown', () => {
+    const shown = `${renderAnswer(payload())}\n\n${RUBRIC}`;
+    for (const rung of RUNGS) {
+      assert.ok(!shown.includes(rung), `the rung label "${rung}" must not serve`);
+    }
+  });
+
+  function outcomeCard(): PersonScorecard {
+    return scoreOutcomes('p', [outcome({ rung: 'grounded' })]);
+  }
+
+  function total(rungs: Record<Rung, number>): number {
+    return RUNGS.reduce((sum, rung) => sum + (rungs[rung] ?? 0), 0);
+  }
+});
+
 describe('the scorecard', () => {
   it('counts a pass, a fail and an unjudged answer separately', () => {
     const card = scoreOutcomes('p', [
@@ -209,17 +330,52 @@ describe('the scorecard', () => {
     assert.deepEqual(card.failures, [{ query: 'a bad one', detail: 'wandered off topic' }]);
   });
 
-  it('counts grounding independently of the verdict', () => {
-    const card = scoreOutcomes('p', [outcome({ passed: false, grounded: true })]);
-    assert.equal(card.grounded, 1, 'a bad answer can still be about the right item');
+  it('counts rungs independently of the verdict, in both directions', () => {
+    const card = scoreOutcomes('p', [
+      outcome({ passed: false, rung: 'grounded' }),
+      outcome({ passed: true, rung: 'uncovered' }),
+    ]);
+
+    assert.equal(card.rungs.grounded, 1, 'a bad answer can still rest on the right item');
+    assert.equal(card.rungs.uncovered, 1, 'a question answered well can rest on nothing');
   });
 
-  it('counts reaching the item separately from resting the answer on it', () => {
-    const card = scoreOutcomes('p', [outcome({ grounded: false, reached: true })]);
+  it('sums the rungs to the questions asked, exactly', () => {
+    const card = scoreOutcomes('p', [
+      outcome({ rung: 'grounded' }),
+      outcome({ rung: 'outranked' }),
+      outcome({ rung: 'missed' }),
+      outcome({ rung: 'withheld' }),
+      outcome({ rung: 'uncovered' }),
+      outcome({ rung: 'silence' }),
+    ]);
 
-    assert.equal(card.grounded, 0);
-    assert.equal(card.reached, 1);
-    assert.match(formatScorecard(card), /1\/1 where retrieval reached that item at all/);
+    assert.deepEqual(card.rungs, {
+      silence: 1,
+      uncovered: 1,
+      withheld: 1,
+      missed: 1,
+      outranked: 1,
+      grounded: 1,
+    });
+    assert.deepEqual(sumRungs([card]), card.rungs);
+  });
+
+  it('prints the ladder and the verdict, and derives reached from the rungs', () => {
+    const printed = formatScorecard(
+      scoreOutcomes('p', [
+        outcome({ rung: 'grounded' }),
+        outcome({ rung: 'outranked', passed: false }),
+        outcome({ rung: 'missed' }),
+      ]),
+    );
+
+    assert.equal(
+      printed.split('\n')[0],
+      'p: 2/3 answered well. 3 asked, one rung each — silence 0, uncovered 0, withheld 0, missed 1, outranked 1, grounded 1.',
+    );
+    assert.match(printed, /grounded 1/);
+    assert.doesNotMatch(printed, /reached/, 'reach is derived from the ladder, never printed as a stored flag');
   });
 
   it('prints the failures, so a run nobody watches still says what to look at', () => {

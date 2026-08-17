@@ -17,13 +17,14 @@
  * it for every model braintrust talks to. One judge call per question, ~10 questions per
  * Person — enough to catch a regression without spending an evening's budget on it.
  *
- * **Three columns, and they are not three views of one number.** *answered well* is the
- * judge's verdict on the reply a reader would have been handed. *grounded* is whether that
- * reply rests on the item the question was drawn from. *reached* is whether retrieval found
- * that item at all, shown or not. Grounded below reached is a ranking problem; reached low
- * is a retrieval one; both high with *answered well* low is neither. A single number could
- * not tell those apart, and for a while this harness reported one that told them apart
- * wrongly — see ../qa/score.ts.
+ * **One ladder over each question, and the judge's verdict beside it.** Each question lands
+ * on exactly one of six mutually exclusive rungs — *silence*, *uncovered*, *withheld*,
+ * *missed*, *outranked*, *grounded* — assigned by the first true reason, so a lost question
+ * reports where it was actually lost instead of averaging causes that take opposite fixes.
+ * `reached` is derived from the ladder (outranked + grounded), never stored. The judge's
+ * verdict on the reply a reader would have been handed sits *beside* the ladder as
+ * *answered well*, because a bottom-rung question can still be answered well: the rubric
+ * passes an honest "nothing matched".
  *
  * **On demand only.** Nothing here schedules, gates a Compile, or files an issue — it is an
  * operator's report, the same standing as ../eval and ../calibrate.
@@ -42,7 +43,14 @@ import { checkDimension, createEmbedder, createQueryGate } from '../retrieval/in
 import { readArgs } from './args.js';
 import { runQuestion } from './run.js';
 import { goldenQuestions } from './sample.js';
-import { formatScorecard, scoreOutcomes, type QAOutcome } from './score.js';
+import {
+  formatRungs,
+  formatScorecard,
+  scoreOutcomes,
+  sumRungs,
+  type PersonScorecard,
+  type QAOutcome,
+} from './score.js';
 
 async function main(): Promise<void> {
   const args = readArgs(process.argv.slice(2));
@@ -74,10 +82,7 @@ async function main(): Promise<void> {
         `judged by ${interrogator.generation}.\n`,
     );
 
-    let totalAsked = 0;
-    let totalPassed = 0;
-    let totalGrounded = 0;
-    let totalReached = 0;
+    const cards: PersonScorecard[] = [];
 
     for (const person of people) {
       const questions = await goldenQuestions(db, person, args.sample);
@@ -92,21 +97,15 @@ async function main(): Promise<void> {
       }
 
       const card = scoreOutcomes(person, outcomes);
+      cards.push(card);
       console.log(formatScorecard(card));
       console.log('');
-
-      totalAsked += card.asked;
-      totalPassed += card.passed;
-      totalGrounded += card.grounded;
-      totalReached += card.reached;
     }
 
-    if (totalAsked > 0) {
-      console.log(
-        `TOTAL: ${totalPassed}/${totalAsked} answered well, ` +
-          `${totalGrounded}/${totalAsked} grounded, ` +
-          `${totalReached}/${totalAsked} reached.`,
-      );
+    if (cards.length > 0) {
+      const asked = cards.reduce((total, card) => total + card.asked, 0);
+      const passed = cards.reduce((total, card) => total + card.passed, 0);
+      console.log(`TOTAL: ${passed}/${asked} answered well, ${asked} asked — ${formatRungs(sumRungs(cards))}.`);
     }
   } finally {
     await db.close();

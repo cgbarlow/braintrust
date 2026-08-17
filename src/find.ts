@@ -883,6 +883,41 @@ type PositionRow = {
 };
 
 /**
+ * The candidate set every read here works from, kept in one place so nothing can drift.
+ *
+ * `hits` is the approximate top-k pgvector can actually answer, over-fetched by
+ * `ITEM_OVER_FETCH` because it exists only to find Items; `items` collapses those Chunks
+ * to the Items behind them and *then* truncates, so every Item competes once on its
+ * single best passage and a lecture and a batched day are equals at the point of ranking.
+ *
+ * **Shared verbatim between {@link matchingPositions}, which serves readers, and
+ * {@link candidateRank}, which measures the qa ladder against that same selection.** A
+ * second copy would silently measure a candidate set nobody serves — which is the exact
+ * divergence this issue exists to close.
+ *
+ * Params, in order: `$1` the compile id, `$2` the vector literal, `$3` the embeddings
+ * model, `$4`/`$5` the window, `$6` the floor.
+ */
+const CANDIDATE_CTE = `with hits as (
+   select c.item_id, e.embedding <=> $2::vector as distance
+     from braintrust_embeddings e
+     join braintrust_chunks c on c.id = e.chunk_id
+     join braintrust_items i on i.id = c.item_id
+     join braintrust_sources s on s.id = i.source_id
+    where s.person_id = (select person_id from braintrust_compiles where id = $1)
+      and e.model = $3
+      and ($4::date is null or i.published_at >= $4::date)
+      and ($5::date is null or i.published_at <= $5::date)
+      and e.embedding <=> $2::vector <= ${1} - $6::float
+    order by distance
+    limit ${MATCH_ITEMS * ITEM_OVER_FETCH}
+ ),
+ items as (select item_id, min(distance) as distance
+             from hits group by item_id
+            order by distance
+            limit ${MATCH_ITEMS})`;
+
+/**
  * The Positions whose citations point at Items the search actually matched, best match
  * first.
  *
@@ -906,24 +941,7 @@ async function matchingPositions(
   floor: number,
 ): Promise<PositionRow[]> {
   const { rows } = await db.query<Omit<PositionRow, 'item_count'> & { item_count: string }>(
-    `with hits as (
-       select c.item_id, e.embedding <=> $2::vector as distance
-         from braintrust_embeddings e
-         join braintrust_chunks c on c.id = e.chunk_id
-         join braintrust_items i on i.id = c.item_id
-         join braintrust_sources s on s.id = i.source_id
-        where s.person_id = (select person_id from braintrust_compiles where id = $1)
-          and e.model = $3
-          and ($4::date is null or i.published_at >= $4::date)
-          and ($5::date is null or i.published_at <= $5::date)
-          and e.embedding <=> $2::vector <= ${1} - $6::float
-        order by distance
-        limit ${MATCH_ITEMS * ITEM_OVER_FETCH}
-     ),
-     items as (select item_id, min(distance) as distance
-                 from hits group by item_id
-                order by distance
-                limit ${MATCH_ITEMS})
+    `${CANDIDATE_CTE}
      select p.id, p.slug, p.statement, p.held_since::text as held_since,
             p.held_until::text as held_until, p.days_spanned, p.basis,
             p.confidence, p.item_count::text as item_count,
@@ -997,6 +1015,37 @@ async function readWithoutPositionItem(
   const row = rows[0];
   if (!row || row.cited) return null;
   return { item_title: row.item_title, url: row.url, published_at: row.published_at };
+}
+
+/**
+ * Where one Item landed in the candidate set this search builds: its 1-based rank among
+ * the Items kept, or 0 when the floor (or the `MATCH_ITEMS` bound) held it back.
+ *
+ * **Eval-only, and the read behind one rung of the qa ladder.** The served payload
+ * carries no answer key — a real reader's question has no golden Item to place — so this
+ * exists so the qa harness can tell *the floor kept the item out of the candidate set*
+ * (`withheld`) from *a citing Position never made the five* (`missed`). It lives beside
+ * {@link matchingPositions} and shares its candidate set ({@link CANDIDATE_CTE}); it is
+ * not in the harness that calls it, because measuring a second implementation of the
+ * candidate set would measure a retrieval nobody serves.
+ */
+export async function candidateRank(
+  db: Db,
+  compileId: string,
+  vector: string,
+  search: Search,
+  floor: number,
+  itemId: string,
+): Promise<number> {
+  const { rows } = await db.query<{ rank: string }>(
+    `${CANDIDATE_CTE}
+     select coalesce(array_position(array(select item_id from items order by distance),
+                                    $7::uuid),
+                     0) as rank`,
+    [compileId, vector, search.model, search.since, search.until, floor, itemId],
+  );
+
+  return Number(rows[0]!.rank);
 }
 
 /** A candidate Position with the number its grade and its place in the list come from. */
