@@ -152,12 +152,31 @@ export const FLOOR_OVERRIDE =
  * rather than below it**: `0.35` was this file's own admitted guess, and leaving it as the
  * fallback meant the Persona that knew least about its gate was the most credulous. See
  * ./unmeasured.ts.
+ *
+ * The measured value itself has a lower bound too: {@link MINIMUM_RETRIEVAL_FLOOR}.
+ * A floor a Compile measured at `0.44` is only ever *part* of the answer — the gate
+ * that serves it never goes below the minimum, however low that measurement sits. The
+ * fallback stays a separate number, and the two meet in {@link floorFor}.
  */
 export const RETRIEVAL_FLOOR = FLOOR_OVERRIDE ?? UNMEASURED_RETRIEVAL_FLOOR;
 
 /**
+ * The lowest the gate may be set, whatever that Persona's Compile measured.
+ *
+ * **A minimum, never a flat offset.** Measured against an off-domain negative set, the
+ * floors this fleet actually wears — 0.4427, 0.4645 and a scattering of nearer-zero
+ * values — answered a question about Victorian brickwork one time in ten, while raising
+ * them recovers zero on-domain answers and clears the negative set. So the floor in force
+ * for a Persona never sits below here, but a Persona whose Compile measured a higher
+ * floor keeps *its own* number: taxing one Person's calibration for another's is the
+ * reason there is a minimum rather than a constant. The measurements are
+ * [#323](https://github.com/cgbarlow/braintrust/issues/323)'s.
+ */
+export const MINIMUM_RETRIEVAL_FLOOR = 0.52;
+
+/**
  * The floor in force for one Persona: the override, else what its Compile measured, else
- * the fallback.
+ * the fallback — raised to {@link MINIMUM_RETRIEVAL_FLOOR} when it would sit below it.
  *
  * **A floor measured under rules that have since changed is not a measurement any more.**
  * When the measurement half of the compiler has moved under a Persona, its stored floor
@@ -166,15 +185,24 @@ export const RETRIEVAL_FLOOR = FLOOR_OVERRIDE ?? UNMEASURED_RETRIEVAL_FLOOR;
  * up. That is what makes the staleness window zero for anyone actually reading: the catch
  * happens on the read, not on a clock. See ./unmeasured.ts.
  *
+ * **A minimum is not a fallback, and the override outranks both.** `FLOOR_OVERRIDE` is an
+ * operator's explicit instruction, so it wins outright — including when it is set below
+ * the minimum. Its only other competition here is a measured number, which is why the
+ * minimum, not the override, is what an unmeasured quantity sits above.
+ *
  * `version` omitted means *do not ask* — the caller is testing the fallback itself rather
  * than serving a Persona.
  */
-export function floorFor(measured: number | null, version?: string | null): number {
-  if (FLOOR_OVERRIDE !== null) return FLOOR_OVERRIDE;
+export function floorFor(
+  measured: number | null,
+  version?: string | null,
+  override: number | null = FLOOR_OVERRIDE,
+): number {
+  if (override !== null) return override;
   if (version !== undefined && movedParts(version).includes('measurement')) {
     return UNMEASURED_RETRIEVAL_FLOOR;
   }
-  return measured ?? UNMEASURED_RETRIEVAL_FLOOR;
+  return Math.max(measured ?? UNMEASURED_RETRIEVAL_FLOOR, MINIMUM_RETRIEVAL_FLOOR);
 }
 
 /**

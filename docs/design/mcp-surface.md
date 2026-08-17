@@ -563,6 +563,16 @@ is a coupling nobody can debug and nobody asked for. By design this produces **m
 answer costs a reader one question, where a confident answer to a question nobody wrote about costs them their
 reason to trust any of the others.
 
+**A measured floor has a minimum of its own ([#323](https://github.com/cgbarlow/braintrust/issues/323)).** The
+same caution now bounds the *bottom* of the measured range, not only the missing-measurement case: the two
+smallest Corpora measured 0.4427 and 0.4645, low enough that an off-domain question about Victorian brickwork
+was answered one time in ten. `floorFor` reads a measured floor as `max(measured, 0.52)`
+(`MINIMUM_RETRIEVAL_FLOOR`) — a **minimum, not a flat offset**, so a Persona that measured a higher floor keeps
+its own number. Raising it recovered zero grounded answers on the golden set while the off-domain negative set
+went from 3/30 to 0/30; the cost is `Withheld` 5 → 7, recorded rather than treated as a regression. The
+operator's `FLOOR_OVERRIDE` outranks the minimum like everything else — an explicit instruction wins outright,
+even below 0.52.
+
 **Prose has no conservative direction, so its half of the rule is different.** There is no careful way to read
 a paragraph written under a rule that has since changed, so **synthesised text governed by a part of the
 compiler that has moved is absent until rebuilt** — see [compiler.md §3](./compiler.md). Counts are unaffected:

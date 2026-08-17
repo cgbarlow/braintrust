@@ -34,6 +34,12 @@ const MODEL = testEmbeddingsConfig.model;
  * retrieval floor (see `docs/design/compiler.md` §7); below that it falls back to the
  * conservative unmeasured default, which this fixture's bag-of-words similarities do not
  * clear. Two claims per item, as find-positions.integration.test.ts's fixture uses.
+ *
+ * Each body opens with its own title, the way a real post's opening sentence often carries
+ * the title's words. That is load-bearing since #323 raised the gate to a 0.52 minimum:
+ * a golden question *is* the item's title, and against this bag-of-words fake a title that
+ * shares no words with its body scores 0.13–0.39 — below any floor the gate will serve. A
+ * chunk braintrust actually indexes has to carry the asked words, or nothing is grounded.
  */
 const ITEMS = [
   {
@@ -41,9 +47,9 @@ const ITEMS = [
     published_at: '2024-01-09',
     title: 'Evals precede the harness',
     body:
-      'You write the evals before you write the harness. Every team that skips this ends up ' +
-      'tuning prompts against a vibe. The eval is the specification, and the harness is only ' +
-      'the thing that runs it.',
+      'Evals precede the harness. You write the evals before you write the harness. Every team ' +
+      'that skips this ends up tuning prompts against a vibe. The eval is the specification, and ' +
+      'the harness is only the thing that runs it.',
     claims: [
       {
         statement: 'Evals should be written before the harness that runs them.',
@@ -57,9 +63,9 @@ const ITEMS = [
     published_at: '2025-06-01',
     title: 'Context windows are not memory',
     body:
-      'A context window is not memory. It is a buffer that forgets everything the moment the ' +
-      'request ends, and treating it as memory is how people end up rebuilding a database ' +
-      'badly inside a prompt.',
+      'Context windows are not memory. A context window is a buffer that forgets everything the ' +
+      'moment the request ends, and treating it as memory is how people end up rebuilding a ' +
+      'database badly inside a prompt.',
     claims: [
       { statement: 'A context window is a buffer rather than memory.', quote: 'A context window is not memory' },
       {
@@ -73,8 +79,9 @@ const ITEMS = [
     published_at: '2026-03-11',
     title: 'Still writing evals first',
     body:
-      'I said it two years ago and I will say it again: the eval comes first. If you cannot ' +
-      'measure whether the change helped, you are not engineering, you are decorating.',
+      'Still writing evals first. I said it two years ago and I will say it again: the eval comes ' +
+      'first. If you cannot measure whether the change helped, you are not engineering, you are ' +
+      'decorating.',
     claims: [
       { statement: 'The eval still comes before everything else.', quote: 'the eval comes first' },
       {

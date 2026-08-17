@@ -10,10 +10,18 @@
  */
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
-import { cutFor, fitOf, floorFor, nothingMatched, speakableProseIn } from '../src/find.js';
+import {
+  cutFor,
+  fitOf,
+  floorFor,
+  MINIMUM_RETRIEVAL_FLOOR,
+  nothingMatched,
+  speakableProseIn,
+} from '../src/find.js';
 import { UNMEASURED_RETRIEVAL_FLOOR } from '../src/unmeasured.js';
 
 /** Every floor braintrust has measured on a real corpus, as recorded on #168. */
@@ -33,9 +41,9 @@ describe('the floor a persona uses when it has measured none', () => {
   });
 
   it('gets out of the way the moment there is a measurement', () => {
-    // The fallback is what an absence means, never a floor under a real number.
-    assert.equal(floorFor(MEASURED_RANGE.low), MEASURED_RANGE.low);
-    assert.equal(floorFor(MEASURED_RANGE.high), MEASURED_RANGE.high);
+    // The fallback is what an absence means, never a floor under a real number — so a
+    // measured value above the minimum is used unchanged.
+    assert.equal(floorFor(0.58), 0.58);
   });
 
   /**
@@ -48,6 +56,92 @@ describe('the floor a persona uses when it has measured none', () => {
 
     assert.match(source, /export const UNMEASURED_RETRIEVAL_FLOOR = [\d.]+;/);
     assert.doesNotMatch(source, /\bimport\b/, 'nothing to derive it from is the strongest form of this');
+  });
+});
+
+/**
+ * **A minimum under a measured floor, never a flat offset.** Measured floors of 0.4427 and
+ * 0.4645 — the two smallest Corpora — answered a question about Victorian brickwork one
+ * time in ten, so the gate reads a measured floor as `max(measured, 0.52)`. A Persona whose
+ * Compile measured a higher floor keeps *its own* number: taxing one Person's calibration
+ * for another's is exactly why this is a minimum and not a constant.
+ */
+describe('the minimum the gate serves under a measured floor', () => {
+  it('raises a measured floor that sits below it, rather than serving it', () => {
+    assert.equal(floorFor(MEASURED_RANGE.low), MINIMUM_RETRIEVAL_FLOOR);
+    assert.ok(
+      MINIMUM_RETRIEVAL_FLOOR > MEASURED_RANGE.low,
+      'the minimum walks the floor the negative set walked through',
+    );
+  });
+
+  it('leaves a measured floor at or above the minimum exactly as measured', () => {
+    assert.equal(floorFor(MEASURED_RANGE.high), MEASURED_RANGE.high);
+    assert.equal(floorFor(0.58), 0.58);
+  });
+
+  it('does not disturb the no-measurement fallback, which already sits above it', () => {
+    assert.equal(floorFor(null), UNMEASURED_RETRIEVAL_FLOOR);
+    assert.ok(UNMEASURED_RETRIEVAL_FLOOR > MINIMUM_RETRIEVAL_FLOOR);
+  });
+
+  it('lets the operator override win outright, below the minimum included', () => {
+    // The override is an explicit instruction, not a second measurement for the gate to
+    // second-guess — so it wins over the minimum, over a measured floor, and over the
+    // unmeasured fallback alike.
+    assert.equal(floorFor(MEASURED_RANGE.low, undefined, 0.5), 0.5);
+    assert.equal(floorFor(0.58, undefined, 0.5), 0.5);
+    assert.equal(floorFor(null, undefined, 0.3), 0.3);
+  });
+});
+
+/**
+ * **`FLOOR_OVERRIDE` is read from the environment at import time, so the wiring that makes
+ * it an operator's instruction is not the same code as the one this file usually tests.**
+ * The parameter form above proves the rule; this proves the variable reaches the rule.
+ * Spawned fresh so the module evaluates once with the variable set, the way the server
+ * would.
+ */
+describe('the environment variable that sets the override', () => {
+  const probe = [
+    `import { floorFor, MINIMUM_RETRIEVAL_FLOOR, FLOOR_OVERRIDE } from ${JSON.stringify(
+      new URL('../src/find.js', import.meta.url).href,
+    )};`,
+    `const belowTheMinimum = MINIMUM_RETRIEVAL_FLOOR - 0.01;`,
+    `process.stdout.write(JSON.stringify({ override: FLOOR_OVERRIDE, below: floorFor(belowTheMinimum), above: floorFor(0.58), none: floorFor(null) }));`,
+  ].join('\n');
+
+  it('overrides the minimum, a measured floor and the fallback alike', () => {
+    const run = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', '--input-type=module', '--eval', probe],
+      { env: { ...process.env, BRAINTRUST_RETRIEVAL_FLOOR: '0.5' }, encoding: 'utf8' },
+    );
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(JSON.parse(run.stdout), {
+      override: 0.5,
+      below: 0.5,
+      above: 0.5,
+      none: 0.5,
+    });
+  });
+
+  it('leaves the gate to its own arithmetic when it is unset', () => {
+    const { BRAINTRUST_RETRIEVAL_FLOOR: _unset, ...withoutOverride } = process.env;
+    const run = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', '--input-type=module', '--eval', probe],
+      { env: withoutOverride, encoding: 'utf8' },
+    );
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(JSON.parse(run.stdout), {
+      override: null,
+      below: MINIMUM_RETRIEVAL_FLOOR,
+      above: 0.58,
+      none: UNMEASURED_RETRIEVAL_FLOOR,
+    });
   });
 });
 

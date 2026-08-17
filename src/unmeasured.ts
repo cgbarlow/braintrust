@@ -7,9 +7,15 @@
  *
  * The retrieval floor is measured per Persona on every Compile, and every floor braintrust
  * has ever measured sits between 0.44 and 0.52. The fallback for a Persona that had
- * measured none was 0.35 — *below the whole range*. So the one Persona that knew least
+ * measured none was 0.35 — *below* the whole range. So the one Persona that knew least
  * about its own gate was the most credulous, letting through exactly what a measured value
  * would have caught. An absence of evidence had been quietly read as evidence of absence.
+ *
+ * **A measured floor now has a floor of its own.** The lowest end of that same measured
+ * range answered a question about Victorian brickwork one time in ten, so `floorFor` reads
+ * a measured floor as `max(measured, 0.52)` — the minimum in ../find.ts, separate from
+ * this fallback. This file is only the *absence* case: nothing measured. See
+ * ../find.ts `MINIMUM_RETRIEVAL_FLOOR`.
  *
  * Two halves, because two kinds of thing go unmeasured.
  *
@@ -38,12 +44,12 @@
 /**
  * The floor a Persona uses when its own has not been measured.
  *
- * **Above every floor braintrust has measured (0.44–0.52), and deliberately a constant.**
- * A fallback inside or below the measured range is one that answers questions a measured
- * value would have refused, which is the failure this replaces. Above it, an uncalibrated
- * Persona is cautious rather than credulous: it declines some questions it could have
- * answered, and a reader can still ask them of a Persona whose next Compile measures a
- * floor of its own.
+ * **Above every floor braintrust has measured (0.44–0.52) and above the minimum the gate
+ * now applies to a measured floor, and deliberately a constant.** A fallback inside or
+ * below the measured range is one that answers questions a measured value would have
+ * refused, which is the failure this replaces. Above it, an uncalibrated Persona is
+ * cautious rather than credulous: it declines some questions it could have answered, and a
+ * reader can still ask them of a Persona whose next Compile measures a floor of its own.
  *
  * By design this produces **more empty answers**, and that is the trade the number
  * encodes. An empty answer costs a reader one question; a confident answer to a question
