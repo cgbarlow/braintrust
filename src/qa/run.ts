@@ -16,6 +16,7 @@ import { candidateRank, findPositions, floorFor, type FindDeps, type FindPayload
 import type { Interrogator } from '../interrogate/index.js';
 import { vectorLiteral } from '../retrieval/embed.js';
 import {
+  answeredNothing,
   grounded,
   reached,
   renderAnswer,
@@ -40,16 +41,49 @@ export async function runQuestion(
   // invisible unless it happened to be among them. The grounding check was scoring
   // recency. ../qa/score.ts still renders only what a default call would return, so what
   // the judge reads is unchanged.
-  const payload = await findPositions(
-    { person: question.person, query: question.query, limit: ANSWER_LIMIT, full: true },
-    deps,
-  );
+  let payload: FindPayload;
+  try {
+    payload = await findPositions(
+      { person: question.person, query: question.query, limit: ANSWER_LIMIT, full: true },
+      deps,
+    );
+  } catch (error) {
+    // **Nothing came back at all is a rung, not a crash.** The ladder must sum to the
+    // number of questions asked whatever happened to the request — an embedding that
+    // turned its toes up mid-run is a Silence, and one question's failure is no reason
+    // to lose the rest of the run (spec §5.1).
+    return {
+      person: question.person,
+      query: question.query,
+      item_url: question.item_url,
+      fit: null,
+      rung: 'silence',
+      passed: null,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
 
   // **The ladder needs three facts the payload cannot carry, read from the Corpus behind
   // it.** Nothing in a served answer can say how many compiled Positions cite the asked
   // item, nor where that item stood in the candidate set — those are the eval looking
   // behind the answer, which is exactly what a golden set (and only a golden set) may do.
   const facts = await rungFactsFor(payload, question, deps);
+  const rung = rungFor(facts);
+
+  // **An empty answer is not judged at all.** There is no reply to pass or fail — the
+  // rubric passes *"nothing matched"* and that is precisely the mistake #328 removes.
+  // Recording it without spending a judge call is a second, smaller saving.
+  if (answeredNothing(rung)) {
+    return {
+      person: question.person,
+      query: question.query,
+      item_url: question.item_url,
+      fit: payload.positions[0]?.fit ?? null,
+      rung,
+      passed: null,
+      detail: String(payload.nothing_matched?.reason ?? payload.read_without_position?.item_title ?? rung),
+    };
+  }
 
   const reply = `Question asked: "${question.query}"\n\n${renderAnswer(payload)}`;
 
@@ -71,7 +105,7 @@ export async function runQuestion(
     query: question.query,
     item_url: question.item_url,
     fit: payload.positions[0]?.fit ?? null,
-    rung: rungFor(facts),
+    rung,
     passed,
     detail,
   };
