@@ -203,8 +203,23 @@ create table if not exists braintrust_embeddings (
 comment on column braintrust_embeddings.model is
   'In the primary key on purpose: a better model is a new set of rows, not a migration.';
 
+-- Kept but never scanned. `braintrust_find_positions` reaches the person filter through
+-- a join, so the ORDER BY … LIMIT 480 sits above this index and the planner reads every
+-- stored vector sequentially — exact, linear in the fleet, ~71 ms per 8,307 vectors
+-- (measured 2026-08-17). Reshaping the query to reach it would make retrieval
+-- approximate again (re-opening hnsw.ef_search, closed by #303), and 65 MB does not buy a
+-- hand-pasted schema change's outage window, so it stays. Drop it as a passenger on the
+-- next schema change that has its own reason to exist — the corpus-size fault
+-- (embeddings_corpus_under_40000_vectors) is the trigger that revisits that. See map #300 §7.
 create index if not exists braintrust_embeddings_hnsw_idx
   on braintrust_embeddings using hnsw (embedding vector_cosine_ops);
+
+comment on index braintrust_embeddings_hnsw_idx is
+  'HNSW on the serving table, but never scanned: retrieval filters by person through a '
+  'join, so the planner reads the table sequentially and exactly instead. Kept because '
+  'reaching the index would make retrieval approximate (re-opening hnsw.ef_search) and '
+  'dropping 65 MB does not buy a hand-pasted schema change''s outage window. Drop it as a '
+  'passenger on the next schema change that has its own reason to exist. See map #300 §7.';
 
 create table if not exists braintrust_item_notes (
   id           uuid primary key default gen_random_uuid(),

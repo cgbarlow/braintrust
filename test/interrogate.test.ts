@@ -48,7 +48,14 @@ import {
   silenceIssue,
   type Issue,
 } from '../src/interrogate/issues.js';
-import { escalatedFaults, openFault, recordSilence } from '../src/interrogate/store.js';
+import {
+  assertServingCorpusSize,
+  EMBEDDINGS_CORPUS_ASSERTION,
+  EMBEDDINGS_CORPUS_LIMIT,
+  escalatedFaults,
+  openFault,
+  recordSilence,
+} from '../src/interrogate/store.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 import { renderScript, type ScriptInput } from '../src/script.js';
 
@@ -134,6 +141,8 @@ function interrogatingDb(seed: {
   silences?: SilenceSeed[];
   claims?: { slug: string; statement: string }[];
   items?: { title: string | null; url: string; body_text: string | null }[];
+  /** The serving model's embedding-row count, for the corpus-size trigger. */
+  embeddings?: number;
 } = {}) {
   const silences = new Map<string, Record<string, unknown>>();
   for (const silence of seed.silences ?? []) {
@@ -335,6 +344,10 @@ function interrogatingDb(seed: {
 
     if (flat.includes('from braintrust_silences order by first_failed_at')) {
       return [...silences.values()];
+    }
+
+    if (flat.includes('from braintrust_embeddings') && flat.includes('count(*)')) {
+      return [{ count: String(seed.embeddings ?? 0) }];
     }
 
     return [];
@@ -2245,5 +2258,69 @@ describe('a deployment with nowhere to file', () => {
     assert.equal(result, null);
     assert.match(lines[0]!, /NOBODY WAS TOLD/);
     assert.match(lines[0]!, /the body/);
+  });
+});
+
+describe('the corpus-size trigger', () => {
+  const MODEL = 'qwen3-embedding:0.6b';
+
+  it('opened only under a name the registry knows, so it files rather than explains itself', () => {
+    assert.ok(faultById(EMBEDDINGS_CORPUS_ASSERTION));
+  });
+
+  it('opens a named fault when the serving model crosses 40,000 embeddings', async () => {
+    const db = interrogatingDb({ embeddings: EMBEDDINGS_CORPUS_LIMIT });
+
+    const result = await assertServingCorpusSize(db, MODEL);
+
+    // Exactly at the line counts: 71 ms per 8,307 vectors puts a find_positions call at
+    // ~1 second somewhere in the 40,000s, and a line that has to be crossed to mean
+    // anything has to be named exactly once.
+    assert.equal(result.over, true);
+    assert.equal(result.count, EMBEDDINGS_CORPUS_LIMIT);
+
+    const open = db.faults.get(`${EMBEDDINGS_CORPUS_ASSERTION}:*`);
+    assert.ok(open, 'the fault row should be open');
+    assert.equal(open!.assertion, EMBEDDINGS_CORPUS_ASSERTION);
+    assert.equal(open!.person_slug, null);
+  });
+
+  it('is deductively one row, however many runs re-observe it', async () => {
+    const db = interrogatingDb({ embeddings: 52_000 });
+
+    const first = await assertServingCorpusSize(db, MODEL);
+    const second = await assertServingCorpusSize(db, MODEL);
+
+    assert.equal(first.over, true);
+    assert.equal(second.over, true);
+    assert.equal(db.faults.size, 1);
+    assert.ok(db.faults.get(`${EMBEDDINGS_CORPUS_ASSERTION}:*`));
+  });
+
+  it('clears the fault when the count drops back below the line', async () => {
+    const db = interrogatingDb({ embeddings: 12_000 });
+    await openFault(db, {
+      assertion: EMBEDDINGS_CORPUS_ASSERTION,
+      person: null,
+      detail: 'the corpus was over the line on a previous run',
+    });
+    assert.equal(db.faults.size, 1);
+
+    const result = await assertServingCorpusSize(db, MODEL);
+
+    assert.equal(result.over, false);
+    assert.equal(db.faults.size, 0, 'a pass clears the fault, never an issue being closed');
+  });
+
+  it('counts only the serving model, so another model is not evidence', async () => {
+    const db = interrogatingDb({ embeddings: 6_000 });
+
+    // A tiny fresh fleet is not a fleet that crossed the line; the guarantee is about the
+    // model retrieval actually serves, because cosine similarity across models is meaningless.
+    const result = await assertServingCorpusSize(db, 'some-other-model');
+
+    assert.equal(result.over, false);
+    assert.equal(db.faults.size, 0);
+    assert.ok(db.sql.some((sql) => sql.includes('from braintrust_embeddings') && sql.includes('model = $1')));
   });
 });
