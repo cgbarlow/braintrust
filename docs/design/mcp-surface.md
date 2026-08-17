@@ -779,10 +779,11 @@ answers the question asked, and `measured` + `high` + four dated quotes reads as
 second, per-result grade says how well the Position fits *this query***, so a weakly-fitting Position is
 visibly weak even when it is impeccably evidenced.
 
-**`fit` grades the Position's own statement, and the answer is listed in that order** —
-[#140](https://github.com/cgbarlow/braintrust/issues/140), **[measured]**. Three candidates for what the grade
-should be *of* were scored against a reader across 92 Positions from all five live Personas, 20 questions, and
-two independent judges:
+**`fit` grades the Position's own statement** — [#140](https://github.com/cgbarlow/braintrust/issues/140),
+**[measured]**; the answer is listed in that statement's order, blended 60/40 with the Item evidence per
+[#311](https://github.com/cgbarlow/braintrust/issues/311). Three candidates for what the grade should be *of*
+were scored against a reader across 92 Positions from all five live Personas, 20 questions, and two
+independent judges:
 
 | what it scores | orders answers the way a reader would | separation between *answers* and *unrelated* |
 |---|---:|---:|
@@ -798,18 +799,25 @@ Statement still won, 82.2%.
 
 Four consequences, and the fourth is the one that outlives this ticket.
 
-**The list is ordered by the same number it is graded on**, so grade and order cannot disagree. Ordering is
-where the harm lands, because a reader reads down and quotes the top: asked about AI coding agents, the two
-things Matt Pocock had actually said about running them came back sixth and seventh, labelled `partial`, while
-a note about TypeScript compile performance came fourth labelled a good match.
+**The list is ordered by a 60/40 blend of the two numbers a Position carries** — the statement
+([#140](https://github.com/cgbarlow/braintrust/issues/140)) and the Item evidence
+([#311](https://github.com/cgbarlow/braintrust/issues/311)): `0.6 × statement similarity + 0.4 × (1 − distance)`,
+descending. The statement is the better signal alone — it orders answers the way a reader would 80.4% of the
+time, where the Item is an even coin — but the Item is the only evidence a reader can check against what they
+asked. Leave it as a tie-break and a broad, central Position outranks the specific Position citing the item the
+question is about; measured over the golden set, **10 → 15 of 45 grounded, nothing lost**. Ordering is where
+the harm lands, because a reader reads down and quotes the top: asked about AI coding agents, the two things
+Matt Pocock had actually said about running them came back sixth and seventh, labelled `partial`, while a note
+about TypeScript compile performance came fourth labelled a good match.
 
 **Nothing is withheld.** A weak Position is last and marked weak, never absent — the never-hide posture is
 untouched.
 
 **The retrieval gate does not move.** Chunks still decide whether a question reaches this Corpus at all and
 which Positions are candidates; that is what a vector index can answer and what the measured floor is
-calibrated for. The statement decides only how the candidates that came back are ordered and graded. Two jobs,
-two numbers, and conflating them is how `fit` got into this.
+calibrated for. The statement and the Item decide how the candidates that came back are ordered — the grade
+stays on the statement, the order takes both — and the two are different jobs that are now allowed to
+disagree. Two acts, two numbers, and conflating them is how `fit` got into this.
 
 **The cut is measured per Persona, on the new distribution, and a Compile that has not measured it declines to
 grade.** The floor is Chunk similarity and the statement score is not the same quantity: applied naively, Chris

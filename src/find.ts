@@ -19,7 +19,8 @@
  * Chunks decide whether a question reaches this Corpus at all and which Positions are
  * candidates — that is what a vector index can answer and what the measured floor is
  * calibrated for. The Position's own *statement* decides how the candidates that came back
- * are ordered and graded. See {@link fitOf}.
+ * are graded, and — in a 60/40 blend with the Item evidence — where in the list they
+ * appear. See {@link fitOf} and {@link scoreStatements}.
  *
  * **`passages` is the fallback, labelled as raw material.** When the compiler formed no
  * Position on a topic, the indexed words are still the best answer available — but they
@@ -842,6 +843,18 @@ async function matchingPositions(
 type ScoredPosition = PositionRow & { statement_similarity: number | null };
 
 /**
+ * How much of a Position's place in the list comes from its own statement, and how much
+ * from the Item the question drew on.
+ *
+ * **A constant, not a per-Compile calibrated cut.** Weights 0.3–0.6 all produce the same
+ * grounded count, so there is a plateau and nothing to calibrate — see
+ * [#311](https://github.com/cgbarlow/braintrust/issues/311). The floor and the fit cut are
+ * the measured quantities; this is a fixed blend.
+ */
+export const STATEMENT_WEIGHT = 0.6;
+export const ITEM_WEIGHT = 1 - STATEMENT_WEIGHT;
+
+/**
  * How close each Position's **own statement** is to the question, by id.
  *
  * **Exported so the calibrator measures this and not something like it** — the same reason
@@ -873,23 +886,26 @@ export async function statementScores(
 }
 
 /**
- * The candidates, scored on their own statements and put in that order.
+ * The candidates, scored and put in that order.
  *
- * **This is the whole of #140.** The candidates arrive in Chunk order — the best Chunk of
- * the best Item behind each Position — and measured across 92 Positions from five live
- * Personas that number puts the better of two Positions first **51%** of the time, where
- * 50% is a coin. It cannot do better: the mean Item similarity of a Position that answers
- * the question is 0.585 and of one a reader would reject is 0.576, so there is no signal in
- * it to order by. The statement gets **80%**, and **82%** under a second judge shown only
- * the person's own quotes and never braintrust's sentence.
+ * **The rank key is a 60/40 blend of the two numbers a Position carries**, and it is the
+ * whole of [#311](https://github.com/cgbarlow/braintrust/issues/311). Statement-only
+ * ordering — the whole of #140 — left the Item evidence as a tie-break, so a broad, central
+ * Position outranked the specific Position citing the Item the question is about. The
+ * statement is still the better signal alone (the best **80%** of the time the Item is, an
+ * even coin), but the Item is the only evidence a reader can check against what they asked.
+ * Rank on {@link STATEMENT_WEIGHT} × statement similarity plus {@link ITEM_WEIGHT} ×
+ * `(1 - distance)`, and the Item stops being a coinflip beneath a statement.
  *
  * Ordering is where the harm lands, because a reader reads down and quotes the top. The
- * grade and the order are now the same number, so they cannot disagree.
+ * grade and the order are no longer the same number — the order is the blend, the grade
+ * stays on the statement — so they can disagree, and this is the case where they are meant
+ * to.
  *
- * **Nothing is dropped here.** A Position whose statement scores badly moves down the list;
- * a Position with no statement vector sorts last because it has no place to claim, not
- * because it is being hidden. What decides membership is the floor, on Chunks, and that
- * happened before this.
+ * **Nothing is dropped here.** A Position whose score comes out low moves down the list; a
+ * Position with no statement vector sorts last because it has no place to claim, not because
+ * it is being hidden. What decides membership is the floor, on Chunks, and that happened
+ * before this.
  */
 async function scoreStatements(
   db: Db,
@@ -904,23 +920,34 @@ async function scoreStatements(
     model,
   );
 
+  // The number the list is ranked on: `0.6 * statement_similarity + 0.4 * (1 - distance)`,
+  // from the row's own two numbers so order always matches the payload beside it. A
+  // Position with no statement vector has no blend to claim, so it sorts last.
+  const blend = (position: ScoredPosition): number | null => {
+    if (position.statement_similarity === null) return null;
+    return (
+      STATEMENT_WEIGHT * position.statement_similarity +
+      ITEM_WEIGHT * (1 - position.distance)
+    );
+  };
+
   return rows
     .map((row) => {
       const score = scores.get(row.id);
       return {
         ...row,
-        // Rounded here rather than at the payload, so the order a reader sees is the order
-        // of the numbers a reader sees.
+        // Rounded here rather than at the payload, so the score a reader sees is the score
+        // the grade came from.
         statement_similarity: score === undefined ? null : Math.round(score * 1000) / 1000,
       };
     })
     .sort(
       (left, right) =>
-        (right.statement_similarity ?? -1) - (left.statement_similarity ?? -1) ||
-        // **Retrieval order underneath, which is what an ungraded Persona gets.** A Compile
-        // with no statement vectors has no better number to sort on, and the Chunk order is
-        // a weak signal rather than no signal — alphabetical would be worse than the thing
-        // this ticket replaced. It is a tie-break here and never a grade.
+        (blend(right) ?? -1) - (blend(left) ?? -1) ||
+        // **The chain from #140 and #182, unchanged beneath the blend.** A Compile with no
+        // statement vectors has no blend to sort on, so it still falls through to the Chunk
+        // order — a weak signal rather than no signal, and the tie-break that unchanged
+        // ordering gets for free.
         left.distance - right.distance ||
         right.item_count - left.item_count ||
         left.slug.localeCompare(right.slug),
