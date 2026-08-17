@@ -254,6 +254,14 @@ export const REGISTERED_FAULTS: RegisteredFault[] = [
       'would manufacture Positions the person does not hold',
     withdraws: [],
   },
+  {
+    id: 'embeddings_corpus_under_40000_vectors',
+    guarantees:
+      'the serving model stays under 40,000 embeddings — the point at which a ' +
+      'find_positions call crosses about a second of database time, so retrieval keeps ' +
+      'costing fractions of a second per question instead of growing silently with the fleet',
+    withdraws: [],
+  },
 ];
 
 /**

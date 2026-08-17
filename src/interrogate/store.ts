@@ -219,6 +219,60 @@ export async function clearFault(db: Db, assertion: string, person: string | nul
   ]);
 }
 
+/**
+ * The line at which the serving model's embeddings cross **about one second of database
+ * time per `find_positions` call**. Re-measured 2026-08-17: 71 ms per sequential scan at
+ * `limit 480`, three scans per call, 8,307 vectors — so 40,000 is where the extrapolation
+ * reaches the second. The index and the retrieval query are deliberately untouched
+ * (map #300 §7): this fault is the trigger that makes "nothing to the index" a decision
+ * rather than a shrug, re-decided with a real corpus in front of it.
+ */
+export const EMBEDDINGS_CORPUS_LIMIT = 40_000;
+
+/** The name this fault opens under. Registered in {@link REGISTERED_FAULTS}. */
+export const EMBEDDINGS_CORPUS_ASSERTION = 'embeddings_corpus_under_40000_vectors';
+
+/**
+ * The corpus-size check: opens the fault when the serving model holds
+ * {@link EMBEDDINGS_CORPUS_LIMIT} or more embedding rows, clears it when the count drops
+ * back below the line.
+ *
+ * **SQL only — no model call** — and deliberately the same open-and-clear shape as
+ * `persona_stuck_behind_compiler`: there is no interrogation assertion for it, so the
+ * normal fault-clearance path does not run. It touches `braintrust_faults` and nowhere
+ * else, so it can never stop a persona answering. The issue it files is the escalation the
+ * interrogation already owns — see `faultsToFile`.
+ */
+export async function assertServingCorpusSize(
+  db: Db,
+  model: string,
+): Promise<{ count: number; over: boolean }> {
+  const { rows } = await db.query<{ count: string | number }>(
+    `select count(*) as count from braintrust_embeddings where model = $1`,
+    [model],
+  );
+  const count = Number(rows[0]?.count ?? 0);
+  const over = count >= EMBEDDINGS_CORPUS_LIMIT;
+
+  if (over) {
+    await openFault(db, {
+      assertion: EMBEDDINGS_CORPUS_ASSERTION,
+      person: null,
+      detail:
+        `the serving model ${model} holds ${count} embeddings, over the ` +
+        `${EMBEDDINGS_CORPUS_LIMIT.toLocaleString('en-US')}-vector line where a ` +
+        'find_positions call crosses about a second of database time at the 2026-08-17 ' +
+        'measured rate. Retrieval reads every stored vector sequentially, so the cost grows ' +
+        'with the fleet rather than with the persona being asked. The index and the query ' +
+        'stay unchanged; this fault is the trigger to revisit that against a real corpus.',
+    });
+  } else {
+    await clearFault(db, EMBEDDINGS_CORPUS_ASSERTION, null);
+  }
+
+  return { count, over };
+}
+
 export async function markReported(db: Db, key: string, issue: string | null): Promise<void> {
   await db.query(
     `update braintrust_faults set reported_at = now(), reported_issue = $2 where fault_key = $1`,

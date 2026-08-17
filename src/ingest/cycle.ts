@@ -22,7 +22,7 @@ import {
   type StuckRebuild,
 } from '../compile/store.js';
 import { toDateOnly } from '../dates.js';
-import { clearFault, openFault } from '../interrogate/store.js';
+import { assertServingCorpusSize, clearFault, openFault } from '../interrogate/store.js';
 import { faultKey } from '../interrogate/schedule.js';
 import type { Db, TransactionalDb } from '../db.js';
 import { BraintrustError } from '../errors.js';
@@ -125,6 +125,14 @@ export type CycleDeps = {
    * is the one most worth being able to defer.
    */
   extractor?: Extractor | undefined;
+  /**
+   * The model retrieval actually serves — the one whose vectors this run keeps growing.
+   * The daily job passes it, so the corpus-size fault is checked there; a scoped refresh
+   * does not. The fault is a fleet property, and asking it on a call a user is waiting on
+   * would hand a fleet-linear count to an interactive request for a check the daily run
+   * already owns.
+   */
+  embeddingModel?: string | undefined;
   /**
    * What writes the inferred half of the Core. It shares the extractor's endpoint and
    * reads Notes rather than Items, so it is cheap — but without it a Compile could only
@@ -424,6 +432,25 @@ export async function runCycle(deps: CycleDeps): Promise<CycleReport> {
   // it never stops anyone answering — the fault opens on an under-covered Persona and
   // clears when coverage passes the floor again.
   const coverage = await checkCoverage(deps.db, { log });
+
+  // 9. The corpus-size fault. Retrieval is a sequential scan framed above a join, so every
+  // question reads every stored vector of the serving model — exact, linear in the fleet,
+  // and about a second of database time once the model crosses 40,000 embeddings. The index
+  // and the query stay untouched (map #300 §7); the fault is the trigger that makes that a
+  // decision revisited against a real corpus rather than a shrug. A fleet past the line keeps
+  // serving — this opens a row on the fault ledger and nowhere else.
+  if (deps.embeddingModel) {
+    const corpus = await assertServingCorpusSize(deps.db, deps.embeddingModel);
+    if (corpus.over) {
+      log(
+        `braintrust: the serving model ${deps.embeddingModel} holds ` +
+          `${corpus.count.toLocaleString('en-US')} embeddings, over the ` +
+          '40,000-vector line where a find_positions call crosses about a second of database ' +
+          'time. The fleet keeps serving; an issue is filed and the fault clears when the ' +
+          'count drops below the line.',
+      );
+    }
+  }
 
   const report: CycleReport = {
     started: started.toISOString(),

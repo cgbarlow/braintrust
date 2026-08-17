@@ -29,6 +29,10 @@ import { createExtractor } from '../src/notes/index.js';
 import { explainPersona, loadPersona } from '../src/personas.js';
 import { createEmbedder } from '../src/retrieval/index.js';
 import {
+  EMBEDDINGS_CORPUS_ASSERTION,
+  EMBEDDINGS_CORPUS_LIMIT,
+} from '../src/interrogate/store.js';
+import {
   BLOCK_AFTER_FAILURES,
   MAX_RETRY_ATTEMPTS,
   RECHECK_CAPTIONS_DAYS,
@@ -118,6 +122,8 @@ describe('the ingest cycle, against real Postgres', () => {
     embed?: boolean;
     /** Off by default, and expensive when on: one model call per item. */
     extract?: boolean;
+    /** The serving embeddings model, which turns on the corpus-size check. */
+    embeddingModel?: string;
   };
 
   /**
@@ -150,6 +156,7 @@ describe('the ingest cycle, against real Postgres', () => {
           }
         : {}),
       ...(options.stopping ? { stopping: options.stopping } : {}),
+      ...(options.embeddingModel ? { embeddingModel: options.embeddingModel } : {}),
     });
     return { report, fetcher };
   }
@@ -1084,4 +1091,107 @@ describe('the ingest cycle, against real Postgres', () => {
     const { rows } = await db.query<{ count: string }>(sql);
     return Number(rows[0]!.count);
   }
+
+  // ---------------------------------------------------------------------------
+  // The corpus-size fault: retrieval reads every stored vector of the serving model
+  // for every question, so a fleet that crosses the line costs about a second of
+  // database time per call. The index and the query are deliberately untouched; this
+  // fault is the trigger that re-decides that against a real corpus (map #300 §7).
+  // ---------------------------------------------------------------------------
+  describe('the corpus-size fault', () => {
+    beforeEach(async () => {
+      await db.query('truncate braintrust_faults');
+    });
+
+    const MODEL = testEmbeddingsConfig.model;
+
+    /** Drops `n` embedding rows under the model, each on its own item and chunk. */
+    async function embedRows(n: number): Promise<void> {
+      const { rows } = await db.query<{ id: string }>('select id from braintrust_sources limit 1');
+      const sourceId = rows[0]!.id;
+      const vector = `[${Array.from({ length: 1024 }, () => '0.5').join(',')}]`;
+      await db.query(
+        `with items as (
+           insert into braintrust_items (source_id, external_id, url, retrieval)
+           select $1::uuid, 'corpus-seed-' || i, 'https://example.test/corpus-seed/' || i, 'retrieved'
+             from generate_series(1, $2) as i
+           returning id
+         ),
+         chunks as (
+           insert into braintrust_chunks (item_id, ordinal, text, char_start, char_end)
+           select id, 0, 'seeded vector row', 0, 16 from items
+           returning id
+         )
+         insert into braintrust_embeddings (chunk_id, model, embedding)
+         select id, $3, $4::vector from chunks`,
+        [sourceId, n, MODEL, vector],
+      );
+    }
+
+    async function corpusFaults() {
+      const { rows } = await db.query<{ assertion: string; detail: string }>(
+        'select assertion, detail from braintrust_faults order by first_failed_at',
+      );
+      return rows;
+    }
+
+    it('opens at exactly 40,000 vectors for the serving model, stays deduplicated, and clears on a drop', async () => {
+      await follow();
+      await run({ embeddingModel: MODEL });
+
+      // A fresh corpus is below the line: the check ran and there is nothing to report.
+      assert.deepEqual(await corpusFaults(), []);
+
+      await embedRows(EMBEDDINGS_CORPUS_LIMIT);
+
+      await run({ embeddingModel: MODEL });
+      const opened = await corpusFaults();
+      assert.equal(opened.length, 1, 'exactly at the line counts');
+      assert.equal(opened[0]!.assertion, EMBEDDINGS_CORPUS_ASSERTION);
+      assert.match(opened[0]!.detail, /40,000/);
+
+      // One row however many runs re-observe the crossing — the row is the deduplication.
+      await run({ embeddingModel: MODEL });
+      assert.equal((await corpusFaults()).length, 1);
+
+      // A pass clears the fault, whatever an issue being closed would suggest. The corpus
+      // shrinks when the model is re-embedded, and the next run notices on its own.
+      await db.query('delete from braintrust_embeddings where model = $1', [MODEL]);
+      await run({ embeddingModel: MODEL });
+      assert.deepEqual(await corpusFaults(), []);
+    });
+
+    it('counts only the serving model, never the whole table', async () => {
+      await follow();
+
+      // 40,001 rows across the whole table, every one under a model nobody serves. Cosine
+      // similarity across model families is meaningless, so the table's total proves nothing
+      // about the model retrieval actually reads.
+      await embedRows(EMBEDDINGS_CORPUS_LIMIT + 1);
+      await db.query('update braintrust_embeddings set model = $1 where model = $2', [
+        'another-model',
+        MODEL,
+      ]);
+
+      await run({ embeddingModel: MODEL });
+      assert.deepEqual(await corpusFaults(), []);
+
+      // Point retrieval at that model and the very same rows cross the line.
+      await run({ embeddingModel: 'another-model' });
+      const opened = await corpusFaults();
+      assert.equal(opened.length, 1);
+      assert.match(opened[0]!.detail, /another-model/);
+    });
+
+    it('skips the check when no serving model is named', async () => {
+      await follow();
+      await embedRows(1);
+
+      // The check is the daily job's: a per-person refresh does not pass a model, so it
+      // never pays the fleet-wide count or nudges the fleet fault on a call a user waits on.
+      await run();
+
+      assert.deepEqual(await corpusFaults(), []);
+    });
+  });
 });

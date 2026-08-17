@@ -96,6 +96,9 @@ async function main(): Promise<void> {
       embedder: await usableEmbedder(db, fetcher, config.embeddings),
       extractor,
       synthesiser,
+      // The serving model, regardless of whether tonight's endpoint answered: the
+      // corpus-size fault counts rows braintrust already holds, so it needs no embedder.
+      embeddingModel: config.embeddings.model,
       stopping: () => stopping,
     });
 

@@ -994,13 +994,21 @@ persona-scoped assertions run per compile: one is a fact about a person, and the
 
 **A fault may only open under a name this registry knows.** The six assertions above are everything the
 interrogation asks, but not every fault braintrust opens is an interrogation assertion: the `verify_sources`
-tool, a persona stuck behind the compiler, a source's consecutive failures, and a Persona whose current
-Compile formed Positions on less than half of its retrieved items all open faults. They carry
-`REGISTERED_FAULTS` entries in the same module — each with the same two facts an assertion carries, what
-passing guarantees and what it withdraws — so a Fault report never renders "unknown — this assertion no
-longer exists in the code", and a name the registry does not know is **refused at `openFault`**, loudly, the
-moment it would be created, rather than explained away when the issue is filed
+tool, a persona stuck behind the compiler, a source's consecutive failures, — map #300 §6 — the
+`embeddings_corpus_under_40000_vectors` corpus-size trigger, and a Persona whose current Compile formed
+Positions on less than half of its retrieved items all open faults. They carry `REGISTERED_FAULTS` entries in
+the same module — each with the same two facts an assertion carries, what passing guarantees and what it
+withdraws — so a Fault report never renders "unknown — this assertion no longer exists in the code", and a
+name the registry does not know is **refused at `openFault`**, loudly, the moment it would be created, rather
+than explained away when the issue is filed
 ([#277](https://github.com/cgbarlow/braintrust/issues/277)).
+
+**The corpus-size fault is SQL only — no model call — and rides the daily run's ingest cycle.** Retrieval
+reads every stored vector of the serving model for every question, so the cost is linear in the fleet rather
+than in the persona being asked. The cycle counts the serving model's rows each run; across 40,000
+(about a second of database time per call, 71 ms per 8,307 vectors measured 2026-08-17) it opens the fault,
+and the count dropping clears it. It is the *trigger* behind "nothing to the index": re-decided with a real
+corpus in front of it, instead of a shrug — see the schema.md note on the HNSW index.
 
 **The schedule is compiler change, a weekly sweep, and one fault at a time.**
 ([#276](https://github.com/cgbarlow/braintrust/issues/276)) The version arm asks whether braintrust's own

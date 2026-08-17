@@ -201,6 +201,7 @@ create table braintrust_embeddings (
 );
 
 create index on braintrust_embeddings using hnsw (embedding vector_cosine_ops);
+-- kept but never scanned; see "The HNSW index" below
 
 create table braintrust_item_notes (
   id           uuid primary key default gen_random_uuid(),
@@ -224,6 +225,15 @@ one embedding, which is useless for passage retrieval over a 4,000-word essay.
 migration — old and new coexist while you compare them, and chunks and items are never touched. braintrust
 also never compares its own vectors to `thoughts.embedding`: OB1 users run 768- and 1024-dimension models
 locally, and cosine similarity across model families is meaningless.
+
+**The HNSW index is kept but never scanned.** The serving query reaches the Person filter through a join, so
+the `ORDER BY … LIMIT 480` sits above the index and the planner reads every stored vector sequentially —
+exact, linear in the fleet, ~71 ms per 8,307 vectors (measured 2026-08-17). Reshaping the query to reach it
+would make retrieval approximate again, re-opening the `hnsw.ef_search` question [#303](https://github.com/cgbarlow/braintrust/issues/303)
+closed, and dropping 65 MB does not buy a hand-pasted schema change's outage window; so it stays. It is
+dropped as a passenger on the next schema change that has its own reason to exist, and the
+`embeddings_corpus_under_40000_vectors` fault on the registry is the trigger that re-decides both against a
+real corpus. See [map #300 §7](https://github.com/cgbarlow/braintrust/blob/spec/map-300/docs/design/map-300-spec.md).
 
 **braintrust declares no embedding model.** It calls whatever OpenAI-compatible `/v1/embeddings` endpoint it
 is configured with — Ollama, LM Studio, vLLM, OpenAI — so local versus hosted is a config line rather than a
