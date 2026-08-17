@@ -15,11 +15,16 @@ import { DEFAULT_CITATIONS, type FindPayload } from '../find.js';
  * The rubric is asked once per question and states the passing condition, the same
  * convention ../interrogate/model.ts uses — a wrong "true" hides a bad answer behind a
  * green run, and a wrong "false" costs a look at one transcript line.
+ *
+ * **The rubric no longer passes a "nothing matched" reply** — that escape hatch is exactly
+ * the defect #328 removes. An empty answer never reaches the judge: ../qa/run.ts reports
+ * it under *answered nothing* before any verdict is asked (spec §5.2), so the judge only
+ * ever rules on a reply that returned a Position.
  */
 export const RUBRIC =
-  'The reply is a good-faith, on-topic answer to the question asked at the top of it: it either ' +
-  'names a specific position this person is on record holding, backed by a real quote, or it ' +
-  'plainly says nothing matched. It does not dodge the question with something unrelated or vague.';
+  'The reply is a good-faith, on-topic answer to the question asked at the top of it: it ' +
+  'names a specific position this person is on record holding, backed by a real quote. It ' +
+  'does not dodge the question with something unrelated or vague.';
 
 /**
  * The top position and its citations, rendered as a client would be shown them.
@@ -67,6 +72,12 @@ export function renderAnswer(payload: FindPayload): string {
  * (uncovered) is a reading gap, one the floor refused (withheld) is a gate defect, one
  * retrieval ranked too low (missed, outranked) is a ranking problem, and one the answer
  * actually rested on (grounded) is the product working. Each wants a different change.
+ *
+ * **Headline is coverage, not quality (#328).** The number the fleet is judged on is
+ * `grounded` over the *covered* denominator — every question that is not Uncovered — and
+ * only Uncovered leaves it. The judge's *answered well* sits beside that headline, never
+ * as the bar: a question without a Position (Silence, Uncovered, Withheld) is reported as
+ * *answered nothing* and is not passed or failed at all.
  *
  * **Bounded to the evals, and labels never serve.** A real reader's question has no
  * answer key — there is no golden item to place — so two of the six rungs cannot be
@@ -178,6 +189,14 @@ export function reached(payload: FindPayload, itemUrls: readonly string[]): bool
   );
 }
 
+/**
+ * The rungs that served no Position to judge: the answer was empty, so there is nothing to
+ * pass or fail. Reported as their own column, never allowed into `answered well` (#328).
+ */
+export function answeredNothing(rung: Rung): boolean {
+  return rung === 'silence' || rung === 'uncovered' || rung === 'withheld';
+}
+
 export type QAOutcome = {
   person: string;
   query: string;
@@ -190,7 +209,11 @@ export type QAOutcome = {
    * the ladder can never disagree with the booleans that used to sit beside it.
    */
   rung: Rung;
-  /** Null when the judge could not be reached — neither a pass nor a failure. */
+  /**
+   * The judge's verdict, asked only of a question that returned a Position. Null when the
+   * judge could not be reached — neither a pass nor a failure — and meaningless where
+   * {@link answeredNothing} is true, because nothing was sent to be judged (#328).
+   */
   passed: boolean | null;
   detail: string;
 };
@@ -198,10 +221,18 @@ export type QAOutcome = {
 export type PersonScorecard = {
   person: string;
   asked: number;
+  /** `asked` minus Uncovered — the questions a corpus could still cover. Only Uncovered leaves it. */
+  covered: number;
   passed: number;
   failed: number;
   /** Could not be judged — an unreachable endpoint, not a verdict. */
   unjudged: number;
+  /** The answer rests on the item asked about. Derived from the ladder's `grounded` rung. */
+  grounded: number;
+  /** Outranked + Grounded, derived from the ladder. */
+  reached: number;
+  /** Silence + Uncovered + Withheld: no Position came back to be judged. */
+  empty: number;
   /**
    * One rung per question, counted. **The six always sum to `asked`, exactly** — a rung
    * is exclusive, so every question moves exactly one of these.
@@ -216,15 +247,27 @@ export function scoreOutcomes(person: string, outcomes: QAOutcome[]): PersonScor
   const card: PersonScorecard = {
     person,
     asked: outcomes.length,
+    covered: 0,
     passed: 0,
     failed: 0,
     unjudged: 0,
+    grounded: 0,
+    reached: 0,
+    empty: 0,
     rungs: zeroRungs(),
     failures: [],
   };
 
   for (const outcome of outcomes) {
     card.rungs[outcome.rung] += 1;
+
+    // An empty answer is not a verdict, in either direction. It leaves the judge count —
+    // which is exactly why it is reported as its own column and never makes the
+    // "answered well" bar (#328).
+    if (answeredNothing(outcome.rung)) {
+      card.empty += 1;
+      continue;
+    }
 
     if (outcome.passed === null) {
       card.unjudged += 1;
@@ -236,6 +279,9 @@ export function scoreOutcomes(person: string, outcomes: QAOutcome[]): PersonScor
     }
   }
 
+  card.grounded = card.rungs.grounded;
+  card.reached = card.rungs.outranked + card.rungs.grounded;
+  card.covered = outcomes.length - card.rungs.uncovered;
   return card;
 }
 
@@ -257,11 +303,22 @@ export function sumRungs(cards: readonly PersonScorecard[]): Record<Rung, number
   return total;
 }
 
+/**
+ * The headline is `grounded / covered` — a **coverage** statement, never a quality one. The
+ * judge's verdict sits beside it, clearly not as the bar (spec §5.2). Everything about the
+ * wording is deliberate: the headline names the covered denominator so it cannot be read as
+ * "how good were the answers", and the judged figures stay on their own line.
+ */
 export function formatScorecard(card: PersonScorecard): string {
+  const pct = card.covered > 0 ? Math.round((card.grounded / card.covered) * 100) : null;
   const lines = [
-    `${card.person}: ${card.passed}/${card.asked} answered well` +
-      `${card.unjudged > 0 ? `, ${card.unjudged} could not be judged` : ''}. ` +
-      `${card.asked} asked, one rung each — ${formatRungs(card.rungs)}.`,
+    `${card.person}: grounded ${card.grounded}/${card.covered} ` +
+      `${pct !== null ? `(${pct}%) ` : ''}of the questions its corpus covers — coverage, not a quality verdict.`,
+    `  judge: ${card.passed}/${card.asked - card.empty} answered well, ${card.failed} failed, ` +
+      `${card.unjudged} could not be judged.`,
+    `  answered nothing: ${card.empty} (${card.rungs.silence} silence, ` +
+      `${card.rungs.uncovered} uncovered, ${card.rungs.withheld} withheld).`,
+    `  ladder: ${card.rungs.missed} missed · ${card.rungs.outranked} outranked · ${card.rungs.grounded} grounded.`,
     ...card.failures.map((failure) => `  "${failure.query}" — ${failure.detail}`),
   ];
   return lines.join('\n');

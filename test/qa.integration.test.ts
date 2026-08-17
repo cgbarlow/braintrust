@@ -22,7 +22,7 @@ import type { Verdict } from '../src/interrogate/assertions.js';
 import { chunkItem, createEmbedder, createQueryGate, storeEmbeddings, type QueryGate } from '../src/retrieval/index.js';
 import { goldenQuestions } from '../src/qa/sample.js';
 import { runQuestion } from '../src/qa/run.js';
-import { groundedOf, RUNGS, reachedOf, scoreOutcomes, type QAOutcome } from '../src/qa/score.js';
+import { answeredNothing, groundedOf, RUNGS, reachedOf, scoreOutcomes, type QAOutcome } from '../src/qa/score.js';
 import { fakeEmbeddings, testEmbeddingsConfig } from './support/embeddings.js';
 import { fakeSynthesiser } from './support/synthesiser.js';
 import { testDatabaseUrl as url } from './support/database.js';
@@ -279,7 +279,8 @@ describe('the golden-question eval, against real Postgres', () => {
 
     const outcome = await runQuestion(question!, { db, embedder, retrieval }, stubInterrogator({ holds: true }));
     assert.equal(outcome.rung, 'uncovered');
-    assert.equal(outcome.passed, true, 'the verdict still sits beside the ladder, uncorrupted by it');
+    assert.equal(answeredNothing(outcome.rung), true, 'no Position came back, so there is nothing to judge');
+    assert.equal(outcome.passed, null, 'an empty answer is reported as answered nothing, never passed');
   });
 
   it('assigns one rung per real question, so the ladder sums to the questions asked', async () => {

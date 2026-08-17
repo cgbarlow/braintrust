@@ -17,14 +17,14 @@
  * it for every model braintrust talks to. One judge call per question, ~10 questions per
  * Person — enough to catch a regression without spending an evening's budget on it.
  *
- * **One ladder over each question, and the judge's verdict beside it.** Each question lands
- * on exactly one of six mutually exclusive rungs — *silence*, *uncovered*, *withheld*,
- * *missed*, *outranked*, *grounded* — assigned by the first true reason, so a lost question
- * reports where it was actually lost instead of averaging causes that take opposite fixes.
- * `reached` is derived from the ladder (outranked + grounded), never stored. The judge's
- * verdict on the reply a reader would have been handed sits *beside* the ladder as
- * *answered well*, because a bottom-rung question can still be answered well: the rubric
- * passes an honest "nothing matched".
+ * **One headline, a coverage number, and the judge's verdict beside it.** The ladder
+ * (spec §5.1) says what happened to each question, first true reason wins: Silence,
+ * Uncovered, Withheld, Missed, Outranked or Grounded. The headline is *grounded over the
+ * covered denominator* — every question that is not Uncovered — because that is the number
+ * the fleet is judged on, and only Uncovered leaves the denominator. The judge's *answered
+ * well* sits beside it, never as the bar: a question without a Position (Silence, Uncovered,
+ * Withheld) is reported as *answered nothing* and is not passed or failed at all (spec §5.2,
+ * #328).
  *
  * **On demand only.** Nothing here schedules, gates a Compile, or files an issue — it is an
  * operator's report, the same standing as ../eval and ../calibrate.
@@ -104,8 +104,19 @@ async function main(): Promise<void> {
 
     if (cards.length > 0) {
       const asked = cards.reduce((total, card) => total + card.asked, 0);
+      const covered = cards.reduce((total, card) => total + card.covered, 0);
       const passed = cards.reduce((total, card) => total + card.passed, 0);
-      console.log(`TOTAL: ${passed}/${asked} answered well, ${asked} asked — ${formatRungs(sumRungs(cards))}.`);
+      const failed = cards.reduce((total, card) => total + card.failed, 0);
+      const unjudged = cards.reduce((total, card) => total + card.unjudged, 0);
+      const grounded = cards.reduce((total, card) => total + card.grounded, 0);
+      const empty = cards.reduce((total, card) => total + card.empty, 0);
+      const pct = covered > 0 ? ` (${Math.round((grounded / covered) * 100)}%)` : '';
+      console.log(
+        `TOTAL: grounded ${grounded}/${covered}${pct} over the covered denominator; ` +
+          `judge said ${passed}/${asked - empty} answered well, ` +
+          `${failed} failed, ${unjudged} could not be judged; ` +
+          `${empty} answered nothing — ${formatRungs(sumRungs(cards))}.`,
+      );
     }
   } finally {
     await db.close();

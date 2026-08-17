@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 
 import { DEFAULT_SAMPLE, readArgs } from '../src/qa/args.js';
 import {
+  answeredNothing,
   formatRungs,
   formatScorecard,
   grounded,
@@ -198,7 +199,10 @@ describe('whether retrieval reached the item at all', () => {
 describe('the rubric', () => {
   it('states the passing condition, so a wrong verdict is checkable after the fact', () => {
     assert.match(RUBRIC, /good-faith/);
-    assert.match(RUBRIC, /nothing matched/);
+    assert.match(RUBRIC, /names a specific position/);
+    // The escape hatch that let "nothing matched" score as *answered well* is gone: an
+    // empty answer never reaches the judge, so the rubric has nothing left to excuse.
+    assert.doesNotMatch(RUBRIC, /nothing matched/);
   });
 });
 
@@ -315,6 +319,17 @@ describe('the ladder', () => {
   }
 });
 
+describe('answeredNothing', () => {
+  it('counts silence, uncovered and withheld as answering nothing', () => {
+    for (const rung of ['silence', 'uncovered', 'withheld'] as Rung[]) {
+      assert.equal(answeredNothing(rung), true, rung);
+    }
+    assert.equal(answeredNothing('missed'), false);
+    assert.equal(answeredNothing('outranked'), false);
+    assert.equal(answeredNothing('grounded'), false);
+  });
+});
+
 describe('the scorecard', () => {
   it('counts a pass, a fail and an unjudged answer separately', () => {
     const card = scoreOutcomes('p', [
@@ -330,14 +345,66 @@ describe('the scorecard', () => {
     assert.deepEqual(card.failures, [{ query: 'a bad one', detail: 'wandered off topic' }]);
   });
 
-  it('counts rungs independently of the verdict, in both directions', () => {
+  it('counts grounding independently of the verdict', () => {
+    const card = scoreOutcomes('p', [outcome({ passed: false, rung: 'grounded' })]);
+    assert.equal(card.grounded, 1, 'a bad answer can still be about the right item');
+  });
+
+  it('derives reached from the ladder: outranked and grounded, never stored beside it', () => {
     const card = scoreOutcomes('p', [
-      outcome({ passed: false, rung: 'grounded' }),
-      outcome({ passed: true, rung: 'uncovered' }),
+      outcome({ rung: 'grounded', passed: true }),
+      outcome({ rung: 'outranked', passed: true }),
+      outcome({ rung: 'missed', passed: true }),
     ]);
 
-    assert.equal(card.rungs.grounded, 1, 'a bad answer can still rest on the right item');
-    assert.equal(card.rungs.uncovered, 1, 'a question answered well can rest on nothing');
+    assert.equal(card.grounded, 1);
+    assert.equal(card.reached, 2, 'outranked + grounded');
+    assert.equal(card.rungs.missed, 1, 'a position that never reached the five is not what reached is');
+  });
+
+  it('puts Uncovered out of the covered denominator, and only Uncovered', () => {
+    const card = scoreOutcomes('p', [
+      outcome({ rung: 'silence' }),
+      outcome({ rung: 'uncovered' }),
+      outcome({ rung: 'withheld' }),
+      outcome({ rung: 'missed', passed: true }),
+      outcome({ rung: 'outranked', passed: true }),
+      outcome({ rung: 'grounded', passed: true }),
+    ]);
+
+    assert.equal(card.asked, 6);
+    assert.equal(card.covered, 5, 'everything except Uncovered stays in');
+    assert.equal(card.grounded, 1);
+    assert.equal(card.empty, 3, 'silence + uncovered + withheld');
+  });
+
+  it('never lets an empty answer become a verdict', () => {
+    const card = scoreOutcomes('p', [
+      outcome({ rung: 'uncovered' }),
+      outcome({ rung: 'withheld' }),
+      outcome({ rung: 'grounded', passed: true }),
+      outcome({ rung: 'grounded', passed: false, query: 'the bad one', detail: 'dodged the question' }),
+    ]);
+
+    assert.equal(card.passed, 1);
+    assert.equal(card.failed, 1);
+    assert.equal(card.empty, 2);
+  });
+
+  it('prints the headline as coverage, with the judge beside it and never as the bar', () => {
+    const printed = formatScorecard(
+      scoreOutcomes('p', [
+        outcome({ rung: 'uncovered' }),
+        outcome({ rung: 'missed', passed: false, query: 'the bad one', detail: 'dodged the question' }),
+        outcome({ rung: 'grounded', passed: true }),
+      ]),
+    );
+
+    assert.match(printed, /grounded 1\/2 \(50%\) of the questions its corpus covers/);
+    assert.match(printed, /coverage, not a quality verdict/, 'cannot read the headline as quality');
+    assert.match(printed, /judge: 1\/2 answered well/);
+    assert.match(printed, /answered nothing: 1 \(0 silence, 1 uncovered, 0 withheld\)/);
+    assert.match(printed, /"the bad one" — dodged the question/);
   });
 
   it('sums the rungs to the questions asked, exactly', () => {
@@ -361,29 +428,11 @@ describe('the scorecard', () => {
     assert.deepEqual(sumRungs([card]), card.rungs);
   });
 
-  it('prints the ladder and the verdict, and derives reached from the rungs', () => {
-    const printed = formatScorecard(
-      scoreOutcomes('p', [
-        outcome({ rung: 'grounded' }),
-        outcome({ rung: 'outranked', passed: false }),
-        outcome({ rung: 'missed' }),
-      ]),
-    );
-
-    assert.equal(
-      printed.split('\n')[0],
-      'p: 2/3 answered well. 3 asked, one rung each — silence 0, uncovered 0, withheld 0, missed 1, outranked 1, grounded 1.',
-    );
-    assert.match(printed, /grounded 1/);
-    assert.doesNotMatch(printed, /reached/, 'reach is derived from the ladder, never printed as a stored flag');
-  });
-
-  it('prints the failures, so a run nobody watches still says what to look at', () => {
+  it('keeps the failures printed, so a run nobody watches still says what to look at', () => {
     const printed = formatScorecard(
       scoreOutcomes('p', [outcome({ passed: false, query: 'the bad one', detail: 'dodged the question' })]),
     );
 
-    assert.match(printed, /p: 0\/1 answered well/);
     assert.match(printed, /"the bad one" — dodged the question/);
   });
 });
