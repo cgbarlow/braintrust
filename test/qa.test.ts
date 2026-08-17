@@ -100,6 +100,30 @@ describe('rendering an answer for the judge', () => {
     assert.match(rendered, /Nothing matched\./);
   });
 
+  /**
+   * **The read-but-unpositioned answer is a third shape, told apart from *nothing matched*.**
+   * Retrieval found the item, braintrust read it, and no Position was formed on it. Rendering
+   * it as "nothing matched" would hand a judge the empty-answer transcript for a state that
+   * is not empty, so it is drawn distinctly.
+   */
+  it('renders a read-but-unpositioned item distinctly from an empty answer', () => {
+    const rendered = renderAnswer(
+      payload({
+        positions: [],
+        read_without_position: {
+          item_title: 'A long aside about pricing',
+          url: 'https://example.test/pricing',
+          published_at: '2025-09-09',
+          nearest: [{ slug: 'evals-precede-the-harness', statement: 'Evals come first.' }],
+        },
+      }),
+    );
+
+    assert.match(rendered, /Retrieved and read; no Position formed on it/);
+    assert.match(rendered, /A long aside about pricing/);
+    assert.doesNotMatch(rendered, /Nothing matched\./);
+  });
+
   it('never claims a citation that is not there', () => {
     const rendered = renderAnswer(payload({ positions: [position({ citations: [] })] }));
     assert.match(rendered, /No citation attached\./);

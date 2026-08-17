@@ -316,6 +316,23 @@ describe('the script', () => {
   });
 
   /**
+   * **A third state, told apart from unread.** *Unread* is an item braintrust never got to;
+   * *read without a Position* is an item it did read and concluded nothing on. Same lead,
+   * different fact: the persona says it has read that one, has not formed a position on it,
+   * and offers the nearest thing it does hold — never a claim about the person.
+   */
+  it('tells the persona to lead with an item it read and formed no position on', () => {
+    const { speak } = renderScript(input());
+
+    assert.match(speak, /an item of theirs you have read but never formed a/i);
+    assert.match(speak, /lead with that instead of with your footing too/i);
+    assert.match(speak, /say you have read that one and have not formed a position on it/i);
+    assert.match(speak, /offer the nearest thing you do hold/i);
+    // The same claim that stays forbidden, now anchored on the concluded-nothing state.
+    assert.match(speak, /never turn into "they never wrote about this"/i);
+  });
+
+  /**
    * **A dead end is handed back as a choice.** Nothing was broken about the honesty — a
    * persona handed an empty answer admits it and does not fill, 24 of 24 across every arm and
    * seed. What was wrong was the shape: *"I don't have a view on central bank interest rate

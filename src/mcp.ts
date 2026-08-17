@@ -317,6 +317,13 @@ export function buildServer({
           'it, so *they never said this* is distinguishable from *this braintrust is tuned wrong*, ' +
           'and — where `unread` names an item — from *braintrust could not read the thing that ' +
           'would answer*. ' +
+          '**A third shape, told apart from the empty answer.** When `read_without_position` is ' +
+          'present, the item best matching the question was retrieved and read but no compiled ' +
+          'Position cites it — the reader asked about something braintrust read and concluded ' +
+          'nothing on. Say you have read that one and have not formed a position on it, and ' +
+          'offer what `nearest` names, what this person does hold nearby. This is not *nothing ' +
+          'came close* (that is `nothing_matched`) and not a view on the item (there is none): ' +
+          'it is the same honest footing, applied to a different silence. ' +
           '**A paywalled post braintrust never fetched is named but its content stays inside** — ' +
           'braintrust knows its title and date, not what was in it. `braintrust_load_persona` says ' +
           'how much of this person was never read; `braintrust_explain_persona` returns the full ' +

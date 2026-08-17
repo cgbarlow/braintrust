@@ -55,6 +55,14 @@
  * full Coverage picture (how much was never read, what failed, what was paywalled) remains
  * in the Coverage layer, which `braintrust_explain_persona` returns whole.
  *
+ * **An item braintrust read and formed no Position on says so, instead of silently serving
+ * an answer built on a different item.** Retrieval finds the item; there is simply nothing
+ * compiled about it to return. When the item owning the best-matching chunk is cited by no
+ * Position, the Positions built on the *other* retrieved items are not served as the answer
+ * — that would let a reader mistake *here is my view on this* for *I have nothing on this*.
+ * The answer names the read-but-unpositioned item and offers the nearest things braintrust
+ * does hold. See issue #325.
+ *
  * See docs/design/mcp-surface.md §3.
  */
 
@@ -347,6 +355,16 @@ export type FindPayload = {
   passages: Passage[];
   more_available?: { positions?: number; passages?: number };
   /**
+   * Present when the item best matching the question was retrieved but is cited by no
+   * Position: braintrust read it and formed nothing on it. Served in place of Positions
+   * built on a different item, so a reader can tell *here is my view on this* from *I have
+   * nothing on this* — the thing they asked about was never compiled, and this says so.
+   *
+   * The ladder is evals-only: this block carries no rung label, only the item and what
+   * braintrust does hold nearby.
+   */
+  read_without_position?: ReadWithoutPosition;
+  /**
    * Present only on an empty answer, and it is the difference between *they never said
    * this* and *braintrust is misconfigured*. Found live: a floor that does not suit the
    * configured model turns every question into an empty list, and an empty list on its own
@@ -380,6 +398,31 @@ export type UnreadItem = {
   published_at: string | null;
   reason: string;
   say: string;
+};
+
+/**
+ * An item braintrust retrieved and read but never formed a Position on.
+ *
+ * **The same honest footing as `nothing_matched`, applied to the opposite silence.** The
+ * empty answer means *nothing came close*; this means *the thing that came closest was
+ * read and nothing was concluded about it*. Distinguishable because the two are different
+ * facts about a Persona: the first can offer nothing held nearby, the second can name the
+ * item it read and still not claim a view on it.
+ *
+ * **Facts, never a sentence.** `nearest` carries the same sentences `nothing_matched.nearest`
+ * carries — Position statements read from the rows, offered rather than served as an answer.
+ * The persona composes the sentence ("I've read that one and haven't formed a position on
+ * it; the nearest thing I do hold is…") in its own register, never braintrust's.
+ *
+ * **Named for the fact, never the rung.** The ladder calls this state *Uncovered* and the
+ * ladder is evals-only; what ships to a reader carries no rung label.
+ */
+export type ReadWithoutPosition = {
+  item_title: string | null;
+  url: string;
+  published_at: string | null;
+  /** The nearest things braintrust does hold, to offer rather than stop. */
+  nearest: { slug: string; statement: string }[];
 };
 
 export type NothingMatched = {
@@ -556,7 +599,17 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   const field = await selectivity(deps.db, literal, search);
   const selected = field.top !== null && field.top >= floor;
 
-  const matched = selected
+  // **An item braintrust read and formed nothing on says so.** When the item best matching
+  // the question was retrieved above the floor but is cited by no Position, serving the
+  // Positions built on a *different* item would let a reader mistake *here is my view on
+  // this* for *I have nothing on this*. So those Positions are not served as the answer;
+  // the read-but-unpositioned item is named, with the nearest things held to offer. Zero
+  // model calls: this is a SQL count against the rows the search already produced.
+  const uncovered = selected
+    ? await readWithoutPositionItem(deps.db, compile.id, literal, search, floor)
+    : null;
+
+  const matched = selected && !uncovered
     ? await matchingPositions(deps.db, compile.id, literal, search, floor)
     : [];
 
@@ -581,6 +634,19 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
           },
         }
       : {}),
+    // **Uncovered announces itself in the same voice the empty answer does.** The item best
+    // matching the question was read and no Position was formed on it — *I've read that one
+    // and haven't formed a position on it; the nearest thing I do hold is…*. `nearest` is
+    // what the empty answer offers, read from the same rows, so what is offered here is the
+    // thing that would have been nearest had anything been compiled.
+    ...(uncovered
+      ? {
+          read_without_position: {
+            ...uncovered,
+            nearest: await nearestPositions(deps.db, compile.id, literal, search.model),
+          },
+        }
+      : {}),
     positions,
     // **Riding, never retrieved.** Which through-lines travel is decided by the Items the
     // answer's own Positions rest on, so a through-line is earned by a match that already
@@ -597,7 +663,10 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
 
   // The fallback, and only the fallback. Passages alongside Positions would put a
   // conclusion and the raw material for one in the same answer with nothing but a key name
-  // to tell a client which is which.
+  // to tell a client which is which. It rides beside the uncovered notice on purpose: the
+  // notice is the *voice* — *I've read that one and haven't formed a position on it; the
+  // nearest thing I do hold is…* — and passages stay the raw-material fallback so the words
+  // of an item braintrust did not conclude on remain reachable (docs/design/mcp-surface.md).
   if (positions.length === 0 && selected) {
     const found = await matchingPassages(deps.db, vectorLiteral(vector), search, floor);
     const bound = args.full === true ? found.length : DEFAULT_PASSAGES;
@@ -611,7 +680,12 @@ export async function findPositions(args: FindArgs, deps: FindDeps): Promise<Fin
   // produced before this existed: a persona built from twenty real posts answering every
   // question with `[]`, and no way to tell a corpus that does not cover the question from
   // a floor that does not suit the endpoint.
-  if (payload.positions.length === 0 && payload.passages.length === 0) {
+  //
+  // The uncovered item is not an empty answer — an item did come close, was read, and
+  // simply has nothing compiled on it — so the two never share a payload. The reader of an
+  // uncovered answer tells *I have nothing on this* from *nothing came close* by which of
+  // the two blocks is present.
+  if (!uncovered && payload.positions.length === 0 && payload.passages.length === 0) {
     const nearest = await nearestSimilarity(deps.db, vectorLiteral(vector), search);
 
     payload.nothing_matched = nothingMatched({
@@ -836,6 +910,64 @@ async function matchingPositions(
   );
 
   return rows.map((row) => ({ ...row, item_count: Number(row.item_count) }));
+}
+
+/**
+ * The single item best matching the question, when it was retrieved above the floor but is
+ * cited by no Position of this Compile.
+ *
+ * **This is the *I've read that one* state, and it is found before any Position is served.**
+ * When the item behind the best chunk was read but never compiled into a Position, serving
+ * the Positions built on *other* matched items would hand the reader an answer about a
+ * different item — with no sign the thing they asked about was never compiled. So this is
+ * checked first, straight on the rows the search already produced: one query, no model call.
+ *
+ * Null when the question selected nothing above the floor, or when the best-matching item
+ * *is* cited — the ordinary answer proceeds either way.
+ */
+async function readWithoutPositionItem(
+  db: Db,
+  compileId: string,
+  vector: string,
+  search: Search,
+  floor: number,
+): Promise<{ item_title: string | null; url: string; published_at: string | null } | null> {
+  const { rows } = await db.query<{
+    item_title: string | null;
+    url: string;
+    published_at: string | null;
+    cited: boolean;
+  }>(
+    `with best as (
+       select c.item_id, e.embedding <=> $2::vector as distance
+         from braintrust_embeddings e
+         join braintrust_chunks c on c.id = e.chunk_id
+         join braintrust_items i on i.id = c.item_id
+         join braintrust_sources s on s.id = i.source_id
+        where s.person_id = (select person_id from braintrust_compiles where id = $1)
+          and e.model = $3
+          and ($4::date is null or i.published_at >= $4::date)
+          and ($5::date is null or i.published_at <= $5::date)
+          and e.embedding <=> $2::vector <= ${1} - $6::float
+        order by distance
+        limit 1
+     )
+     select i.title as item_title, i.url, i.published_at::text as published_at,
+            exists(
+              select 1
+                from braintrust_position_citations pc
+                join braintrust_positions p on p.id = pc.position_id
+               where pc.item_id = best.item_id
+                 and p.compile_id = $1
+            ) as cited
+       from best
+       join braintrust_items i on i.id = best.item_id`,
+    [compileId, vector, search.model, search.since, search.until, floor],
+  );
+
+  const row = rows[0];
+  if (!row || row.cited) return null;
+  return { item_title: row.item_title, url: row.url, published_at: row.published_at };
 }
 
 /** A candidate Position with the number its grade and its place in the list come from. */
