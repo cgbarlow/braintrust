@@ -277,6 +277,18 @@ export const REGISTERED_FAULTS: RegisteredFault[] = [
       'rather than serving a position nobody wrote',
     withdraws: [],
   },
+  {
+    // Not an imported constant — see ../heal.ts for the same string, kept a literal here
+    // (as 'corpus_coverage' is above) so this module never has to import back into a
+    // module that imports this one for openFault/clearFault.
+    id: 'soul_heal_stale',
+    guarantees:
+      'every Hermes bt-* profile that has ever reported in is serving a SOUL.md rendered ' +
+      'from the current template within the last day — so the rules a persona follows ' +
+      'there cannot drift silently, and a healer that has stopped running is itself caught ' +
+      'within a day rather than found by a person going looking',
+    withdraws: [],
+  },
 ];
 
 /**

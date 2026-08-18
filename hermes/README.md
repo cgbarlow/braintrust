@@ -92,9 +92,34 @@ read [Why `tool_search` is off](#why-tool_search-is-off), which is the usual rea
 **If it opens every reply with that line**, the profile's `SOUL.md` predates this template. `SOUL.md` is
 copied, not linked, so a profile created earlier keeps whatever the template said on the day it was copied —
 including an older non-negotiable that read as a per-reply instruction and outranked everything telling it to
-speak once. Re-copy the template and replace the two placeholders again.
+speak once. Re-copy the template and replace the two placeholders again, or install the healer below so this
+class of drift fixes itself daily instead of waiting for somebody to notice.
 
 **5. Repeat per Person.** A council of six is six profiles pointing at one braintrust.
+
+**6. Let it heal itself.** `SOUL.md` is copied, not linked, so every profile drifts from the template the
+moment either one changes — five deployed profiles were once found three commits behind, telling every
+persona to do the opposite of the current citation rule. `scripts/patch-hermes-profiles.sh`, run daily,
+re-fetches the template from `origin/main`, re-renders every `bt-*` profile, and reports the version it
+landed on back to braintrust — reusing the braintrust key already in each profile's `config.yaml`, so this
+needs no new secret:
+
+```bash
+./scripts/patch-hermes-profiles.sh            # re-render every bt-* profile and report in
+DRY_RUN=1 ./scripts/patch-hermes-profiles.sh  # print what would change and what would be reported, write nothing
+```
+
+Schedule it (cron, launchd, whatever the host already uses) and stop thinking about it: braintrust reads the
+report on every `braintrust_load_persona` call — no second cron on braintrust's own side to keep in sync —
+and tells current from stale from silent. A profile still wrong after a day opens a fault naming this exact
+command, because the host it runs on is not braintrust's and braintrust cannot run it for you. Nothing a
+reader hears ever changes because of this: the fault is a report to the maintainer, never a gate. See
+[docs/design/compiler.md §8](../docs/design/compiler.md#8-braintrust-interrogates-itself-and-files-the-issue)
+and [issue #326](https://github.com/cgbarlow/braintrust/issues/326).
+
+**The one blind spot, named rather than hidden:** the check rides `braintrust_load_persona`, so if nobody asks
+braintrust anything for a week, nothing fires — and nothing is being answered wrongly either, since `SOUL.md`
+only ever reaches a reader through a session that also triggers the check.
 
 ## Why `tool_search` is off
 

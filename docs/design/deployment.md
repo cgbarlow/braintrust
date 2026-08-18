@@ -213,7 +213,11 @@ Three details are copied deliberately, because each exists to fix a real client 
 makes it unstrippable.
 
 **The daily job authenticates against nothing.** It never touches the MCP surface; it talks to Postgres
-directly. **So the shared secret guards the read path only.**
+directly. **So the shared secret guards the read path only** — with one narrow write on the same key: `POST
+/heal`, a plain endpoint rather than an MCP tool because its caller is a cron script on the Hermes host, not a
+model, and reporting a bare fact in is not something an agent should be offered to call. It reuses the same
+`keyMatches`/`presentedKey` check as `/mcp` rather than a secret of its own — see
+[#326](https://github.com/cgbarlow/braintrust/issues/326) and `hermes/README.md`.
 
 **Accepted cost:** the secret lives in client config files and shell history, and rotating it means
 re-registering every client. At single-user scale, against a threat model where the content is already public

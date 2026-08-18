@@ -15,6 +15,7 @@ import { findPositions, MAX_LIMIT, type FindArgs } from './find.js';
 import { followPerson, type FollowArgs } from './follow/index.js';
 import type { ConfirmTokenStore } from './follow/tokens.js';
 import { unfollowPerson, type UnfollowArgs } from './follow/unfollow.js';
+import { checkSoulHeal } from './heal.js';
 import type { Fetcher } from './net/fetch.js';
 import type { Extractor } from './notes/index.js';
 import { explainPersona, listPersonas, loadPersona } from './personas.js';
@@ -152,6 +153,13 @@ export function buildServer({
     async ({ person }: { person: string }) => {
       try {
         const payload = await loadPersona(db, person);
+        // The serving path, not a second scheduler: every load is what tells braintrust
+        // current from stale from silent on the Hermes fleet's SOUL.md heal. Fire-and-check
+        // rather than awaited-and-trusted — a failure here is braintrust's own bookkeeping
+        // and must never be the reason a read fails. See ./heal.ts.
+        checkSoulHeal(db).catch((error: unknown) => {
+          console.error('braintrust: the soul-heal check failed', error);
+        });
         return text(payload);
       } catch (error) {
         if (error instanceof BraintrustError) return failure(error.message);

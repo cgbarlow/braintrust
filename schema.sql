@@ -590,6 +590,44 @@ comment on column braintrust_stuck_rebuilds.first_stuck_at is
   'fault clock runs from the real start, not from the most recent re-observation.';
 
 -- ---------------------------------------------------------------------------
+-- SOUL.md healing: one row per Hermes bt-* profile that has ever reported in
+--
+-- SOUL.md stays canonical for Hermes and is copied, not linked, into each
+-- profile — an edit to the template never reaches a profile already created.
+-- scripts/patch-hermes-profiles.sh re-renders every profile daily and reports
+-- the version it landed on here, using the braintrust key already in that
+-- profile's own config.yaml. No new secret.
+--
+-- Read on the serving path (braintrust_load_persona), never by a second
+-- scheduler: a profile that never reports at all is never checked, because
+-- braintrust cannot tell "no Hermes profile" from "the healer died" until at
+-- least one report has arrived to start the clock. See
+-- docs/design/map-300-spec.md §4 and https://github.com/cgbarlow/braintrust/issues/326.
+-- ---------------------------------------------------------------------------
+
+create table if not exists braintrust_soul_heals (
+  person_slug       text primary key,
+  profile           text not null,
+  template_version  text not null,
+  reported_at       timestamptz not null default now()
+);
+
+comment on table braintrust_soul_heals is
+  'One row per Hermes bt-* profile: the version of hermes/SOUL.md.template it most '
+  'recently rendered, and when. Not foreign-keyed to braintrust_people, the same as '
+  'the fault and silence ledgers — a report about a person braintrust has since '
+  'unfollowed is still a report worth keeping honest.';
+
+comment on column braintrust_soul_heals.profile is
+  'The Hermes profile name (e.g. bt-nate-b-jones). Kept beside person_slug because '
+  'neither is reliably derivable from the other — see scripts/patch-hermes-profiles.sh.';
+
+comment on column braintrust_soul_heals.template_version is
+  'A content hash of hermes/SOUL.md.template as the healer fetched it, compared '
+  'against braintrust''s own hash of the same file so a host serving an old template '
+  'is caught even when the job is running exactly on schedule.';
+
+-- ---------------------------------------------------------------------------
 -- House style
 --
 -- braintrust itself uses none of this: it connects to Postgres directly over
@@ -623,7 +661,8 @@ begin
     'braintrust_interrogations',
     'braintrust_faults',
     'braintrust_silences',
-    'braintrust_stuck_rebuilds'
+    'braintrust_stuck_rebuilds',
+    'braintrust_soul_heals'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
