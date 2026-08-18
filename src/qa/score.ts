@@ -323,3 +323,105 @@ export function formatScorecard(card: PersonScorecard): string {
   ];
   return lines.join('\n');
 }
+
+/*
+ * The negative sets, and their columns.
+ *
+ * A negative question is asked of the same serving path and answered by the same payload —
+ * the only difference from the golden set is that **nothing is judged and the two sets are
+ * read differently**. off-domain says *anything that came back is a false answer*, because
+ * a question no persona has material for has one correct answer and it is silence.
+ * near-miss says *whatever came back is reported, not barred*: overlapping personas
+ * legitimately answer some of each other's titles, and the set exists to see that.
+ */
+
+/** Whether a negative question came back with anything meant for a reader. */
+export function cameBack(payload: FindPayload): boolean {
+  return payload.positions.length > 0 || payload.passages.length > 0 || payload.read_without_position !== undefined;
+}
+
+/** Whether the top shown position rests on the item a near-miss question was drawn from. */
+export function restsOn(payload: FindPayload, itemUrls: readonly string[]): boolean {
+  return grounded(payload, itemUrls);
+}
+
+export type NegativeOutcome = {
+  person: string;
+  query: string;
+  kind: 'off-domain' | 'near-miss';
+  /** The answer a reader would have been handed names the asked item. */
+  rested: boolean;
+  /** Anything came back at all — the off-domain bar, and the near-miss report. */
+  came_back: boolean;
+};
+
+/**
+ * The two negative sets, one card. `off_domain_answered` is the false-answer count —
+ * off-domain, unlike near-miss, has no legitimate answer. `near_miss` reports how many
+ * came back and how many of those rest on the other persona's asked item — the shape an
+ * overlap takes — read as a report, never as a bar.
+ */
+export type NegativeCard = {
+  person: string;
+  off_domain_asked: number;
+  off_domain_answered: number;
+  near_miss_asked: number;
+  near_miss_answered: number;
+  near_miss_rested: number;
+};
+
+const zeroNegativeCard = () =>
+  ({
+    person: '',
+    off_domain_asked: 0,
+    off_domain_answered: 0,
+    near_miss_asked: 0,
+    near_miss_answered: 0,
+    near_miss_rested: 0,
+  }) as NegativeCard;
+
+export function scoreNegatives(person: string, outcomes: NegativeOutcome[]): NegativeCard {
+  const card = { ...zeroNegativeCard(), person };
+
+  for (const outcome of outcomes) {
+    if (outcome.kind === 'off-domain') {
+      card.off_domain_asked += 1;
+      if (outcome.came_back) card.off_domain_answered += 1;
+    } else {
+      card.near_miss_asked += 1;
+      if (outcome.came_back) card.near_miss_answered += 1;
+      if (outcome.rested) card.near_miss_rested += 1;
+    }
+  }
+
+  return card;
+}
+
+/** The negative columns across a fleet of cards, for the run's bottom line. */
+export function sumNegativeCards(cards: readonly NegativeCard[]): NegativeCard {
+  const total = { ...zeroNegativeCard(), person: 'TOTAL' };
+
+  for (const card of cards) {
+    total.off_domain_asked += card.off_domain_asked;
+    total.off_domain_answered += card.off_domain_answered;
+    total.near_miss_asked += card.near_miss_asked;
+    total.near_miss_answered += card.near_miss_answered;
+    total.near_miss_rested += card.near_miss_rested;
+  }
+
+  return total;
+}
+
+export function formatNegativeCard(card: NegativeCard): string {
+  const lines: string[] = [];
+  if (card.off_domain_asked > 0) {
+    lines.push(`off-domain false answers: ${card.off_domain_answered}/${card.off_domain_asked}`);
+  }
+  if (card.near_miss_asked > 0) {
+    lines.push(
+      `near-miss: ${card.near_miss_answered}/${card.near_miss_asked} answered` +
+        ` (${card.near_miss_rested} rested on the asked item), reported — not a bar`,
+    );
+  }
+  return lines.length > 0 ? `${card.person} —\n  ${lines.join('\n  ')}` : card.person;
+}

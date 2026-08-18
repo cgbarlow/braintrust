@@ -12,6 +12,8 @@ import { describe, it } from 'node:test';
 import { DEFAULT_SAMPLE, readArgs } from '../src/qa/args.js';
 import {
   answeredNothing,
+  cameBack,
+  formatNegativeCard,
   formatRungs,
   formatScorecard,
   grounded,
@@ -19,11 +21,16 @@ import {
   reached,
   reachedOf,
   renderAnswer,
+  restsOn,
   RUBRIC,
   rungFor,
   RUNGS,
+  scoreNegatives,
   scoreOutcomes,
+  sumNegativeCards,
   sumRungs,
+  type NegativeCard,
+  type NegativeOutcome,
   type PersonScorecard,
   type QAOutcome,
   type Rung,
@@ -437,11 +444,133 @@ describe('the scorecard', () => {
   });
 });
 
+describe('the negative sets', () => {
+  const negative = (over: Partial<NegativeOutcome> = {}): NegativeOutcome => ({
+    person: 'p',
+    query: 'a question',
+    kind: 'off-domain',
+    rested: false,
+    came_back: false,
+    ...over,
+  });
+
+  describe('whether anything came back', () => {
+    it('is true when a position came back', () => {
+      assert.equal(cameBack(payload()), true);
+    });
+
+    it('is true when only raw passages came back', () => {
+      assert.equal(cameBack(payload({ positions: [], passages: [{ item_title: 'x', url: 'u', published_at: null, text: 'raw' }] })), true);
+    });
+
+    it('is true when the best item was read but holds no Position', () => {
+      assert.equal(
+        cameBack(
+          payload({
+            positions: [],
+            read_without_position: {
+              item_title: 'A long aside about pricing',
+              url: 'https://example.test/pricing',
+              published_at: '2025-09-09',
+              nearest: [],
+            },
+          }),
+        ),
+        true,
+      );
+    });
+
+    it('is false when nothing matched — the correct answer to an off-domain question', () => {
+      assert.equal(
+        cameBack(
+          payload({
+            positions: [],
+            nothing_matched: { nearest_similarity: 0.2, floor: 0.5, reason: 'below_floor', nearest: [] },
+          }),
+        ),
+        false,
+      );
+    });
+  });
+
+  describe('whether the answer rests on the asked item', () => {
+    it('is true when the top position cites the item the near-miss was drawn from', () => {
+      assert.equal(restsOn(payload(), ['https://example.test/item-1']), true);
+    });
+
+    it('is false when nothing matched', () => {
+      assert.equal(restsOn(payload({ positions: [] }), ['https://example.test/item-1']), false);
+    });
+  });
+
+  describe('the scorecard', () => {
+    it('counts off-domain answers as the false-answer column', () => {
+      const card = scoreNegatives('p', [
+        negative({ kind: 'off-domain', came_back: true }),
+        negative({ kind: 'off-domain', came_back: true }),
+        negative({ kind: 'off-domain' }),
+      ]);
+
+      assert.equal(card.off_domain_asked, 3);
+      assert.equal(card.off_domain_answered, 2);
+    });
+
+    it('reports near-miss answers and the ones resting on the asked item, unbarred', () => {
+      const card = scoreNegatives('p', [
+        negative({ kind: 'near-miss', came_back: true, rested: true }),
+        negative({ kind: 'near-miss', came_back: true }),
+        negative({ kind: 'near-miss' }),
+      ]);
+
+      assert.equal(card.near_miss_asked, 3);
+      assert.equal(card.near_miss_answered, 2);
+      assert.equal(card.near_miss_rested, 1);
+    });
+
+    it('is printed with off-domain first and near-miss clearly not a bar', () => {
+      const card = scoreNegatives('p', [
+        negative({ kind: 'off-domain', came_back: true }),
+        negative({ kind: 'near-miss', came_back: true, rested: true }),
+      ]);
+
+      assert.match(formatNegativeCard(card), /off-domain false answers: 1\/1/);
+      assert.match(formatNegativeCard(card), /near-miss: 1\/1 answered/);
+      assert.match(formatNegativeCard(card), /1 rested on the asked item/);
+      assert.match(formatNegativeCard(card), /reported — not a bar/);
+    });
+
+    it('sums the fleet, so a run reports one off-domain number', () => {
+      const one: NegativeCard = { person: 'p', off_domain_asked: 6, off_domain_answered: 1, near_miss_asked: 3, near_miss_answered: 2, near_miss_rested: 1 };
+      const two: NegativeCard = { person: 'q', off_domain_asked: 6, off_domain_answered: 0, near_miss_asked: 3, near_miss_answered: 1, near_miss_rested: 0 };
+
+      assert.deepEqual(sumNegativeCards([one, two]), {
+        person: 'TOTAL',
+        off_domain_asked: 12,
+        off_domain_answered: 1,
+        near_miss_asked: 6,
+        near_miss_answered: 3,
+        near_miss_rested: 1,
+      });
+    });
+  });
+});
+
 describe('the command line', () => {
   it('asks every serving persona, ten questions each, by default', () => {
     const args = readArgs([]);
     assert.equal(args.person, undefined);
     assert.equal(args.sample, DEFAULT_SAMPLE);
+  });
+
+  it('asks the negative sets by default, and can be told not to', () => {
+    assert.equal(readArgs([]).negative, true);
+    assert.equal(readArgs(['--no-negative']).negative, false);
+  });
+
+  it('samples a bounded and configurable near-miss set', () => {
+    assert.equal(readArgs([]).nearMiss, 6);
+    assert.equal(readArgs(['--near-miss', '12']).nearMiss, 12);
+    assert.equal(readArgs(['--near-miss', 'lots']).nearMiss, 6);
   });
 
   it('reads one persona and a bigger sample', () => {
