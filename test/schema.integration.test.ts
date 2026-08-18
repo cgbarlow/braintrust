@@ -36,6 +36,7 @@ const TABLES = [
   'braintrust_through_lines',
   'braintrust_position_relations',
   'braintrust_position_embeddings',
+  'braintrust_position_checks',
   'braintrust_position_citations',
   'braintrust_positions',
   'braintrust_persona_layers',

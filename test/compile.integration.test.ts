@@ -1177,6 +1177,37 @@ describe('compiling the core, against real Postgres', () => {
     assert.equal(foreign, 0);
   });
 
+  it('checks every position it writes for statement support, once each', async () => {
+    await compile();
+    const compileId = await currentCompileId();
+
+    const written = await db.query<{ slug: string }>(
+      `select slug from braintrust_positions where compile_id = $1`,
+      [compileId!],
+    );
+    assert.ok(written.rows.length > 0);
+
+    // Every written position was judged — the wiring this ticket adds. Matched per slug
+    // rather than by a bare row count: neither the check ledger nor the fault ledger is
+    // truncated between the cases in this file, so a count compared across the whole
+    // table would be answering a different question from the one this test asks.
+    for (const row of written.rows) {
+      const matched = await count(
+        `select count(*) from braintrust_position_checks where person_slug = 'nate' and slug = $1`,
+        [row.slug],
+      );
+      assert.ok(matched > 0, `${row.slug} should have been checked for statement support`);
+    }
+
+    // A passing verdict opens no fault: the default fake synthesiser answers every
+    // position supported.
+    const openFaults = await count(
+      `select count(*) from braintrust_faults
+        where assertion = 'statement_supported_by_citations' and person_slug = 'nate'`,
+    );
+    assert.equal(openFaults, 0);
+  });
+
   /** One Position over every claim, so its span is the span of the whole corpus. */
   const together = (claims: string[]) => [
     { slug: 'the-constraint-is-not-speed', statement: 'The constraint is never speed.', claims },

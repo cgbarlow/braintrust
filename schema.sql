@@ -392,6 +392,29 @@ comment on column braintrust_position_citations.start_ms is
   'The same question as post_url in the unit a transcript has. Both are read off the rows '
   'once the quote has been located; a model is never asked for either.';
 
+-- Whether a Position's statement is carried by its own citations — checked once, by a
+-- judge, when the Position is new. Keyed by content rather than by braintrust_positions.id,
+-- because a Position's row is rebuilt under a fresh id at every Compile while its statement
+-- and citations usually are not: a check_key already here means the same statement, quoting
+-- the same citations for the same person, has already been judged, and it is never re-asked.
+-- This is the whole of what keeps the check's cost proportional to new material rather than
+-- to how often braintrust rebuilds. See docs/design/map-300-spec.md §6 and
+-- https://github.com/cgbarlow/braintrust/issues/334.
+create table if not exists braintrust_position_checks (
+  check_key    text primary key,
+  person_slug  text not null,
+  slug         text not null,
+  statement    text not null,
+  passed       boolean not null,
+  detail       text not null,
+  checked_at   timestamptz not null default now()
+);
+
+comment on table braintrust_position_checks is
+  'One row per distinct (person, statement, citations) ever judged. A failure also opens '
+  'a fault on the registry, naming the Position and the citation that does not carry it — '
+  'this table is the dedup ledger, the fault is what a maintainer reads.';
+
 -- The Position's own statement, in the same space the Corpus is indexed in.
 --
 -- `fit` grades how well a Position answers the question asked, and for three
@@ -654,6 +677,7 @@ begin
     'braintrust_persona_layers',
     'braintrust_positions',
     'braintrust_position_citations',
+    'braintrust_position_checks',
     'braintrust_position_embeddings',
     'braintrust_position_relations',
     'braintrust_through_lines',

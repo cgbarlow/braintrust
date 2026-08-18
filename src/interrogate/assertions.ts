@@ -296,6 +296,18 @@ export const REGISTERED_FAULTS: RegisteredFault[] = [
       'within a day rather than found by a person going looking',
     withdraws: [],
   },
+  {
+    // Not imported from ../verify/support.ts: that module needs openFault from ./store.ts,
+    // and ./store.ts already imports this module for faultById — importing the constant
+    // back here would close that cycle. The two files agree on the literal string instead,
+    // the same way 'corpus_coverage' does above.
+    id: 'statement_supported_by_citations',
+    guarantees:
+      "a Position's statement is carried by its own citations — checked once, when the " +
+      'Position is newly written, at one judge call per new Position, and never re-checked ' +
+      'once a verdict is recorded',
+    withdraws: [],
+  },
 ];
 
 /**
