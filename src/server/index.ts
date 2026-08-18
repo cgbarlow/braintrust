@@ -10,7 +10,7 @@
 
 import { ConfigError, loadConfig } from '../config.js';
 import { createDb } from '../db.js';
-import { createApp, HEALTH_PATH, MCP_PATH } from '../http/app.js';
+import { createApp, HEALTH_PATH, HEAL_PATH, MCP_PATH } from '../http/app.js';
 import { createFetcher } from '../net/fetch.js';
 import { SERVER_NAME, SERVER_VERSION } from '../mcp.js';
 import { createExtractor, EXTRACTOR_TIMEOUT_MS } from '../notes/index.js';
@@ -56,6 +56,7 @@ async function main(): Promise<void> {
       `${SERVER_NAME} ${SERVER_VERSION} listening on :${config.port}\n` +
         `  MCP     ${MCP_PATH}?key=…\n` +
         `  health  ${HEALTH_PATH}\n` +
+        `  heal    POST ${HEAL_PATH}?key=… (scripts/patch-hermes-profiles.sh reports in here)\n` +
         `  embeddings: ${config.embeddings.model}, ${dimension} dimensions, at ${embedder.url}\n` +
         `  retrieval: ${readiness.ready ? 'ready' : 'unavailable until the corpus is embedded'}\n` +
         `  refresh: reading as ${extractor.generation}, via ${extractor.url}. ` +

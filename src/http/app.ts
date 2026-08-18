@@ -14,6 +14,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 
 import type { TransactionalDb } from '../db.js';
 import { createConfirmTokenStore, type ConfirmTokenStore } from '../follow/tokens.js';
+import { recordHeal } from '../heal.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from '../mcp.js';
 import { createFetcher, type Fetcher } from '../net/fetch.js';
 import type { Extractor } from '../notes/index.js';
@@ -30,6 +31,7 @@ import {
 
 export const MCP_PATH = '/mcp';
 export const HEALTH_PATH = '/healthz';
+export const HEAL_PATH = '/heal';
 
 export type AppDeps = {
   db: TransactionalDb;
@@ -88,6 +90,39 @@ export function createApp({
       version: SERVER_VERSION,
       ...(readiness ? { retrieval: { model: retrieval!.model, ...readiness } } : {}),
     });
+  });
+
+  // Not an MCP tool, deliberately: the healer on the Hermes host is a cron script, not a
+  // model, and reporting a bare fact in is plumbing rather than something an agent should
+  // ever be offered to call. Authenticated with the same shared secret the MCP path uses
+  // — no new secret, the whole point of https://github.com/cgbarlow/braintrust/issues/326 —
+  // because each profile's config.yaml already carries it beside the SOUL.md being healed.
+  app.post(HEAL_PATH, async (req: Request, res: Response) => {
+    if (!keyMatches(mcpKey, presentedKey(req))) {
+      res.status(401).json({ ok: false, error: AUTH_FAILURE_MESSAGE });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const { profile, person, template_version } = body;
+    if (
+      typeof profile !== 'string' || profile.trim() === '' ||
+      typeof person !== 'string' || person.trim() === '' ||
+      typeof template_version !== 'string' || template_version.trim() === ''
+    ) {
+      res.status(400).json({
+        ok: false,
+        error: 'profile, person and template_version are all required, non-empty strings.',
+      });
+      return;
+    }
+
+    await recordHeal(db, {
+      profile: profile.trim(),
+      person: person.trim(),
+      template_version: template_version.trim(),
+    });
+    res.status(200).json({ ok: true });
   });
 
   app.all(MCP_PATH, async (req: Request, res: Response) => {

@@ -31,6 +31,7 @@ const TABLES = [
   'braintrust_faults',
   'braintrust_interrogations',
   'braintrust_stuck_rebuilds',
+  'braintrust_soul_heals',
   'braintrust_through_line_items',
   'braintrust_through_lines',
   'braintrust_position_relations',

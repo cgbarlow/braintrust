@@ -12,6 +12,15 @@
 # persona is not carrying a browser, a terminal and a filesystem it must never
 # call — see issue #298, finding 4.
 #
+# Each patched profile reports the template version it landed on back to
+# braintrust, using the braintrust key already in that profile's own
+# config.yaml — no new secret. braintrust reads that report on the serving
+# path (braintrust_load_persona checks it on every call) to tell current from
+# stale from silent, and files a fault naming this exact command when a
+# profile stays wrong for more than a day. A report that never arrives is the
+# alarm, not one that arrives late, so a failure to report is logged and never
+# stops the loop. See issue #326 and docs/design/map-300-spec.md §4.
+#
 # Usage:
 #   ./scripts/patch-hermes-profiles.sh            # re-render every bt-* profile
 #   DRY_RUN=1 ./scripts/patch-hermes-profiles.sh  # print what would change, write nothing
@@ -56,6 +65,18 @@ if grep -q 'braintrust_[a-z]' "$template"; then
   echo "the fix is not on main yet — see issue #225." >&2
   exit 1
 fi
+
+# What braintrust means by "current": the exact hash it computes itself from its own
+# checked-in copy of this file (src/heal.ts, currentTemplateVersion). sha256sum is not on
+# every macOS by default; shasum -a 256 always is.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+template_version=$(sha256_of "$template" | cut -c1-12)
 
 shopt -s nullglob
 profiles=("$PROFILES_DIR"/bt-*)
@@ -129,6 +150,67 @@ print("  toolset  %s — scoped cli to %s" % (name, ", ".join(servers)))
 PY
 }
 
+# Reports the version this profile just landed on back to braintrust, reading the URL and
+# key straight out of the profile's own config.yaml — braintrust never gets a new secret
+# for this, and a profile whose config.yaml this script cannot parse simply is not
+# reported for, the same as it is left alone by scope_toolset above.
+#
+# Failing to report is not fatal to the run: the whole point of this ticket is that a
+# report which never arrives is what raises the alarm, on braintrust's side, days later —
+# not something this script needs to enforce on the spot.
+report_heal() {
+  local profile="$1" name="$2" person="$3" cfg="$1/config.yaml"
+
+  [ -f "$cfg" ] || { echo "  report   $name — no config.yaml, could not report in" >&2; return; }
+
+  DRY_RUN="$DRY_RUN" PROFILE_NAME="$name" PERSON="$person" TEMPLATE_VERSION="$template_version" \
+    python3 - "$cfg" <<'PY'
+import json, os, sys, urllib.error, urllib.parse, urllib.request
+try:
+    import yaml
+except ImportError:
+    print("  report   %s — PyYAML not available, could not report in" % os.environ["PROFILE_NAME"], file=sys.stderr)
+    sys.exit(0)
+
+cfg_path = sys.argv[1]
+dry = bool(os.environ.get("DRY_RUN"))
+name = os.environ["PROFILE_NAME"]
+person = os.environ["PERSON"]
+version = os.environ["TEMPLATE_VERSION"]
+
+with open(cfg_path) as fh:
+    cfg = yaml.safe_load(fh) or {}
+
+url = ((cfg.get("mcp_servers") or {}).get("braintrust") or {}).get("url")
+if not url:
+    print("  report   %s — no mcp_servers.braintrust.url in config.yaml, could not report in" % name, file=sys.stderr)
+    sys.exit(0)
+
+parsed = urllib.parse.urlsplit(url)
+key = (urllib.parse.parse_qs(parsed.query).get("key") or [None])[0]
+heal_url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/heal", "", ""))
+if key:
+    heal_url += "?key=" + urllib.parse.quote(key)
+
+if dry:
+    print("  report   %s — would report template %s to %s" % (name, version, heal_url))
+    sys.exit(0)
+
+body = json.dumps({"profile": name, "person": person, "template_version": version}).encode()
+req = urllib.request.Request(
+    heal_url, data=body, headers={"content-type": "application/json"}, method="POST"
+)
+try:
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        if resp.status == 200:
+            print("  report   %s — reported template %s" % (name, version))
+        else:
+            print("  report   %s — braintrust returned HTTP %s, not reported" % (name, resp.status), file=sys.stderr)
+except (urllib.error.URLError, OSError) as e:
+    print("  report   %s — could not reach braintrust to report in: %s" % (name, e), file=sys.stderr)
+PY
+}
+
 patched=0
 skipped=0
 
@@ -161,6 +243,7 @@ for profile in "${profiles[@]}"; do
   if [ -n "$DRY_RUN" ]; then
     echo "would patch  $name  ($display / $person)"
     scope_toolset "$profile" "$name"
+    report_heal "$profile" "$name" "$person"
     patched=$((patched + 1))
     continue
   fi
@@ -169,6 +252,7 @@ for profile in "${profiles[@]}"; do
   sed -e "s/{{DISPLAY_NAME}}/$display/g" -e "s/{{PERSON}}/$person/g" "$template" > "$soul"
   echo "patched  $name  ($display / $person)"
   scope_toolset "$profile" "$name"
+  report_heal "$profile" "$name" "$person"
   patched=$((patched + 1))
 done
 
