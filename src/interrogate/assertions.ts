@@ -32,6 +32,7 @@
  */
 
 import { SPOKEN_DISCLOSURE } from '../disclosure.js';
+import { GROUNDED_BAR_FAULT, OFF_DOMAIN_FAULT } from '../qa/bars.js';
 
 /** Bumped when a rubric or a question below changes, so a verdict says which one produced it. */
 export const INTERROGATION_VERSION = 'interrogation-5';
@@ -260,6 +261,20 @@ export const REGISTERED_FAULTS: RegisteredFault[] = [
       'the serving model stays under 40,000 embeddings — the point at which a ' +
       'find_positions call crosses about a second of database time, so retrieval keeps ' +
       'costing fractions of a second per question instead of growing silently with the fleet',
+    withdraws: [],
+  },
+  {
+    id: GROUNDED_BAR_FAULT,
+    guarantees:
+      'a persona answer grounded on at least 70% of its covered questions — per persona, ' +
+      'never a fleet average, so a reader meeting one persona is told about that one',
+    withdraws: [],
+  },
+  {
+    id: OFF_DOMAIN_FAULT,
+    guarantees:
+      'a persona handed a question it has no material for answers nothing, in its own voice, ' +
+      'rather than serving a position nobody wrote',
     withdraws: [],
   },
 ];

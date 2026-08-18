@@ -22,13 +22,15 @@ import {
   createInterrogator,
   createIssueFiler,
   loggingIssueFiler,
+  runBarChecks,
   runInterrogation,
+  summariseBarChecks,
   summariseInterrogation,
 } from '../interrogate/index.js';
 import { createFetcher, type Fetcher } from '../net/fetch.js';
 import { SERVER_NAME, SERVER_VERSION } from '../mcp.js';
 import { createExtractor, EXTRACTOR_TIMEOUT_MS } from '../notes/index.js';
-import { checkDimension, createEmbedder, type Embedder } from '../retrieval/index.js';
+import { checkDimension, createEmbedder, createQueryGate, type Embedder } from '../retrieval/index.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -90,10 +92,11 @@ async function main(): Promise<void> {
         `via ${extractor.url}.`,
     );
 
+    const embedder = await usableEmbedder(db, fetcher, config.embeddings);
     const report = await runCycle({
       db,
       fetcher,
-      embedder: await usableEmbedder(db, fetcher, config.embeddings),
+      embedder,
       extractor,
       synthesiser,
       // The serving model, regardless of whether tonight's endpoint answered: the
@@ -105,6 +108,7 @@ async function main(): Promise<void> {
     console.log(summarise(report));
 
     await interrogate(db, config, fetcher, () => stopping);
+    await checkBars(db, config, embedder, () => stopping);
 
     console.log(
       `${SERVER_NAME}: run finished in ` +
@@ -160,6 +164,57 @@ async function interrogate(
       `${SERVER_NAME}: the interrogation did not complete — ${
         error instanceof Error ? error.message : String(error)
       }\n  Nothing was concluded about any persona, and every assertion stays due.`,
+    );
+  }
+}
+
+/**
+ * The fleet held to its bars, and the faults that follow.
+ *
+ * **The job's third act, and a fault arm in its own right.** The interrogation asks what a
+ * persona *does*; this asks what it is *measured* at. Both write the same `braintrust_faults`
+ * rail and both block nothing — a persona below a bar keeps serving exactly as it is, and
+ * the fault names the persona and the number until a passing run clears it.
+ *
+ * **It never fails the run, and it opens nothing when it cannot measure.** The bars cost no
+ * judge call, but they do need an embeddings endpoint; an endpoint braintrust cannot reach
+ * is not evidence a persona is under a bar, so the ledger is left exactly as it was.
+ *
+ * Skipped when the run was cut short, the same standing as the interrogation.
+ */
+async function checkBars(
+  db: PostgresDb,
+  config: Config,
+  embedder: Embedder | undefined,
+  stopping: () => boolean,
+): Promise<void> {
+  if (stopping()) return;
+  if (embedder === undefined) {
+    console.error(
+      `${SERVER_NAME}: the bars could not be measured — there is no usable embeddings ` +
+        'endpoint on this run, and no bar fault opens or clears.',
+    );
+    return;
+  }
+
+  try {
+    const report = await runBarChecks({
+      db,
+      measure: {
+        db,
+        embedder,
+        retrieval: createQueryGate(db, config.embeddings.model),
+      },
+      log: (line) => console.log(line),
+    });
+
+    const summary = summariseBarChecks(report);
+    if (summary) console.log(summary);
+  } catch (error) {
+    console.error(
+      `${SERVER_NAME}: the bar checks did not complete — ${
+        error instanceof Error ? error.message : String(error)
+      }\n  Nothing was concluded about any persona, and no bar fault was opened or cleared.`,
     );
   }
 }

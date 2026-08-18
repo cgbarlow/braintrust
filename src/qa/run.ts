@@ -31,8 +31,13 @@ import {
 import type { GoldenQuestion } from './sample.js';
 import type { NegativeQuestion } from './negative.js';
 
-/** Enough positions to judge a reply without paying to render every one. */
-const ANSWER_LIMIT = 5;
+/**
+ * Enough positions to judge a reply without paying to render every one.
+ *
+ * Exported for the free whole-corpus measurement, so it asks the same-sized answer the
+ * judged sample does.
+ */
+export const ANSWER_LIMIT = 5;
 
 export async function runQuestion(
   question: GoldenQuestion,
@@ -46,10 +51,20 @@ export async function runQuestion(
   // recency. ../qa/score.ts still renders only what a default call would return, so what
   // the judge reads is unchanged.
   let payload: FindPayload;
+  let vector: number[];
   try {
+    // One embedding per question, threaded through both the answer and the rank check
+    // below, so the eval pays for it once rather than twice — the same contract
+    // ../qa/measure.ts holds for the free whole-corpus pass.
+    const [embedded] = await deps.embedder.embed([question.query]);
+    if (!embedded) {
+      throw new Error(`qa: the embeddings endpoint returned nothing for "${question.query}"`);
+    }
+    vector = embedded;
     payload = await findPositions(
       { person: question.person, query: question.query, limit: ANSWER_LIMIT, full: true },
       deps,
+      vector,
     );
   } catch (error) {
     // **Nothing came back at all is a rung, not a crash.** The ladder must sum to the
@@ -71,7 +86,7 @@ export async function runQuestion(
   // it.** Nothing in a served answer can say how many compiled Positions cite the asked
   // item, nor where that item stood in the candidate set — those are the eval looking
   // behind the answer, which is exactly what a golden set (and only a golden set) may do.
-  const facts = await rungFactsFor(payload, question, deps);
+  const facts = await rungFactsFor(payload, question, deps, vector);
   const rung = rungFor(facts);
 
   // **An empty answer is not judged at all.** There is no reply to pass or fail — the
@@ -116,14 +131,17 @@ export async function runQuestion(
 }
 
 /** The Corpus-side facts one rung needs that the payload cannot carry. */
-type ServingFacts = { compileId: string; floor: number; cites: number };
+export type ServingFacts = { compileId: string; floor: number; cites: number };
 
 /**
  * The compile serving right now, its floor in force, and how many of its Positions cite
  * the asked item. Floor measured at compile time and refused on this read when the rules
  * have moved — the same `floorFor` the answer just used, so the ladder sees the same gate.
+ *
+ * Exported for the free whole-corpus measurement: the bars read the exact same facts, so
+ * the measurement and the judged sample cannot disagree about the gate.
  */
-async function servingFactsFor(db: Db, person: string, itemId: string): Promise<ServingFacts> {
+export async function servingFactsFor(db: Db, person: string, itemId: string): Promise<ServingFacts> {
   const { rows } = await db.query<{
     compile_id: string;
     compiler_version: string | null;
@@ -150,24 +168,33 @@ async function servingFactsFor(db: Db, person: string, itemId: string): Promise<
   };
 }
 
-async function rungFactsFor(
+/**
+ * The rung facts for one answered question, read after the answer.
+ *
+ * Exported for the free whole-corpus measurement (../qa/measure.ts). The optional
+ * `vector` is the embedding `findPositions` already used — the embedder is deterministic
+ * for identical text, so the rank below is the rank `findPositions` ranked by, and the
+ * measurement pays for one embedding per question instead of two.
+ */
+export async function rungFactsFor(
   payload: FindPayload,
   question: GoldenQuestion,
   deps: FindDeps,
+  vector?: number[],
 ): Promise<RungFacts> {
   const served = await servingFactsFor(deps.db, question.person, question.item_id);
 
   // Re-embedded here against the same endpoint the answer just used: the candidate set is
   // a query over this vector, and the embedder is deterministic for identical text, so the
   // rank below is the rank `findPositions` ranked by.
-  const [vector] = await deps.embedder.embed([question.query]);
-  if (!vector) {
+  const [embedded] = vector !== undefined ? [vector] : await deps.embedder.embed([question.query]);
+  if (!embedded) {
     throw new Error(`qa: the embeddings endpoint returned nothing for "${question.query}"`);
   }
   const rank = await candidateRank(
     deps.db,
     served.compileId,
-    vectorLiteral(vector),
+    vectorLiteral(embedded),
     { model: deps.embedder.model, person: question.person, since: null, until: null },
     served.floor,
     question.item_id,
