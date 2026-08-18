@@ -18,13 +18,14 @@ import type {
   JudgedPair,
   MergeGroup,
   MergeStage,
+  SupportVerdict,
   SynthesisedEntry,
   SynthesisMode,
   Synthesiser,
 } from '../../src/compile/synthesis.js';
 
 export type FakeCall = {
-  kind: MergeStage | 'revisions' | 'habits';
+  kind: MergeStage | 'revisions' | 'habits' | 'support';
   mode: SynthesisMode;
   digest: string;
 };
@@ -46,6 +47,8 @@ export type FakeOptions = {
   groupsFor?: (indices: number[], stage: MergeStage) => MergeGroup[];
   /** Replaces the default judgement. Given the pair refs the digest actually carried. */
   judgementsFor?: (pairs: string[], digest: string) => JudgedPair[];
+  /** Replaces the default support verdict. Given the slugs the digest actually carried. */
+  supportFor?: (slugs: string[], digest: string) => SupportVerdict[];
   /** Throws instead of answering — an endpoint that went away mid-compile. */
   throws?: Error;
 };
@@ -58,6 +61,7 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
     clusterer: options.clusterer ?? 'test-model@positions-2',
     habits: options.habits ?? 'test-model@habits-1',
     judge: options.judge ?? 'test-model@revisions-1',
+    support: 'test-model@support-1',
     model: 'test-model',
     url: 'https://example.test/v1/chat/completions',
     calls,
@@ -92,6 +96,23 @@ export function fakeSynthesiser(options: FakeOptions = {}): FakeSynthesiser {
         pair,
         relation: 'none' as const,
         rationale: 'Two ways of saying the same thing.',
+      }));
+    },
+
+    async judgeSupport(digest): Promise<SupportVerdict[]> {
+      calls.push({ kind: 'support', mode: 'pass', digest });
+      if (options.throws) throw options.throws;
+
+      const slugs = slugsFromDigest(digest);
+      if (options.supportFor) return options.supportFor(slugs, digest);
+
+      // Supported on everything, because that is what a good judge answers when a quote
+      // really does carry its statement — which is what every position ./positions.ts
+      // built for a test is, unless the test says otherwise.
+      return slugs.map((slug) => ({
+        slug,
+        supported: true,
+        rationale: 'The quote states the claim in substance.',
       }));
     },
 
@@ -171,6 +192,11 @@ export function refsFromDigest(digest: string): string[] {
 /** The pair refs braintrust issued, read back out of the digest it handed over. */
 export function pairsFromDigest(digest: string): string[] {
   return [...digest.matchAll(/^\[(p\d+)\]/gm)].map((match) => match[1]!);
+}
+
+/** The Position slugs a support digest carries, read back out of its `[slug]` markers. */
+export function slugsFromDigest(digest: string): string[] {
+  return [...digest.matchAll(/^\[([^\]]+)\]/gm)].map((match) => match[1]!);
 }
 
 /**

@@ -60,6 +60,15 @@ export const POSITION_VERSION = 'positions-2';
 export const REVISION_VERSION = 'revisions-1';
 
 /**
+ * Versioned apart again. This is the prompt that answers map #300 §6's `statement
+ * supported` guarantee: whether a Position's statement is carried by the citations
+ * attached to it, rather than merely adjacent to them. It never removes a Position and
+ * never blocks a Compile — a failure opens a fault on the registry — so bumping this
+ * changes what gets reported, not what a Persona serves.
+ */
+export const SUPPORT_VERSION = 'support-1';
+
+/**
  * Versioned apart again, because this prompt does not write anything.
  *
  * `habits-1` is the menu. The Reasoning layer used to ask for a free description and keep
@@ -132,6 +141,19 @@ export type JudgedPair = {
 };
 
 /**
+ * One judgement on one Position: does its own statement hold up against its own quotes.
+ * Named by `slug` rather than by an issued ref, unlike a revision pair — a Position's slug
+ * is already unique within the compile that produced it, and this is the same identifier
+ * `cluster()` already answers with, so there is no second numbering scheme to invent.
+ */
+export type SupportVerdict = {
+  slug: string;
+  supported: boolean;
+  /** Why, in the judge's own words. Named in the fault when `supported` is false. */
+  rationale: string;
+};
+
+/**
  * The merge's whole answer: which entries say the same thing, and which of them says it
  * clearest. **No citation appears here in either direction** — the merge was handed
  * wording and indices, so the union of the evidence is braintrust's arithmetic rather than
@@ -156,6 +178,8 @@ export type Synthesiser = {
   habits: string;
   /** `model@revisions-version`. Which prompt decided a Position was superseded. */
   judge: string;
+  /** `model@support-version`. Which prompt decided a Position's statement holds up. */
+  support: string;
   model: string;
   url: string;
   /**
@@ -189,6 +213,11 @@ export type Synthesiser = {
   chooseHabits(digest: string): Promise<ChosenHabit[]>;
   /** The fourth question, and the only one that can take something off the record. */
   judgePairs(digest: string): Promise<JudgedPair[]>;
+  /**
+   * The fifth question, and the only one asked once per Position rather than once per
+   * Compile: does the statement follow from the quotes attached to it. See ./support.ts.
+   */
+  judgeSupport(digest: string): Promise<SupportVerdict[]>;
 };
 
 /**
@@ -381,6 +410,47 @@ export const REVISION_PROMPT = [
   'Do not judge whether either position is right, and do not resolve the tension yourself.',
 ].join('\n');
 
+/**
+ * The fifth prompt, and the one issue #334 exists for: a served quote is checked against
+ * the item it was drawn from, and a Position's statement was checked against nothing until
+ * this. Found live: a Position stating "AI progress is jagged; bottlenecks and reverse
+ * salients shape advancement" citing "even if AI becomes superhuman at analysis and
+ * PowerPoint, I don't think that means AI necessarily replaces the jobs of consultants and
+ * designers" — a real quote that does not carry that claim.
+ *
+ * Asked once per Position rather than once per Compile: see ./support.ts and
+ * ../verify/support.ts for why a Position already judged is never sent here again.
+ */
+export const SUPPORT_PROMPT = [
+  "You are checking positions braintrust wrote about one author against the citations",
+  'attached to each — quotations from that author\'s own published work. A position is a',
+  'sentence braintrust synthesised; the quotes beside it are the only evidence for it, and',
+  'nothing else may be used to decide whether it holds up.',
+  '',
+  'For each position, decide whether the statement is directly carried by its own quotes —',
+  'whether a reader shown only the quotes, and nothing else, would agree the statement',
+  'follows from them. A quote that is merely on the same subject, or that could equally',
+  'support several different statements, does not carry this one.',
+  '',
+  'Return a single JSON object, and nothing else:',
+  '',
+  '{ "verdicts": [ { "position": "...", "supported": true, "rationale": "..." } ] }',
+  '',
+  'position — copied exactly from the [slug] marker. Only slugs you were actually given: one',
+  '  that is not among them will be dropped.',
+  'supported — true only if at least one quote actually asserts the statement, in substance.',
+  '  false if every quote is adjacent, illustrative, or asserts a related but different claim.',
+  'rationale — one sentence, for a reader looking at both. If false, name what the nearest',
+  '  quote actually says instead of the statement.',
+  '',
+  'Judge the statement exactly as written, not as you imagine the author might elaborate on',
+  '  it if asked. The bar is whether the quotes carry the claim, never whether the claim is',
+  '  plausible, well known, or something this author would probably agree with.',
+  'This never removes a position and never stops anyone from reading it — it only reports —',
+  '  so judge plainly rather than leniently. A statement a reader would call a stretch is not',
+  '  supported.',
+].join('\n');
+
 export function createSynthesiser(
   config: ExtractorConfig,
   fetcher: Fetcher,
@@ -482,6 +552,7 @@ export function createSynthesiser(
     habits: `${config.model}@${HABITS_VERSION}`,
     clusterer: `${config.model}@${POSITION_VERSION}`,
     judge: `${config.model}@${REVISION_VERSION}`,
+    support: `${config.model}@${SUPPORT_VERSION}`,
     model: config.model,
     url,
 
@@ -512,6 +583,10 @@ export function createSynthesiser(
 
     async judgePairs(digest): Promise<JudgedPair[]> {
       return readJudgementContent(await ask(REVISION_PROMPT, digest, 'revisions'), url);
+    },
+
+    async judgeSupport(digest): Promise<SupportVerdict[]> {
+      return readSupportContent(await ask(SUPPORT_PROMPT, digest, 'statement-support'), url);
     },
   };
 }
@@ -751,6 +826,44 @@ export function readJudgementContent(content: string, url: string): JudgedPair[]
       {
         pair: pair.trim(),
         relation: relation as JudgedPair['relation'],
+        rationale: typeof rationale === 'string' ? rationale.trim() : '',
+      },
+    ];
+  });
+}
+
+/**
+ * The fifth judge's answers. Like the others, a *missing* `verdicts` throws — an endpoint
+ * answering a different question would otherwise read as "every position checked holds
+ * up", which is the most dangerous wrong answer this parser could produce silently, and
+ * a *present but empty* array is never sent here in practice because ./support.ts only
+ * calls this with at least one Position to judge.
+ *
+ * `supported` is read strictly as a boolean: a judge that answered with anything else
+ * asked something braintrust cannot use, so the verdict is dropped rather than guessed at
+ * — the same treatment an unknown `relation` gets above.
+ */
+export function readSupportContent(content: string, url: string): SupportVerdict[] {
+  const parsed = readObject(content, url);
+
+  if (!Array.isArray(parsed.verdicts)) {
+    throw new BraintrustError(
+      `The synthesiser at ${url} returned JSON with no verdicts array: ${content.slice(0, 200)}…`,
+    );
+  }
+
+  return parsed.verdicts.flatMap((verdict: unknown) => {
+    const { position, supported, rationale } = (verdict ?? {}) as {
+      position?: unknown;
+      supported?: unknown;
+      rationale?: unknown;
+    };
+    if (typeof position !== 'string' || position.trim() === '') return [];
+    if (typeof supported !== 'boolean') return [];
+    return [
+      {
+        slug: position.trim(),
+        supported,
         rationale: typeof rationale === 'string' ? rationale.trim() : '',
       },
     ];

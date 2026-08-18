@@ -24,6 +24,7 @@
 import type { TransactionalDb } from '../db.js';
 import { notesFor } from '../notes/store.js';
 import { vectorLiteral, type Embedder } from '../retrieval/embed.js';
+import { checkStatementSupport } from '../verify/support.js';
 import { coverageLayer, withVoicePopulation } from './coverage.js';
 import { calibrateFit, notGradeable } from './fit.js';
 import { checkCompile } from './gate.js';
@@ -356,6 +357,30 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       );
     }
 
+    // Map #300 §6: a Position's statement, checked against its own citations. Keyed by
+    // content rather than by the row `writePositions` just inserted, so a Position that
+    // recurs unchanged in tomorrow's rebuild is recognised as already judged — this is
+    // what keeps the cost proportional to new material rather than to every Compile.
+    //
+    // Wrapped, like calibration below: nothing here may cost a Persona its rebuild, and a
+    // failure here reports nothing rather than opening a fault it cannot stand behind.
+    try {
+      const support = await checkStatementSupport(deps.db, person.slug, grouped.positions, deps.synthesiser, {
+        log,
+      });
+      if (support.checked > 0) {
+        log(
+          `braintrust: checked ${support.checked} newly written position(s) of ${person.slug} against ` +
+            `their own citations (${support.already_checked} already judged, unchanged).`,
+        );
+      }
+    } catch (error) {
+      log(
+        `braintrust: could not check statement support for ${person.slug} — ${String(error)}. Its ` +
+          'positions are unaffected; an unjudged Position is asked about again on the next compile.',
+      );
+    }
+
     // What this person broadly holds — the four best, for everyone. Beside the quoted claims
     // rather than above them: a through-line rides with an answer that already matched, so it
     // needs no embedding, no citations and no place in the gate — and it may never be the
@@ -568,6 +593,7 @@ export * from './infer.js';
 export * from './positions.js';
 export * from './revisions.js';
 export * from './store.js';
+export * from './support.js';
 export * from './synthesis.js';
 export * from './throughlines.js';
 export * from './version.js';
