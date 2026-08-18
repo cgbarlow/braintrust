@@ -64,6 +64,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const DISCLOSURE_ASSERTION = 'the_first_reply_carries_the_disclosure';
 const FAKING_ASSERTION = 'the_model_cannot_fake_this_individual';
+const EMPTY_ANSWER_ASSERTION = 'an_empty_answer_is_admitted_and_not_filled';
 
 // ---------------------------------------------------------------------------
 // Stand-ins
@@ -389,17 +390,23 @@ describe('the assertions braintrust makes about itself', () => {
   it('covers the six, and says which of them are about the compiler rather than a person', () => {
     assert.deepEqual(assertionIds().sort(), [
       'a_persona_that_cannot_reach_the_record_says_so',
-      'an_empty_answer_is_admitted_and_not_filled',
+      EMPTY_ANSWER_ASSERTION,
       'an_empty_answer_names_unread_items',
       DISCLOSURE_ASSERTION,
       FAKING_ASSERTION,
       'the_persona_can_source_its_claims',
     ].sort());
 
-    // Four of six are properties of the compiler, so they run once per compiler version
-    // rather than once per persona. Two are about a person and run per compile.
+    // Three of six are properties of the compiler, so they run once per compiler version
+    // rather than once per persona. Three are about a person and run per compile — including
+    // the empty-answer check, which moved here (#324) because whether an empty answer stays
+    // in character is a fact about this Persona's own Script, not one that reads the same for
+    // everyone.
     const perPerson = ASSERTIONS.filter((one) => one.scope === 'persona').map((one) => one.id);
-    assert.deepEqual(perPerson.sort(), [FAKING_ASSERTION, 'the_persona_can_source_its_claims'].sort());
+    assert.deepEqual(
+      perPerson.sort(),
+      [FAKING_ASSERTION, EMPTY_ANSWER_ASSERTION, 'the_persona_can_source_its_claims'].sort(),
+    );
   });
 
   it('asks with no way to look anything up, which is the condition being asserted about', async () => {
@@ -1013,11 +1020,11 @@ describe('the schedule', () => {
   it('asks everything that has never been asked', () => {
     const due = dueAssertions({ fleet, hardest: 'nate-b-jones', last: [], compilerVersion: 'v1', now: NOW });
 
-    // Two per person for the persona-scoped assertions, one each for the four about the
-    // compiler — eight, not ten.
-    assert.equal(due.length, 8);
+    // Three per person for the persona-scoped assertions, one each for the three about the
+    // compiler — nine, not fifteen.
+    assert.equal(due.length, 9);
     const personaScoped = due.filter((one) => one.assertion.scope === 'persona');
-    assert.equal(personaScoped.length, 4);
+    assert.equal(personaScoped.length, 6);
     assert.deepEqual(
       [...new Set(personaScoped.map((one) => one.person))].sort(),
       [...slugs].sort(),
@@ -1028,7 +1035,7 @@ describe('the schedule', () => {
     const due = dueAssertions({ fleet, hardest: 'nate-b-jones', last: [], compilerVersion: 'v1', now: NOW });
     const compilerScoped = due.filter((one) => one.assertion.scope === 'compiler');
 
-    assert.equal(compilerScoped.length, 4);
+    assert.equal(compilerScoped.length, 3);
     // The fault they open is about braintrust, not about the person they were asked against.
     assert.deepEqual([...new Set(compilerScoped.map((one) => one.person))], [null]);
     assert.deepEqual([...new Set(compilerScoped.map((one) => one.subject))], ['nate-b-jones']);
@@ -1066,7 +1073,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(moved.length, 8);
+    assert.equal(moved.length, 9);
     assert.deepEqual([...new Set(moved.map((one) => one.why))], ['compiler_moved']);
 
     // The weekly arm exists because the synthesiser is a third party: it moves with no
@@ -1078,7 +1085,7 @@ describe('the schedule', () => {
       compilerVersion: 'v1',
       now: NOW,
     });
-    assert.equal(swept.length, 8);
+    assert.equal(swept.length, 9);
     assert.deepEqual([...new Set(swept.map((one) => one.why))], ['weekly_sweep']);
   });
 
@@ -1105,14 +1112,15 @@ describe('the schedule', () => {
     // A rebuild changes the claims this assertion is judged against, so asking once per
     // compiler version would be asking about a persona that no longer exists. The other
     // three are about the payload's shape, which a rebuild does not move — and the person
-    // who was not rebuilt is not re-asked either. Both persona-scoped assertions are
-    // re-asked because both depend on the current compile.
+    // who was not rebuilt is not re-asked either. All three persona-scoped assertions are
+    // re-asked because all three depend on the current compile.
     assert.deepEqual(
       due.map((one) => [one.assertion.id, one.person, one.why]).sort(),
       [
         [FAKING_ASSERTION, 'nate-b-jones', 'recompiled'],
+        [EMPTY_ANSWER_ASSERTION, 'nate-b-jones', 'recompiled'],
         ['the_persona_can_source_its_claims', 'nate-b-jones', 'recompiled'],
-      ],
+      ].sort(),
     );
   });
 
@@ -1145,7 +1153,7 @@ describe('why nothing is due', () => {
   it('names the clocks that held everything back, and the size of the population', () => {
     const nothing = nothingWasDue({ fleet, hardest: slugs[0]!, last: justAsked, compilerVersion: 'v1', now: NOW });
 
-    assert.equal(nothing!.considered, 8);
+    assert.equal(nothing!.considered, 9);
     assert.match(nothing!.why, /weekly sweep has not come round/);
     assert.match(nothing!.why, /no compiler version moved/);
     assert.match(nothing!.why, /nothing was recompiled/);
@@ -1191,7 +1199,7 @@ describe('why nothing is due', () => {
       now: NOW,
     });
 
-    assert.equal(nothing!.considered, 8);
+    assert.equal(nothing!.considered, 9);
     assert.match(nothing!.why, /no fault is open on anyone being asked/);
     assert.doesNotMatch(nothing!.why, /and no fault is open\./);
   });
@@ -1319,7 +1327,7 @@ describe('an assertion with an open fault is due on the next run', () => {
     });
 
     assert.deepEqual(report.asked, []);
-    assert.equal(report.not_due!.considered, 8);
+    assert.equal(report.not_due!.considered, 9);
     assert.match(report.not_due!.why, /weekly sweep has not come round/);
   });
 
@@ -1703,7 +1711,7 @@ describe('the one-day silence', () => {
     silence({ assertion: FAKING_ASSERTION, person: 'nate-b-jones', attempts: 2 }),
     silence({ assertion: FAKING_ASSERTION, person: 'add-shore', attempts: 2 }),
     silence({ assertion: DISCLOSURE_ASSERTION, attempts: 2 }),
-    silence({ assertion: 'an_empty_answer_is_admitted_and_not_filled', attempts: 2 }),
+    silence({ assertion: EMPTY_ANSWER_ASSERTION, attempts: 2 }),
     silence({ assertion: 'a_persona_that_cannot_reach_the_record_says_so', attempts: 2 }),
   ];
 
@@ -2060,7 +2068,7 @@ describe('the one-day limit', () => {
 
   it('takes it from everyone when the fault is the compiler’s', () => {
     const compilerFault = fault({
-      assertion: 'an_empty_answer_is_admitted_and_not_filled',
+      assertion: 'an_empty_answer_names_unread_items',
       escalated_at: new Date(NOW).toISOString(),
     });
 

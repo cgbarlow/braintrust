@@ -981,15 +981,20 @@ braintrust can do on its own clears it.
 | Assertion | Scope | Withdrawn if unrepaired |
 |---|---|---|
 | `the_model_cannot_fake_this_individual` | persona | `reasoning` |
+| `an_empty_answer_is_admitted_and_not_filled` | persona | `reasoning` |
 | `the_persona_can_source_its_claims` | persona | `reasoning` |
 | `the_first_reply_carries_the_disclosure` | compiler | — |
-| `an_empty_answer_is_admitted_and_not_filled` | compiler | `reasoning` |
 | `a_persona_that_cannot_reach_the_record_says_so` | compiler | `reasoning` |
 | `an_empty_answer_names_unread_items` | compiler | `reasoning` |
 
-**Four of the six are properties of the compiler rather than of the person**, so they run once per compiler
+**Three of the six are properties of the compiler rather than of the person**, so they run once per compiler
 version against one subject rather than once per Persona in the fleet — *whoever the base model knows best*,
-stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The two
+stood in for by the largest Corpus, since braintrust cannot measure how famous somebody is. The three
+persona-scoped assertions run per compile: one is a fact about a person, one checks that an empty answer
+stays in that Persona's own voice as well as honest
+([#324](https://github.com/cgbarlow/braintrust/issues/324) — moved here from compiler scope, because
+whether an empty answer stays in character is a fact about the Script this Persona was rendered with, not
+one that reads the same for everyone), and the third hunts unknowns.
 persona-scoped assertions run per compile: one is a fact about a person, and the other hunts unknowns.
 
 **A fault may only open under a name this registry knows.** The six assertions above are everything the
