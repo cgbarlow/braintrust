@@ -219,3 +219,67 @@ These re-rank **all** of a persona's positions, where production first narrows c
 ranks only the positions citing those items. The comparison between rankers is sound — same candidates, same
 questions — but the absolute figures are not production's. What has not been measured is new matt through
 `find_positions` itself, which needs the swept compile in the database.
+
+---
+
+## 8. Ranking is exhausted on a swept persona
+
+**Measured 2026-08-19 against the rebuilt, serving `matt-pocock`** — 71 positions, 41/41 items cited.
+Candidates come from the real `find_positions` path at `limit: 50`; only the ordering is the
+experiment. Embeddings only, no judge calls.
+
+| Scorer | grounded@1 |
+|---|---:|
+| statement similarity (what serves today) | 6/10 |
+| statement minus background (§7's fix) | 6/10 |
+| statement + lexical, at 0.05 / 0.10 / 0.15 / 0.20 / 0.30 | 6/10 at every weight |
+| **the person's own cited quotes** | 3/10 |
+| **best chunk of the cited item** (#140's discarded quantity) | 5/10 |
+| statement + 0.3 / 0.5 / 1.0 × quotes | 6/10 |
+| statement + 0.5 × chunk | 6/10 |
+| statement + 0.5 × quotes + 0.5 × chunk | 6/10 |
+| max(statement, quotes) | 6/10 |
+
+**Every variant returns the same six questions.** Not "roughly the same score" — the identical set.
+Two signals the earlier sections never tried are included here and both are *worse alone*: ranking on
+what the person actually said scores half what ranking on braintrust's paraphrase does, which is the
+strongest evidence yet for #140's original call, and blending either in changes nothing.
+
+**So §7's correction is inert on this instrument.** Raw cosine and background-subtracted are the same
+6/10. §7 measured its gain on natural questions; the golden set asks *titles*. Both statements are
+true and §5's caveat is the reason. **None of `matt-pocock`'s improvement is attributable to
+ranking** — it is all coverage, from §6.
+
+### What the failures actually are
+
+Ranks of the right position across the ten: **1, 1, 2, 1, 1, 1, 5, 9, 1, 23**. What beats them is
+never noise — it is another real, on-topic position of Matt's:
+
+| asked | won instead | wanted |
+|---|---|---|
+| *Never Run claude /init* | Claude Code can be paused and resumed… | **Init** scripts should run automatically… |
+| *How To De-Slop A Codebase…* | Red-green refactor improves AI-generated code | Deep modules make systems easy to navigate |
+| *New Skills! /handoff, /prototype…* | Skill updates are announced via the newsletter | Throwaway prototypes are cheap tools |
+
+The first is the clearest case, and it is why lexical cannot help: the question is *"Never Run claude
+/init"*, the right statement carries `init` and the winner carries `claude`. **They tie on overlap.**
+The rest are the [#320](https://github.com/cgbarlow/braintrust/issues/320) problem — the adjacent
+answer is legitimate, and only the golden set's construction makes it wrong.
+
+### The constraint has moved off retrieval entirely
+
+`find_positions` returns **ten** positions; `grounded` scores whether the **top one** cites the item,
+because the eval's renderer shows one. Nine of the ten ranks above are inside ten. **The correct
+material reaches the persona for 9 of 10 questions and is cited in 6.**
+
+That gap is not retrieval and not ranking. It is the persona selecting and quoting from what it
+already holds — which is precisely what the judge names in the surviving failures: *"a position with
+invented citations rather than a verifiable real quote"*. Work on ordering this persona's results is
+buying nothing; the next measurable gain is in how an answer is composed from a payload that already
+contains the right material.
+
+### Reproducing
+
+`diagnose.mts` (per-question rank, and what outranked the right answer), `rerank2.mts` (lexical
+sweep over the live candidate set), `rerank3.mts` (quotes and chunk signals). Scratch scripts over
+`findPositions`; not checked in.
