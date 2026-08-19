@@ -255,3 +255,54 @@ async function topsFor(deps: CalibrateDeps, questions: string[]): Promise<number
 function round(value: number): number {
   return Math.round(value * 10_000) / 10_000;
 }
+
+/**
+ * How near each statement sits to **everything**, on the off-corpus probes.
+ *
+ * The §1 pathology of docs/research/issue-304-generic-statements.md, priced: a statement
+ * broad enough to be about anything is genuinely close to every question, so it wins the top
+ * slot for all of them and a reader who asked three different things reads the same
+ * generality three times. Ranking is not misfiring when that happens — it is faithfully
+ * ordering statements that were not written to be orderable.
+ *
+ * Subtracting this turns "how close is this to the question" into "how *unusually* close",
+ * which is the quantity a reader is actually asking about. A correction of this shape was
+ * rejected once, and the reason is worth keeping: it estimated each statement's baseline
+ * leave-one-out from *the ten questions being scored*, an estimate from one or two numbers,
+ * and matt-pocock fell to 0/10 under it. The baseline here comes from a fixed set that no
+ * Person publishes about, is identical for every question, and is known before any question
+ * is asked — so nothing being scored contributes to its own baseline.
+ *
+ * **Measured on every Compile, like the gate above it**, because it is a fact about a
+ * statement in a vector space and both the statements and the space are rewritten.
+ */
+export function backgroundFor(statements: number[][], probes: number[][]): number[] {
+  if (probes.length === 0) return statements.map(() => 0);
+  return statements.map(
+    (statement) => probes.reduce((total, probe) => total + cosine(statement, probe), 0) / probes.length,
+  );
+}
+
+/**
+ * Cosine, in TypeScript rather than in the database.
+ *
+ * Every other similarity in braintrust is pgvector's, and this one is not because the
+ * vectors it compares have not been written yet: the background travels *into* the insert
+ * that writes them. Computing it in SQL would mean writing the rows, measuring them and
+ * updating them, which is three round trips and a window where a Position is graded on a
+ * background it does not have.
+ */
+function cosine(left: number[], right: number[]): number {
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+
+  for (let i = 0; i < left.length; i++) {
+    dot += left[i]! * right[i]!;
+    leftNorm += left[i]! ** 2;
+    rightNorm += right[i]! ** 2;
+  }
+
+  const magnitude = Math.sqrt(leftNorm) * Math.sqrt(rightNorm);
+  return magnitude === 0 ? 0 : dot / magnitude;
+}

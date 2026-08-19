@@ -32,7 +32,12 @@ import { compileHabits } from './infer.js';
 import { compilePositions, deserializePositionSet, serializePositionSet, type PositionSet } from './positions.js';
 import { compileThroughLines } from './throughlines.js';
 import { compileRevisions } from './revisions.js';
-import { calibrateSelectivity, notMeasurable } from './selectivity.js';
+import {
+  backgroundFor,
+  calibrateSelectivity,
+  notMeasurable,
+  OFF_CORPUS_PROBES,
+} from './selectivity.js';
 import {
   abandonStale,
   backlogOwed,
@@ -322,9 +327,23 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       // refuses to publish a Compile where some Positions are graded and others are not — so
       // this either writes all of them or the Persona is not published, and yesterday's keeps
       // answering. Silently grading half an answer is the one outcome not on the table.
+      //
+      // Each statement's **background** rides in on the same insert: how near it sits to a
+      // fixed set of questions nobody in this fleet publishes about. The server subtracts it,
+      // so a statement broad enough to match every question stops taking the top slot for all
+      // of them — see `backgroundFor`. One batch of eight short probes, inside the call that
+      // was already embedding every statement, and it is measured here rather than at serve
+      // time because it is the same number for every question ever asked.
       if (deps.embedder) {
         const statements = grouped.positions.map((position) => position.statement);
         const vectors = await deps.embedder.embed(statements);
+
+        // A probe batch the endpoint refused leaves the background unmeasured rather than
+        // wrong: `backgroundFor` returns zeroes for an empty probe set, the column takes
+        // null, and the scorer coalesces it — so the Persona ranks exactly as it would have
+        // before this existed. An unmeasurable correction is never an enforced one.
+        const probes = await deps.embedder.embed([...OFF_CORPUS_PROBES]).catch(() => []);
+        const backgrounds = backgroundFor(vectors, probes);
 
         await writeStatementVectors(
           deps.db,
@@ -332,7 +351,15 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
           grouped.positions.flatMap((position, index) => {
             const vector = vectors[index];
             const id = positionIds.get(position.slug);
-            return vector && id ? [{ positionId: id, vector: vectorLiteral(vector) }] : [];
+            return vector && id
+              ? [
+                  {
+                    positionId: id,
+                    vector: vectorLiteral(vector),
+                    background: probes.length > 0 ? backgrounds[index]! : null,
+                  },
+                ]
+              : [];
           }),
         );
       }

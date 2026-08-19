@@ -970,6 +970,40 @@ meant.
 **Accepted cost:** a long Item can no longer surface twice on two strong passages. It never could — the
 collapse already made it one row — so what this stops is it *crowding out* other Items on the way there.
 
+### A statement is ranked on how *unusually* close it is, not how close
+
+**The pathology, measured** in ../research/issue-304-generic-statements.md §1: a small number of broadly-worded
+Positions take the top slot for almost every question asked of their persona. ethan-mollick's ten golden
+questions returned **four distinct Positions** at rank 1. Ranking is not misfiring when this happens — it is
+faithfully ordering statements that were not written to be orderable. A reader who asks three different things
+reads the same generality three times.
+
+**So each statement carries what it is worth against nothing in particular.** On every Compile, alongside the
+statement vectors, braintrust measures each statement's mean similarity to `OFF_CORPUS_PROBES` — the same
+eight mundane questions the selectivity gate uses, chosen because no Person braintrust models publishes about
+poaching eggs or the offside rule. That number is the statement's **background**, and the server subtracts it.
+What ranks is the *difference*: how much closer this statement is to this question than it is to any question
+at all.
+
+Measured on two fully-swept corpora (the sweep is §2's fix, and it has to come first — you cannot re-rank
+material that is not there): matt-pocock **5/10 → 7/10** answered first and 8/10 → 9/10 answered at all,
+ethan-mollick 6/10 → **8/10** answered at all. Across every persona measured, swept and truncated, **none got
+worse.**
+
+**A correction of this shape was rejected once, and why matters.** The earlier form estimated each Position's
+baseline leave-one-out from *the ten questions being scored* — an estimate from one or two numbers wearing a
+measurement's authority — and matt-pocock fell to **0/10** under it. The probe set is fixed, identical for
+every question, and known before any question is asked, so nothing being scored contributes to its own
+baseline. *Rejected again here: blending lexical overlap into the score.* It helped matt-pocock and **hurt**
+ethan-mollick, which is what a tuning constant with no principle behind it looks like.
+
+**Subtracted inside `statementScores`, which is the whole of why it is safe.** The `fit` cut is calibrated by
+calling that function over the statements a Compile just wrote, so the grade a reader sees and the order they
+see it in stay the same number and cannot drift apart. And the column is nullable: a Compile written before
+the measurement existed has no background, `coalesce` ranks it exactly as it ranked yesterday, and a rebuild
+is what opts it in. **The schema change must be applied before this code deploys** — the scorer names the
+column, and a persona whose database lacks it cannot answer at all.
+
 ### What it costs
 
 Priced against the real Corpus. **The expense is entirely the compiler reading; the embedding rounds to

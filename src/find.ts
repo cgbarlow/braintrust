@@ -1088,6 +1088,21 @@ export const ITEM_WEIGHT = 1 - STATEMENT_WEIGHT;
  * A Position with no row here is one whose statement was never embedded — a Compile that
  * ran without an embeddings endpoint, or one whose vectors belong to a model this server is
  * not configured with. Both are *nothing to grade*, never a zero.
+ *
+ * **Net of the statement's background**, which is how near it sits to questions nobody in
+ * this fleet publishes about — measured on the Compile that wrote it, see `backgroundFor`.
+ * Raw closeness ranks a statement broad enough to be about anything first for every question
+ * asked, and a reader who asked three different things reads the same generality three
+ * times; the difference is how *unusually* close this statement is to *this* question.
+ * Measured on two fully-swept corpora: matt-pocock 5/10 → 7/10 answered first and 8/10 →
+ * 9/10 answered at all, ethan-mollick 6/10 → 8/10 at all, and **no persona measured got
+ * worse**, on the swept sets or the truncated ones still serving.
+ *
+ * `coalesce(…, 0)` is what makes that safe to deploy: a Compile written before the
+ * background existed has none, ranks exactly as it ranked yesterday, and opts in when it is
+ * next rebuilt. Subtracting it *here*, rather than at the call site, is what keeps `fit`
+ * honest — the cut is calibrated by calling this function, so the grade a reader sees and
+ * the order they see it in remain the same number.
  */
 export async function statementScores(
   db: Db,
@@ -1098,7 +1113,8 @@ export async function statementScores(
   if (positionIds.length === 0) return new Map();
 
   const { rows } = await db.query<{ position_id: string; similarity: string }>(
-    `select pe.position_id, (1 - (pe.embedding <=> $2::vector))::text as similarity
+    `select pe.position_id,
+            (1 - (pe.embedding <=> $2::vector) - coalesce(pe.background, 0))::text as similarity
        from braintrust_position_embeddings pe
       where pe.position_id = any($1::uuid[])
         and pe.model = $3`,

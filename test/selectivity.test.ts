@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 
 import {
   ANCHOR,
+  backgroundFor,
   calibrateSelectivity,
   MIN_IN_CORPUS,
   notMeasurable,
@@ -172,5 +173,49 @@ describe('calibrating the gate', () => {
     const sampled = seen.filter((q) => q.startsWith('position '));
     const indices = sampled.map((q) => Number(q.split(' ')[1]));
     assert.ok(Math.max(...indices) > 30, 'reaches the far end of the list');
+  });
+});
+
+/**
+ * The other half of what the off-corpus probes are for. The gate uses them to decide whether
+ * a corpus will answer at all; this uses them to decide which of its positions answers best.
+ */
+describe('what a statement is worth net of being about everything', () => {
+  // Three axes is enough: a statement can point at one probe, at all of them, or away.
+  const probes = [
+    [1, 0, 0],
+    [0, 1, 0],
+  ];
+
+  it('scores a statement that leans towards everything above one that leans away', () => {
+    const broad = [1, 1, 0];
+    const specific = [0, 0, 1];
+
+    const [broadBackground, specificBackground] = backgroundFor([broad, specific], probes);
+
+    assert.ok(broadBackground! > specificBackground!);
+    assert.equal(specificBackground, 0, 'a statement orthogonal to every probe leans nowhere');
+  });
+
+  it('is the mean rather than the best match, so one near probe cannot stand for the set', () => {
+    // Dead-on one probe and orthogonal to the other. A maximum would call this as broad as
+    // something near both, which is the opposite of what the number is for.
+    const [background] = backgroundFor([[1, 0, 0]], probes);
+
+    assert.equal(background, 0.5);
+  });
+
+  it('returns zero for every statement when there are no probes to measure against', () => {
+    // The endpoint refused the probe batch. The correction is then unmeasured, and an
+    // unmeasured correction is never an enforced one — the caller writes null and the
+    // scorer coalesces it, so the persona ranks exactly as it did before this existed.
+    assert.deepEqual(backgroundFor([[1, 0, 0], [0, 1, 0]], []), [0, 0]);
+  });
+
+  it('measures one number per statement, in the order it was handed them', () => {
+    const backgrounds = backgroundFor([[1, 0, 0], [0, 0, 1], [0, 1, 0]], probes);
+
+    assert.equal(backgrounds.length, 3);
+    assert.equal(backgrounds[1], 0, 'the specific one is second in, and second out');
   });
 });

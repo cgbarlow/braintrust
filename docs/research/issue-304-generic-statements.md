@@ -174,3 +174,48 @@ corpus is discarded" as the finding and neither figure as the measurement. The c
 natural questions, and writes both sets to JSON. Checkpoints after every sweep, because a run that
 dies in sweep 3 has already paid for one and two, and the endpoint will not reproduce them. Run from
 a scratch directory; not checked in.
+
+---
+
+## 7. The ranker, after coverage was fixed
+
+**Measured 2026-08-19.** §6 made the material present; this is what ordering it is worth. All numbers are
+offline re-ranks over saved position sets — one batch of embedding calls, no model calls, nothing written.
+
+§3 rejected a correction that ranks on `similarity − mean similarity` because the per-Position baseline was
+estimated leave-one-out from the ten questions being scored, which sent matt-pocock to 0/10. **Estimating the
+baseline from `OFF_CORPUS_PROBES` instead** — a fixed set of eight mundane questions no Person here publishes
+about, identical for every question, known before any question is asked — removes that objection entirely.
+
+On the two **swept** sets, where the material is present to be ranked:
+
+| | grounded@1 | reached@5 |
+|---|---:|---:|
+| matt-pocock, raw cosine | 5/10 | 8/10 |
+| matt-pocock, minus background | **7/10** | **9/10** |
+| ethan-mollick, raw cosine | 5/10 | 6/10 |
+| ethan-mollick, minus background | 5/10 | **8/10** |
+
+On the five **serving** compiles, which are still truncated: fleet 15/45 → 17/45 grounded@1, 21/45 → 24/45
+reached@5. **No persona got worse under this correction in any run measured** — swept or truncated.
+
+**The small fleet gain is the finding, not a disappointment.** matt-pocock and nate-b-jones are *completely
+unmoved* by any re-ranker, and both have the signature: grounded@1 equals reached@5 (3/3 and 4/4). When those
+personas miss, there is nothing in the layer to reorder. Ranking work is capped by coverage, which is the
+ordering §4 got backwards and §6 corrected.
+
+*Rejected: blending lexical overlap.* §3 could not test it because the golden questions were titles. It is
+testable now, and the answer is no: +0.20 lexical took matt-pocock 5/10 → 7/10 and ethan-mollick 5/10 →
+**4/10**. A constant that helps one persona and hurts another is a tuning artefact.
+
+### Reproducing
+
+`rank.probe.mts` (new matt, with per-question ranks and what outranked the right answer), `fleet-rank.probe.mts`
+(all five serving compiles), `swept-rank.probe.mts` (both swept sets). Scratch scripts, not checked in.
+
+### The limit of every number in §6 and §7
+
+These re-rank **all** of a persona's positions, where production first narrows candidates by chunk search and
+ranks only the positions citing those items. The comparison between rankers is sound — same candidates, same
+questions — but the absolute figures are not production's. What has not been measured is new matt through
+`find_positions` itself, which needs the swept compile in the database.
