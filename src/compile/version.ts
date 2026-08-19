@@ -59,8 +59,17 @@ import { POSITION_VERSION, REVISION_VERSION, SYNTHESIS_VERSION } from './synthes
  * the calibration shipped would keep serving on the unmeasured fallback indefinitely,
  * waiting for its subject to publish something — which is the one condition that has
  * nothing to do with whether braintrust can now measure its gate.
+ *
+ * **`measured-7` is each statement carrying what it is worth against nothing in
+ * particular.** A statement broad enough to be about anything is genuinely close to every
+ * question, so it took the top slot for all of them — ethan-mollick's ten questions
+ * returned four distinct Positions at rank 1. Every Compile now measures each statement
+ * against the off-corpus probes and stores the mean, and the server ranks on the difference.
+ * A new measured fact per Position, load-bearing exactly as `measured-3` and `measured-6`
+ * were: a Persona compiled before it has no background, ranks raw, and would go on ranking
+ * raw until its subject next published. See ./selectivity.ts `backgroundFor`.
  */
-export const MEASUREMENT_VERSION = 'measured-6';
+export const MEASUREMENT_VERSION = 'measured-7';
 
 /**
  * What a Compile that could not compare revisions records instead of `revisions-1`.

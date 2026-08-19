@@ -48,8 +48,17 @@ export const SYNTHESIS_VERSION = 'core-3';
  * per-call bound and the confidence thresholds ride here too, which is what makes tuning
  * any of them a rebuild rather than a silent change of meaning. `positions-2` is the burst
  * cap: the same claims, the same clustering, a grade that now reads the dates.
+ *
+ * **`positions-3` is sweeping**, and it is load-bearing rather than documentary. The
+ * per-call bound was silently bounding the layer: claims no grouping absorbed were dropped
+ * where they stood, which on matt-pocock meant a Persona that could cite 26 of the 41 Items
+ * it had read. The claims are the same claims and the prompt is the same prompt; *how many
+ * of them reach a Position* is not. Without this bump a Persona whose subject has not
+ * published keeps serving a layer built from half its Corpus, waiting on the one condition
+ * that has nothing to do with whether braintrust can now group the rest — the same argument
+ * `measured-3` makes below, for the same reason. See ./positions.ts `MAX_SWEEPS`.
  */
-export const POSITION_VERSION = 'positions-2';
+export const POSITION_VERSION = 'positions-3';
 
 /**
  * Versioned apart again, for the same reason and a sharper one: this is the only prompt
