@@ -420,8 +420,20 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     // Corpus approach the fold — and the only place a fold that gave up can be seen.
     if (grouped.merged) {
       log(
-        `braintrust: grouped the positions of ${person.slug} in ${grouped.passes} passes and ` +
+        `braintrust: grouped the positions of ${person.slug} in ${grouped.passes} passes across ` +
+          `${grouped.sweeps === 1 ? 'one sweep' : `${grouped.sweeps} sweeps`} and ` +
           `${grouped.rounds === 1 ? 'one merge' : `${grouped.rounds} rounds of merging`}.`,
+      );
+    }
+
+    // What a Corpus cost to read and did not buy. This used to be roughly half of every
+    // Corpus and nothing said so — the Persona simply could not answer about Items it had
+    // read, and looked from outside like a Persona that had never been given them.
+    if (grouped.claims_unabsorbed > 0) {
+      log(
+        `braintrust: ${grouped.claims_unabsorbed} claim(s) of ${person.slug}'s ` +
+          `${grouped.claims_read} were offered to ${grouped.sweeps} sweep(s) and grouped by none ` +
+          'of them, so no position rests on them. braintrust read those words and cannot cite them.',
       );
     }
 

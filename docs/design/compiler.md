@@ -359,6 +359,33 @@ quietly limit a 400-Item Persona to one pass's worth of Positions. So a pass may
 layer itself is free to grow. The merge needs no bound of its own: it answers with indices into the list it
 was handed, so it can no more return a fresh list than it can invent a claim — see below.
 
+**A bound on what a call returns is not a bound on what braintrust keeps: the claims a pass declines are swept
+again.** For three versions it was both. A pass returned its 24 best groupings, and every claim none of them
+absorbed was dropped where it stood — never offered to another call, never counted, never mentioned. Measured
+on matt-pocock (308 claims, 41 read Items): one pass absorbed 179 of them and the Persona that served from it
+could cite **26 of the 41**. Fifteen Items were fetched, chunked, read, quoted into Notes — and reachable by
+no answer braintrust could give. From outside, a Persona that had thrown away a third of its Corpus is
+indistinguishable from one that was never given it, which is exactly how the defect survived three versions
+of eval: *the questions it fails are not questions anybody scores as a ranking miss.*
+
+So the pass loop repeats over what is left, up to `MAX_SWEEPS` (6), stopping early when the remainder is empty
+or when a sweep absorbs nothing — a model that took nothing from a digest will take nothing from it a second
+time, at the same price. Every real Corpus measured exhausts itself well inside the ceiling: ethan-mollick in
+two sweeps, matt-pocock in four, which took it to **41 of 41 Items cited and 308 of 308 claims absorbed**. On
+the natural-question set the same Corpus went from 3/10 to 5/10 answered first and 3/10 to 8/10 answered at
+all, with no question worse — because these are not ranking failures being reordered. They are questions whose
+answer was not in the layer to be ranked.
+
+Two consequences. Sweeping **costs build time and nothing else** — a Persona still serves the same handful of
+Positions per answer, so the price is paid once per Compile rather than per question. And the recovered tail
+arrives thin: most of it rests on a single Item and grades `low`, as it should. That is not a dilution of the
+Persona, because the tail was always most of it — matt-pocock's *old* 24 Positions were 18 `low` and 6
+`moderate`, and the count of `moderate`-or-better was 6 either way. What changed is how much of what the
+person published is reachable at all.
+
+**What a sweep still cannot group is now a number.** `claims_unabsorbed` is reported and logged. Anything but
+zero means braintrust paid to read words it cannot cite — the condition that used to be the silent default.
+
 **The merge is handed wording, not evidence, and folds when it overflows.** Every step of a Compile is
 budgeted so that a growing Corpus adds *passes* rather than lengthening any one call. The merge that follows
 those passes was the exception: a single call whose input grew with the Corpus, which made it the one place

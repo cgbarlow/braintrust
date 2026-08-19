@@ -13,6 +13,11 @@ which puts the defect upstream of retrieval, in what the compiler writes down.
 This displaces the reading that corpus coverage is the binding constraint. Coverage is real and
 second-order — see §4.
 
+> **Superseded in part, one day later — read §6 before acting on §4.** Coverage was not second-order,
+> and it was not a property of the corpora. The compiler was discarding roughly half of every corpus
+> after paying to read it, and §1's instrument could not tell an absent answer from a mis-ranked one.
+> §1–§3 stand as measured; §4's ordering does not.
+
 ---
 
 ## 1. The top slot collapses onto a few statements
@@ -100,3 +105,72 @@ another decision.
 tables come from probes that capture the full candidate set once at `limit: 50` and re-rank it
 offline, so a re-ranking experiment costs no embedding calls at all; they were run from a scratch
 directory and are not checked in, being three short scripts over `findPositions`.
+
+---
+
+## 6. What it turned out to be — and where §4 was wrong
+
+**Measured 2026-08-19, one day after everything above.** §4 concluded that coverage is the second
+bill because ethan-mollick cites 100% of what it read and answers worst. That inference does not
+survive asking *why* the other personas' coverage was low, and the answer is not that their corpora
+have gaps.
+
+`MAX_POSITIONS = 24` bounds one clustering **call**. It was also, silently, bounding the **layer**:
+claims that no grouping in a pass absorbed were dropped where they stood, never offered to another
+call and never counted. On matt-pocock — 308 claims across 41 read Items — a single pass absorbed 179
+of them, and the serving Persona cited **26 of the 41**. Fifteen Items were fetched, chunked, read
+and quoted into Notes, and no answer braintrust could give could reach them. Among them: *The 7
+phases of AI-driven development*, *Ship working code while you sleep with the Ralph Wiggum
+technique*, *Frontend is HARDER for AI than backend*. Not obscure asides — the recent, most-asked-about
+half of the corpus.
+
+This is the same defect behind the reported "nate-b-jones does not know about builder levels": the
+item was fully read and cited by zero Positions.
+
+**Re-offering the remainder until it is exhausted** (read-only experiment, nothing promoted; four
+sweeps) took matt-pocock to 308/308 claims absorbed and 41/41 Items cited, in 95 Positions. Scored
+against the serving compile on the natural-question set (§5's correction, `../src/qa/ask.ts`), same
+embedder, same questions, same ranking:
+
+| | grounded@1 | reached@5 | distinct #1 |
+|---|---:|---:|---:|
+| old (serving, 24 positions) | 3/10 | 3/10 | 8 |
+| new (swept, 95 positions) | **5/10** | **8/10** | 9 |
+
+**No question got worse.** Two went from miss to #1, three from miss to top-5.
+
+The middle column is the finding. Old matt-pocock scored *identically* on grounded@1 and reached@5 —
+when it missed, there was nothing in the layer to rank. New matt-pocock holds the material for 8 of
+10. §1's pathology is real and unchanged; what §4 got wrong is the ordering. A ranker cannot be
+blamed for failing to surface an answer that was never written down.
+
+**Why §1's measurement could not see this.** Every probe above scores *which Position ranked first*.
+A question whose answer is absent from the layer entirely reads as a ranking miss and is
+indistinguishable from a question whose answer ranked second. The instrument had no term for "the
+answer is not in here."
+
+### Cost and residue
+
+Sweeping multiplies **build** cost by the number of sweeps (matt-pocock: four calls where there was
+one) and nothing else — serving returns the same handful of Positions per answer regardless of how
+many exist. The recovered tail is thin: 54 of the 95 new Positions rest on a single claim and grade
+`low`. That is not a dilution, because the tail was always the bulk — the old 24 were 18 `low` and 6
+`moderate`, and the count of `moderate`-or-better is **6 either way**.
+
+Two things this does not fix. **20 of matt-pocock's 61 fetched Items have no Notes at all** — a
+separate gap, upstream of everything here. And the two questions still missed at rank 5+ are now
+genuinely §1's problem: the material is present and ranked below better-worded generalities.
+
+### A caveat that applies to every number in this file
+
+The endpoint is **not deterministic at `temperature: 0`**. The same 308 claims, clustered twice
+minutes apart, absorbed 179 claims once and 112 the other — 58% and 36%. Treat "roughly half of every
+corpus is discarded" as the finding and neither figure as the measurement. The coverage results
+(26/41 → 41/41 Items, 308/308 claims) are structural and not subject to this.
+
+### Reproducing
+
+`compare.mts` — builds the swept set for one person, scores it and the serving compile on the same
+natural questions, and writes both sets to JSON. Checkpoints after every sweep, because a run that
+dies in sweep 3 has already paid for one and two, and the endpoint will not reproduce them. Run from
+a scratch directory; not checked in.
