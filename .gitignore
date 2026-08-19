@@ -4,3 +4,6 @@ dist/
 .env.local
 *.log
 __pycache__/
+
+# A golden set generated from one corpus, not source. See src/qa/ask.ts.
+.qa-questions.json
