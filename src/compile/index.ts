@@ -464,6 +464,18 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       );
     }
 
+    // A sweep that failed rather than finished. Said separately from the count above,
+    // because those two numbers mean different things: claims nothing wanted, and claims
+    // nothing was asked about. The layer still publishes — the sweeps that succeeded are
+    // not owed to the one that did not.
+    if (grouped.swept_abandoned) {
+      log(
+        `braintrust: the sweeps for ${person.slug} stopped at sweep ${grouped.sweeps} because a ` +
+          `clustering call failed (${grouped.swept_abandoned}). The positions found before it stand, ` +
+          'and the claims that call would have grouped are counted above as unabsorbed.',
+      );
+    }
+
     if (!grouped.converged) {
       log(
         `braintrust: the merge of ${person.slug}'s positions stopped before it ran out of ` +

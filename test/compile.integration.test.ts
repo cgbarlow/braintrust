@@ -33,6 +33,7 @@ import {
   VOICE_MIN_WORDS,
   writeRelations,
 } from '../src/compile/index.js';
+import { MAX_SWEEPS } from '../src/compile/positions.js';
 import { createDb, type Db, type PostgresDb, type TransactionalDb } from '../src/db.js';
 import { explainPersona, listPersonas, loadPersona } from '../src/personas.js';
 import { chunkItem } from '../src/retrieval/index.js';
@@ -1302,15 +1303,44 @@ describe('compiling the core, against real Postgres', () => {
     });
 
     assert.deepEqual(report.compiled, ['nate']);
-    const { rows } = await db.query<{ slug: string }>(
-      `select p.slug from braintrust_positions p
+    const { rows } = await db.query<{ slug: string; statement: string }>(
+      `select p.slug, p.statement from braintrust_positions p
          join braintrust_compiles c on c.id = p.compile_id
         where c.person_id = $1 and c.status = 'current'`,
       [personId],
     );
-    assert.deepEqual(
-      rows.map((row) => row.slug),
-      ['real'],
+
+    // The guarantee this test is named for, and the only one that is about correctness:
+    // the position resting on a claim braintrust never issued is not published. Asserted
+    // on its own, because the row *count* below is a different question with a different
+    // answer, and folding the two together is what made this test look like a regression
+    // when sweeping landed.
+    assert.ok(
+      !rows.some((row) => row.slug.startsWith('invented')),
+      'a position citing a claim braintrust never issued must not be published',
+    );
+    assert.ok(
+      rows.every((row) => row.slug.startsWith('real')),
+      'every published position must be one that resolved to a real claim',
+    );
+
+    // Sweeping re-offers the claims nothing absorbed, and this fake returns the same pair
+    // every call — so `real` recurs, once per sweep, under `uniqueSlug` suffixes. That is
+    // the near-duplicate behaviour sweeping buys: a sweep is handed only the leftovers and
+    // never the positions already found, so it can only mint a position, never extend one.
+    //
+    // Bounded rather than forbidden. Duplicates on a real Corpus are the merge's job to
+    // fold, and it is measured elsewhere; what must hold *here* is that the sweep cannot
+    // multiply a position without limit. If this bound ever breaks, the loop is not
+    // terminating on the terms it claims to.
+    assert.ok(
+      rows.length <= MAX_SWEEPS,
+      `sweeping must not mint more than one position per sweep, got ${rows.length} for ${MAX_SWEEPS} sweeps`,
+    );
+    assert.equal(
+      new Set(rows.map((row) => row.statement)).size,
+      1,
+      'the repeats are the same statement re-minted, not distinct positions',
     );
   });
 

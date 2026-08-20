@@ -26,6 +26,7 @@ import {
   CONFIDENCE_HIGH_ITEMS,
   CONFIDENCE_MODERATE_ITEMS,
   deserializePositionSet,
+  BARREN_SWEEPS_BEFORE_STOPPING,
   MAX_SWEEPS,
   serializePositionSet,
   slugify,
@@ -394,8 +395,52 @@ describe('compiling the growing layer', () => {
 
     assert.equal(set.positions.length, 0);
     assert.equal(set.claims_unabsorbed, 6);
-    assert.equal(set.sweeps, 1, 'a sweep that took nothing is not worth repeating at the same price');
-    assert.equal(set.passes, 1);
+    // Asked twice, not once. A single barren sweep used to stop the loop on the reasoning
+    // that a model which took nothing will take nothing again — measured false on 2026-08-20,
+    // where the same digest at `temperature: 0` absorbed 9.1% on one call and 80.6% on
+    // another. This model really does group nothing, so the second sweep confirms it and the
+    // count stops there; a model that was merely unlucky gets the second chance that costs.
+    assert.equal(
+      set.sweeps,
+      BARREN_SWEEPS_BEFORE_STOPPING,
+      'a barren sweep is confirmed before it is believed, because one of them is a coin toss',
+    );
+    assert.equal(set.passes, BARREN_SWEEPS_BEFORE_STOPPING);
+  });
+
+  it('keeps what the earlier sweeps found when a later one fails, because improvement may not cost the layer', async () => {
+    // One claim per call, so the corpus never finishes in a single sweep and a second is
+    // always due — then the endpoint goes away on that second call.
+    const inner = fakeSynthesiser({
+      positionsFor: (claims) => [{ slug: 'took-one', statement: 'One claim only.', claims: claims.slice(0, 1) }],
+    });
+    let clusterCalls = 0;
+    const synthesiser: typeof inner = {
+      ...inner,
+      async cluster(digest) {
+        clusterCalls += 1;
+        if (clusterCalls > 1) throw new Error('the endpoint went away');
+        return inner.cluster(digest);
+      },
+    };
+
+    const set = await compilePositions(NOTES, synthesiser);
+
+    // The position the first sweep found is published. Before this was guarded, the throw
+    // travelled out of compilePositions and cost the whole layer — every pass and every
+    // sweep that had already succeeded — which is the failure #285 and #290 exist to stop.
+    assert.equal(set.positions.length, 1, 'the position the first sweep found still stands');
+    assert.match(set.swept_abandoned!, /the endpoint went away/);
+    assert.ok(set.claims_unabsorbed > 0, 'the claims the lost call would have grouped are counted, not hidden');
+  });
+
+  it('fails the rebuild when the first sweep fails, because that sweep is the layer', async () => {
+    // The distinction the guard turns on: sweeps two and after are improvement on a layer
+    // that already exists, but the first sweep *is* that layer. A Compile whose clustering
+    // never ran has no positions to publish, and must fail rather than publish an empty one.
+    const synthesiser = fakeSynthesiser({ throws: new Error('the endpoint went away') });
+
+    await assert.rejects(() => compilePositions(NOTES, synthesiser), /the endpoint went away/);
   });
 
   it('sweeps a bounded number of times, so a stingy model cannot bill forever', async () => {

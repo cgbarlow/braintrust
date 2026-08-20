@@ -71,11 +71,26 @@ export const CLAIM_MAX_CHARS = 400;
  *
  * **A ceiling rather than a target.** Every real Corpus measured exhausts itself well inside
  * this: ethan-mollick in two sweeps, matt-pocock in four. The number is here so that a model
- * absorbing one claim per call cannot bill for a Compile that never ends — and a sweep that
- * absorbs nothing stops the loop before this is reached, because a model that took nothing
- * from a digest will take nothing from it a second time.
+ * absorbing one claim per call cannot bill for a Compile that never ends — a barren sweep
+ * stops the loop long before this is reached, see {@link BARREN_SWEEPS_BEFORE_STOPPING}.
  */
 export const MAX_SWEEPS = 6;
+
+/**
+ * How many sweeps in a row must absorb nothing before braintrust accepts the answer.
+ *
+ * **Two, because one is a coin toss.** This loop stopped after a single barren sweep on the
+ * reasoning that a model which took nothing from a digest will take nothing from it a second
+ * time. Measured 2026-08-20 against the live endpoint, that is not true: the *same* digest,
+ * at `temperature: 0`, had one call absorb 9.1% of what it was offered and another absorb
+ * 80.6%. A sweep that comes back empty is as likely to be a bad roll as a verdict.
+ *
+ * Stopping on the first one therefore abandons claims the next call would have taken. Asking
+ * twice costs at most one extra call per Compile and makes a spurious stop roughly the square
+ * as unlikely. `merge.ts` stops on the first barren round and is right to — it asks a question
+ * that has a correct answer. Clustering does not.
+ */
+export const BARREN_SWEEPS_BEFORE_STOPPING = 2;
 
 /**
  * The confidence grade, as a function of how many distinct Items a Position was found in.
@@ -192,6 +207,13 @@ export type PositionSet = {
    * thirty. Anything but zero is worth an operator's attention.
    */
   claims_unabsorbed: number;
+  /**
+   * Why the sweeps stopped early, when a call failed rather than the claims running out.
+   * Absent on every ordinary Compile. Present means the layer is the work that succeeded
+   * before the failure — publishable, and short by however many claims the lost call would
+   * have absorbed, which {@link claims_unabsorbed} counts.
+   */
+  swept_abandoned?: string;
   merged: boolean;
   /**
    * Merge rounds. One for a list of passes that fits the budget — every Person today — and
@@ -399,9 +421,11 @@ export async function compilePositions(
   const found: ClusteredPosition[] = [];
   let passes = 0;
   let sweeps = 0;
+  let barren = 0;
+  let abandoned: string | undefined;
   let pending = refs;
 
-  while (pending.length > 0 && sweeps < MAX_SWEEPS) {
+  while (pending.length > 0 && sweeps < MAX_SWEEPS && barren < BARREN_SWEEPS_BEFORE_STOPPING) {
     // The refs this sweep is offering. A grouping's claims are struck off as they are
     // absorbed, so what remains at the end of the sweep is what nothing took — and a ref
     // the model invented strikes nothing off, because it was never in here to begin with.
@@ -409,21 +433,36 @@ export async function compilePositions(
     const before = pending.length;
     sweeps += 1;
 
-    for (const digest of claimPasses(pending)) {
-      const clustered = (await synthesiser.cluster(digest)).slice(0, MAX_POSITIONS);
-      passes += 1;
-      found.push(...clustered);
+    try {
+      for (const digest of claimPasses(pending)) {
+        const clustered = (await synthesiser.cluster(digest)).slice(0, MAX_POSITIONS);
+        passes += 1;
+        found.push(...clustered);
 
-      for (const cluster of clustered) {
-        for (const ref of cluster.claims) offered.delete(ref);
+        for (const cluster of clustered) {
+          for (const ref of cluster.claims) offered.delete(ref);
+        }
       }
+    } catch (error) {
+      // The first sweep *is* the layer: every claim is offered to it, and a Compile whose
+      // clustering never ran has no Positions to publish. It fails the rebuild, as it did
+      // before sweeping existed.
+      //
+      // Every later sweep is improvement on top of a layer that already exists, so it may
+      // not cost that layer — the same rule `checkStatementSupport` and calibration are
+      // wrapped under. One lost call costs the claims that call would have absorbed, which
+      // `claims_unabsorbed` then counts, and never the sweeps that already succeeded.
+      if (sweeps === 1) throw error;
+      abandoned = error instanceof Error ? error.message : String(error);
+      break;
     }
 
     pending = pending.filter((ref) => offered.has(ref.ref));
 
-    // A sweep that absorbed nothing has said what it thinks of these claims. Offering them
-    // again would buy the same answer at the same price.
-    if (pending.length === before) break;
+    // A sweep that absorbed nothing may have said what it thinks of these claims, or may
+    // simply have rolled badly — see {@link BARREN_SWEEPS_BEFORE_STOPPING}. Any sweep that
+    // takes something resets the count, because the run of bad luck plainly ended.
+    barren = pending.length === before ? barren + 1 : 0;
   }
 
   /**
@@ -458,6 +497,7 @@ export async function compilePositions(
     passes,
     sweeps,
     claims_unabsorbed: pending.length,
+    ...(abandoned ? { swept_abandoned: abandoned } : {}),
     merged: passes > 1,
     rounds: folded.rounds,
     converged: folded.converged,
