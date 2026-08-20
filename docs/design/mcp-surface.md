@@ -117,7 +117,7 @@ Who exists, whether they have ever been compiled, and how stale each Core is. **
     "blocked": [{ "platform": "youtube", "handle": "UC0C…",
                   "since": "2026-07-14T03:02:11.004Z" }]   // absent when nothing is blocked
   }],
-  "current_compiler_version": "1.0.0+measured-6.core-1.positions-2.revisions-1"
+  "current_compiler_version": "1.0.0+measured-6.core-1.positions-3.revisions-1"
 }
 ```
 
@@ -146,7 +146,7 @@ is one block of prose written to be spoken, plus a small block of scalars that c
   "compiled_at": "2026-07-28T09:14:22Z",
   "compiler_version": "0.3.1",
   // What *current* is, so the line above has something to be read against.
-  "current_compiler_version": "1.0.0+measured-6.core-1.positions-2.revisions-1",
+  "current_compiler_version": "1.0.0+measured-6.core-1.positions-3.revisions-1",
   "extractor": "gpt-5@notes-1",
 
   // The Script. Second person, system-prompt ready, nothing to interpret.

@@ -441,6 +441,25 @@ comment on table braintrust_position_embeddings is
   'sentences, so they get two different scores — which is the whole point, and is '
   'a publication-blocking check.';
 
+-- How near this statement sits to *everything*, measured at compile time against
+-- OFF_CORPUS_PROBES — questions nobody braintrust models has published about.
+--
+-- A statement broad enough to be about anything scores well against every question,
+-- so it takes the top slot for all of them and the reader reads the same generality
+-- whatever they asked. Subtracting this measures how *unusually* close a statement
+-- is to the question rather than how close, which is the quantity that orders
+-- answers the way a reader would.
+--
+-- Null on any compile written before this column existed, and the scorer coalesces
+-- it to zero — so an old persona ranks exactly as it ranked, and a rebuild is what
+-- opts it in. Measured per model because it is a fact about a vector space.
+alter table braintrust_position_embeddings add column if not exists background real;
+
+comment on column braintrust_position_embeddings.background is
+  'Mean cosine to the off-corpus probe set, measured on every compile. Subtracted '
+  'from statement similarity so a statement that matches everything stops winning '
+  'everything. Null means a compile that predates the measurement, which ranks raw.';
+
 create index if not exists braintrust_position_embeddings_hnsw_idx
   on braintrust_position_embeddings using hnsw (embedding vector_cosine_ops);
 

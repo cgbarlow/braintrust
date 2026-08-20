@@ -359,6 +359,33 @@ quietly limit a 400-Item Persona to one pass's worth of Positions. So a pass may
 layer itself is free to grow. The merge needs no bound of its own: it answers with indices into the list it
 was handed, so it can no more return a fresh list than it can invent a claim — see below.
 
+**A bound on what a call returns is not a bound on what braintrust keeps: the claims a pass declines are swept
+again.** For three versions it was both. A pass returned its 24 best groupings, and every claim none of them
+absorbed was dropped where it stood — never offered to another call, never counted, never mentioned. Measured
+on matt-pocock (308 claims, 41 read Items): one pass absorbed 179 of them and the Persona that served from it
+could cite **26 of the 41**. Fifteen Items were fetched, chunked, read, quoted into Notes — and reachable by
+no answer braintrust could give. From outside, a Persona that had thrown away a third of its Corpus is
+indistinguishable from one that was never given it, which is exactly how the defect survived three versions
+of eval: *the questions it fails are not questions anybody scores as a ranking miss.*
+
+So the pass loop repeats over what is left, up to `MAX_SWEEPS` (6), stopping early when the remainder is empty
+or when a sweep absorbs nothing — a model that took nothing from a digest will take nothing from it a second
+time, at the same price. Every real Corpus measured exhausts itself well inside the ceiling: ethan-mollick in
+two sweeps, matt-pocock in four, which took it to **41 of 41 Items cited and 308 of 308 claims absorbed**. On
+the natural-question set the same Corpus went from 3/10 to 5/10 answered first and 3/10 to 8/10 answered at
+all, with no question worse — because these are not ranking failures being reordered. They are questions whose
+answer was not in the layer to be ranked.
+
+Two consequences. Sweeping **costs build time and nothing else** — a Persona still serves the same handful of
+Positions per answer, so the price is paid once per Compile rather than per question. And the recovered tail
+arrives thin: most of it rests on a single Item and grades `low`, as it should. That is not a dilution of the
+Persona, because the tail was always most of it — matt-pocock's *old* 24 Positions were 18 `low` and 6
+`moderate`, and the count of `moderate`-or-better was 6 either way. What changed is how much of what the
+person published is reachable at all.
+
+**What a sweep still cannot group is now a number.** `claims_unabsorbed` is reported and logged. Anything but
+zero means braintrust paid to read words it cannot cite — the condition that used to be the silent default.
+
 **The merge is handed wording, not evidence, and folds when it overflows.** Every step of a Compile is
 budgeted so that a growing Corpus adds *passes* rather than lengthening any one call. The merge that follows
 those passes was the exception: a single call whose input grew with the Corpus, which made it the one place
@@ -942,6 +969,40 @@ meant.
 
 **Accepted cost:** a long Item can no longer surface twice on two strong passages. It never could — the
 collapse already made it one row — so what this stops is it *crowding out* other Items on the way there.
+
+### A statement is ranked on how *unusually* close it is, not how close
+
+**The pathology, measured** in ../research/issue-304-generic-statements.md §1: a small number of broadly-worded
+Positions take the top slot for almost every question asked of their persona. ethan-mollick's ten golden
+questions returned **four distinct Positions** at rank 1. Ranking is not misfiring when this happens — it is
+faithfully ordering statements that were not written to be orderable. A reader who asks three different things
+reads the same generality three times.
+
+**So each statement carries what it is worth against nothing in particular.** On every Compile, alongside the
+statement vectors, braintrust measures each statement's mean similarity to `OFF_CORPUS_PROBES` — the same
+eight mundane questions the selectivity gate uses, chosen because no Person braintrust models publishes about
+poaching eggs or the offside rule. That number is the statement's **background**, and the server subtracts it.
+What ranks is the *difference*: how much closer this statement is to this question than it is to any question
+at all.
+
+Measured on two fully-swept corpora (the sweep is §2's fix, and it has to come first — you cannot re-rank
+material that is not there): matt-pocock **5/10 → 7/10** answered first and 8/10 → 9/10 answered at all,
+ethan-mollick 6/10 → **8/10** answered at all. Across every persona measured, swept and truncated, **none got
+worse.**
+
+**A correction of this shape was rejected once, and why matters.** The earlier form estimated each Position's
+baseline leave-one-out from *the ten questions being scored* — an estimate from one or two numbers wearing a
+measurement's authority — and matt-pocock fell to **0/10** under it. The probe set is fixed, identical for
+every question, and known before any question is asked, so nothing being scored contributes to its own
+baseline. *Rejected again here: blending lexical overlap into the score.* It helped matt-pocock and **hurt**
+ethan-mollick, which is what a tuning constant with no principle behind it looks like.
+
+**Subtracted inside `statementScores`, which is the whole of why it is safe.** The `fit` cut is calibrated by
+calling that function over the statements a Compile just wrote, so the grade a reader sees and the order they
+see it in stay the same number and cannot drift apart. And the column is nullable: a Compile written before
+the measurement existed has no background, `coalesce` ranks it exactly as it ranked yesterday, and a rebuild
+is what opts it in. **The schema change must be applied before this code deploys** — the scorer names the
+column, and a persona whose database lacks it cannot answer at all.
 
 ### What it costs
 

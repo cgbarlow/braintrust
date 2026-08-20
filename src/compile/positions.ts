@@ -54,6 +54,45 @@ export const CLAIM_BUDGET_CHARS = 40_000;
 export const CLAIM_MAX_CHARS = 400;
 
 /**
+ * How many times braintrust re-offers the claims a sweep left behind.
+ *
+ * `MAX_POSITIONS` bounds one *call*, and for three versions it silently bounded the *layer*
+ * as well: a pass returned its 24 best groupings and every claim none of them absorbed was
+ * dropped where it stood, never shown to another call. Measured 2026-08-19 on matt-pocock —
+ * 308 claims, 41 read Items — one pass absorbed 179 of them, and the Persona that served
+ * from it could cite 26 of the 41. Fifteen Items were read, understood, quoted into Notes,
+ * and reachable by no answer braintrust could give. That is not a Corpus with gaps in it;
+ * it is a Corpus braintrust threw away half of after paying to read it.
+ *
+ * Re-offering the remainder until it is exhausted took four sweeps and cited all 41. On the
+ * natural-question set the same Corpus went from 3/10 to 5/10 answered first and 3/10 to
+ * 8/10 answered at all, and no question got worse — because the failures it fixes are not
+ * ranking failures. They are questions whose answer was not in the layer to be ranked.
+ *
+ * **A ceiling rather than a target.** Every real Corpus measured exhausts itself well inside
+ * this: ethan-mollick in two sweeps, matt-pocock in four. The number is here so that a model
+ * absorbing one claim per call cannot bill for a Compile that never ends — a barren sweep
+ * stops the loop long before this is reached, see {@link BARREN_SWEEPS_BEFORE_STOPPING}.
+ */
+export const MAX_SWEEPS = 6;
+
+/**
+ * How many sweeps in a row must absorb nothing before braintrust accepts the answer.
+ *
+ * **Two, because one is a coin toss.** This loop stopped after a single barren sweep on the
+ * reasoning that a model which took nothing from a digest will take nothing from it a second
+ * time. Measured 2026-08-20 against the live endpoint, that is not true: the *same* digest,
+ * at `temperature: 0`, had one call absorb 9.1% of what it was offered and another absorb
+ * 80.6%. A sweep that comes back empty is as likely to be a bad roll as a verdict.
+ *
+ * Stopping on the first one therefore abandons claims the next call would have taken. Asking
+ * twice costs at most one extra call per Compile and makes a spurious stop roughly the square
+ * as unlikely. `merge.ts` stops on the first barren round and is right to — it asks a question
+ * that has a correct answer. Clustering does not.
+ */
+export const BARREN_SWEEPS_BEFORE_STOPPING = 2;
+
+/**
  * The confidence grade, as a function of how many distinct Items a Position was found in.
  *
  * **Absolute rather than proportional**, unlike Voice's thresholds. Voice measures habits
@@ -154,7 +193,27 @@ export type PositionSet = {
   positions: BuiltPosition[];
   /** Model and prompt version that did the grouping. */
   clusterer: string;
+  /** Clustering calls made, across every sweep. */
   passes: number;
+  /**
+   * How many times the claims still unabsorbed were offered again — see {@link MAX_SWEEPS}.
+   * One means the first sweep took everything, which is what a small Corpus looks like.
+   */
+  sweeps: number;
+  /**
+   * Claims no grouping absorbed by the time the sweeps stopped. **The number that used to
+   * be invisible**: before sweeping it was roughly half of every Corpus and nothing counted
+   * it, so a Persona missing fifteen Items looked exactly like a Persona that had read
+   * thirty. Anything but zero is worth an operator's attention.
+   */
+  claims_unabsorbed: number;
+  /**
+   * Why the sweeps stopped early, when a call failed rather than the claims running out.
+   * Absent on every ordinary Compile. Present means the layer is the work that succeeded
+   * before the failure — publishable, and short by however many claims the lost call would
+   * have absorbed, which {@link claims_unabsorbed} counts.
+   */
+  swept_abandoned?: string;
   merged: boolean;
   /**
    * Merge rounds. One for a list of passes that fits the budget — every Person today — and
@@ -336,25 +395,74 @@ export function buildPositions(
 
 /**
  * The whole growing layer, end to end: number the claims, fold them into passes, cluster
- * each, merge if there was more than one, then keep only what resolves to a real claim.
+ * each, offer whatever no grouping took to another sweep, merge if there was more than one
+ * call, then keep only what resolves to a real claim.
  *
  * The merge is skipped for a single pass, as the Core's is — it exists to reconcile passes
- * that could not see each other, not to give a model a second go at its own wording.
+ * that could not see each other, not to give a model a second go at its own wording. Two
+ * sweeps are two calls that could not see each other in exactly the same sense, so a Corpus
+ * that needed a second sweep is merged even when each sweep was one pass.
  */
 export async function compilePositions(
   notes: StoredNote[],
   synthesiser: Synthesiser,
 ): Promise<PositionSet> {
   const refs = claimIndex(notes);
-  const passes = claimPasses(refs);
 
   // Bounded per pass and not in total. A Core that grew with the Corpus would stop being
   // affordable to regenerate; this layer is queried rather than loaded whole, so growth is
   // the point of it. The merge needs no bound of its own: it answers with indices into the
   // list it was handed, so it can no more return a fresh list than it can invent a claim.
+  //
+  // The bound is on what one call may *return*, which is why the claims it did not return
+  // are carried into the next sweep rather than discarded — see {@link MAX_SWEEPS} for what
+  // discarding them cost. A claim is dropped here for exactly one reason now: every sweep
+  // it was offered to declined it.
   const found: ClusteredPosition[] = [];
-  for (const digest of passes) {
-    found.push(...(await synthesiser.cluster(digest)).slice(0, MAX_POSITIONS));
+  let passes = 0;
+  let sweeps = 0;
+  let barren = 0;
+  let abandoned: string | undefined;
+  let pending = refs;
+
+  while (pending.length > 0 && sweeps < MAX_SWEEPS && barren < BARREN_SWEEPS_BEFORE_STOPPING) {
+    // The refs this sweep is offering. A grouping's claims are struck off as they are
+    // absorbed, so what remains at the end of the sweep is what nothing took — and a ref
+    // the model invented strikes nothing off, because it was never in here to begin with.
+    const offered = new Set(pending.map((ref) => ref.ref));
+    const before = pending.length;
+    sweeps += 1;
+
+    try {
+      for (const digest of claimPasses(pending)) {
+        const clustered = (await synthesiser.cluster(digest)).slice(0, MAX_POSITIONS);
+        passes += 1;
+        found.push(...clustered);
+
+        for (const cluster of clustered) {
+          for (const ref of cluster.claims) offered.delete(ref);
+        }
+      }
+    } catch (error) {
+      // The first sweep *is* the layer: every claim is offered to it, and a Compile whose
+      // clustering never ran has no Positions to publish. It fails the rebuild, as it did
+      // before sweeping existed.
+      //
+      // Every later sweep is improvement on top of a layer that already exists, so it may
+      // not cost that layer — the same rule `checkStatementSupport` and calibration are
+      // wrapped under. One lost call costs the claims that call would have absorbed, which
+      // `claims_unabsorbed` then counts, and never the sweeps that already succeeded.
+      if (sweeps === 1) throw error;
+      abandoned = error instanceof Error ? error.message : String(error);
+      break;
+    }
+
+    pending = pending.filter((ref) => offered.has(ref.ref));
+
+    // A sweep that absorbed nothing may have said what it thinks of these claims, or may
+    // simply have rolled badly — see {@link BARREN_SWEEPS_BEFORE_STOPPING}. Any sweep that
+    // takes something resets the count, because the run of bad luck plainly ended.
+    barren = pending.length === before ? barren + 1 : 0;
   }
 
   /**
@@ -365,7 +473,7 @@ export async function compilePositions(
    * Corpus size.
    */
   const folded =
-    passes.length > 1
+    passes > 1
       ? await foldByMerging(found, {
           line: (position) => `${position.slug} — ${position.statement}`,
           combine: (members, clearest) => ({
@@ -386,8 +494,11 @@ export async function compilePositions(
   return {
     positions,
     clusterer: synthesiser.clusterer,
-    passes: passes.length,
-    merged: passes.length > 1,
+    passes,
+    sweeps,
+    claims_unabsorbed: pending.length,
+    ...(abandoned ? { swept_abandoned: abandoned } : {}),
+    merged: passes > 1,
     rounds: folded.rounds,
     converged: folded.converged,
     dropped_uncitable: dropped,

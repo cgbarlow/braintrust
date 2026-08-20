@@ -32,7 +32,12 @@ import { compileHabits } from './infer.js';
 import { compilePositions, deserializePositionSet, serializePositionSet, type PositionSet } from './positions.js';
 import { compileThroughLines } from './throughlines.js';
 import { compileRevisions } from './revisions.js';
-import { calibrateSelectivity, notMeasurable } from './selectivity.js';
+import {
+  backgroundFor,
+  calibrateSelectivity,
+  notMeasurable,
+  OFF_CORPUS_PROBES,
+} from './selectivity.js';
 import {
   abandonStale,
   backlogOwed,
@@ -322,9 +327,23 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
       // refuses to publish a Compile where some Positions are graded and others are not — so
       // this either writes all of them or the Persona is not published, and yesterday's keeps
       // answering. Silently grading half an answer is the one outcome not on the table.
+      //
+      // Each statement's **background** rides in on the same insert: how near it sits to a
+      // fixed set of questions nobody in this fleet publishes about. The server subtracts it,
+      // so a statement broad enough to match every question stops taking the top slot for all
+      // of them — see `backgroundFor`. One batch of eight short probes, inside the call that
+      // was already embedding every statement, and it is measured here rather than at serve
+      // time because it is the same number for every question ever asked.
       if (deps.embedder) {
         const statements = grouped.positions.map((position) => position.statement);
         const vectors = await deps.embedder.embed(statements);
+
+        // A probe batch the endpoint refused leaves the background unmeasured rather than
+        // wrong: `backgroundFor` returns zeroes for an empty probe set, the column takes
+        // null, and the scorer coalesces it — so the Persona ranks exactly as it would have
+        // before this existed. An unmeasurable correction is never an enforced one.
+        const probes = await deps.embedder.embed([...OFF_CORPUS_PROBES]).catch(() => []);
+        const backgrounds = backgroundFor(vectors, probes);
 
         await writeStatementVectors(
           deps.db,
@@ -332,7 +351,15 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
           grouped.positions.flatMap((position, index) => {
             const vector = vectors[index];
             const id = positionIds.get(position.slug);
-            return vector && id ? [{ positionId: id, vector: vectorLiteral(vector) }] : [];
+            return vector && id
+              ? [
+                  {
+                    positionId: id,
+                    vector: vectorLiteral(vector),
+                    background: probes.length > 0 ? backgrounds[index]! : null,
+                  },
+                ]
+              : [];
           }),
         );
       }
@@ -420,8 +447,32 @@ export async function compilePerson(deps: CompileDeps, person: CompilablePerson)
     // Corpus approach the fold — and the only place a fold that gave up can be seen.
     if (grouped.merged) {
       log(
-        `braintrust: grouped the positions of ${person.slug} in ${grouped.passes} passes and ` +
+        `braintrust: grouped the positions of ${person.slug} in ${grouped.passes} passes across ` +
+          `${grouped.sweeps === 1 ? 'one sweep' : `${grouped.sweeps} sweeps`} and ` +
           `${grouped.rounds === 1 ? 'one merge' : `${grouped.rounds} rounds of merging`}.`,
+      );
+    }
+
+    // What a Corpus cost to read and did not buy. This used to be roughly half of every
+    // Corpus and nothing said so — the Persona simply could not answer about Items it had
+    // read, and looked from outside like a Persona that had never been given them.
+    if (grouped.claims_unabsorbed > 0) {
+      log(
+        `braintrust: ${grouped.claims_unabsorbed} claim(s) of ${person.slug}'s ` +
+          `${grouped.claims_read} were offered to ${grouped.sweeps} sweep(s) and grouped by none ` +
+          'of them, so no position rests on them. braintrust read those words and cannot cite them.',
+      );
+    }
+
+    // A sweep that failed rather than finished. Said separately from the count above,
+    // because those two numbers mean different things: claims nothing wanted, and claims
+    // nothing was asked about. The layer still publishes — the sweeps that succeeded are
+    // not owed to the one that did not.
+    if (grouped.swept_abandoned) {
+      log(
+        `braintrust: the sweeps for ${person.slug} stopped at sweep ${grouped.sweeps} because a ` +
+          `clustering call failed (${grouped.swept_abandoned}). The positions found before it stand, ` +
+          'and the claims that call would have grouped are counted above as unabsorbed.',
       );
     }
 

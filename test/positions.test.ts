@@ -26,6 +26,8 @@ import {
   CONFIDENCE_HIGH_ITEMS,
   CONFIDENCE_MODERATE_ITEMS,
   deserializePositionSet,
+  BARREN_SWEEPS_BEFORE_STOPPING,
+  MAX_SWEEPS,
   serializePositionSet,
   slugify,
 } from '../src/compile/positions.js';
@@ -256,9 +258,10 @@ describe('the confidence grade', () => {
     const set = await compilePositions(
       single,
       fakeSynthesiser({
-        positionsFor: (claims) => [
-          { slug: 'said-once', statement: 'Said exactly once.', claims: [claims[0]!] },
-        ],
+        // Every claim absorbed, so the position under test is the whole layer. A model that
+        // left one behind would now earn a second sweep and a second position — which is
+        // the subject of the sweeping tests below, and noise here.
+        positionsFor: (claims) => [{ slug: 'said-once', statement: 'Said exactly once.', claims }],
       }),
     );
 
@@ -323,12 +326,135 @@ describe('compiling the growing layer', () => {
     });
 
     const set = await compilePositions(many, synthesiser);
-    const passes = synthesiser.calls.filter((call) => call.mode === 'pass').length;
-    const handed = indicesFromDigest(synthesiser.calls.at(-1)!.digest);
 
-    assert.equal(handed.length, passes * MAX_POSITIONS, 'each pass is trimmed to the per-call bound');
+    // The default merge groups nothing, so every grouping the passes returned survives to be
+    // counted — and each cites one issued claim, so none is dropped as uncitable. The layer
+    // is therefore exactly what the passes were allowed to return.
+    assert.equal(set.dropped_uncitable, 0);
+    assert.equal(
+      set.positions.length,
+      set.passes * MAX_POSITIONS,
+      'each pass is trimmed to the per-call bound',
+    );
     // …and the layer itself is allowed to be larger than one call's worth.
     assert.ok(set.positions.length > MAX_POSITIONS);
+  });
+
+  /**
+   * The defect these four exist for: `MAX_POSITIONS` bounds one call, and for three versions
+   * it silently bounded the layer too. A claim no grouping absorbed was dropped where it
+   * stood and never offered to another call — roughly half of every corpus measured, which
+   * is why a persona could be asked about an Item it had demonstrably read and answer that
+   * it had nothing. Absorbing a claim is now the model's decision to make repeatedly; the
+   * only claim braintrust drops is one every sweep declined.
+   */
+  it('re-offers what a pass left behind, until the corpus is exhausted', async () => {
+    // Half the claims it is shown, every time — so one sweep can never finish the corpus.
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) => [
+        {
+          slug: 'took-half',
+          statement: 'Half of what it was shown.',
+          claims: claims.slice(0, Math.ceil(claims.length / 2)),
+        },
+      ],
+    });
+
+    const set = await compilePositions(NOTES, synthesiser);
+
+    assert.equal(set.claims_read, 6);
+    assert.equal(set.claims_unabsorbed, 0, 'nothing braintrust read is left uncited');
+    assert.ok(set.sweeps > 1, 'the leftovers were offered again rather than dropped');
+    assert.equal(set.passes, set.sweeps, 'this corpus fits one pass, so a sweep is a pass');
+
+    // The claims of every position, unioned, are the claims braintrust issued.
+    const cited = new Set([...set.claims.values()].flat().map((ref) => ref.ref));
+    assert.deepEqual([...cited].sort(), ['c1', 'c2', 'c3', 'c4', 'c5', 'c6']);
+  });
+
+  it('merges across sweeps, because two sweeps could not see each other either', async () => {
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) => [
+        { slug: 'took-half', statement: 'Half of what it was shown.', claims: claims.slice(0, Math.ceil(claims.length / 2)) },
+      ],
+    });
+
+    const set = await compilePositions(NOTES, synthesiser);
+
+    // One pass per sweep, so the old `passes.length > 1` test for a merge would have said no
+    // — and left the same position standing several times, once per sweep that found it.
+    assert.equal(set.merged, true);
+    assert.ok(synthesiser.calls.some((call) => call.mode === 'merge'));
+  });
+
+  it('counts what no sweep would group rather than letting it vanish', async () => {
+    // A model that groups nothing at all. The corpus is unabsorbable, and the number saying
+    // so is the whole difference between a persona with gaps and a persona nobody can see.
+    const synthesiser = fakeSynthesiser({ positionsFor: () => [] });
+    const set = await compilePositions(NOTES, synthesiser);
+
+    assert.equal(set.positions.length, 0);
+    assert.equal(set.claims_unabsorbed, 6);
+    // Asked twice, not once. A single barren sweep used to stop the loop on the reasoning
+    // that a model which took nothing will take nothing again — measured false on 2026-08-20,
+    // where the same digest at `temperature: 0` absorbed 9.1% on one call and 80.6% on
+    // another. This model really does group nothing, so the second sweep confirms it and the
+    // count stops there; a model that was merely unlucky gets the second chance that costs.
+    assert.equal(
+      set.sweeps,
+      BARREN_SWEEPS_BEFORE_STOPPING,
+      'a barren sweep is confirmed before it is believed, because one of them is a coin toss',
+    );
+    assert.equal(set.passes, BARREN_SWEEPS_BEFORE_STOPPING);
+  });
+
+  it('keeps what the earlier sweeps found when a later one fails, because improvement may not cost the layer', async () => {
+    // One claim per call, so the corpus never finishes in a single sweep and a second is
+    // always due — then the endpoint goes away on that second call.
+    const inner = fakeSynthesiser({
+      positionsFor: (claims) => [{ slug: 'took-one', statement: 'One claim only.', claims: claims.slice(0, 1) }],
+    });
+    let clusterCalls = 0;
+    const synthesiser: typeof inner = {
+      ...inner,
+      async cluster(digest) {
+        clusterCalls += 1;
+        if (clusterCalls > 1) throw new Error('the endpoint went away');
+        return inner.cluster(digest);
+      },
+    };
+
+    const set = await compilePositions(NOTES, synthesiser);
+
+    // The position the first sweep found is published. Before this was guarded, the throw
+    // travelled out of compilePositions and cost the whole layer — every pass and every
+    // sweep that had already succeeded — which is the failure #285 and #290 exist to stop.
+    assert.equal(set.positions.length, 1, 'the position the first sweep found still stands');
+    assert.match(set.swept_abandoned!, /the endpoint went away/);
+    assert.ok(set.claims_unabsorbed > 0, 'the claims the lost call would have grouped are counted, not hidden');
+  });
+
+  it('fails the rebuild when the first sweep fails, because that sweep is the layer', async () => {
+    // The distinction the guard turns on: sweeps two and after are improvement on a layer
+    // that already exists, but the first sweep *is* that layer. A Compile whose clustering
+    // never ran has no positions to publish, and must fail rather than publish an empty one.
+    const synthesiser = fakeSynthesiser({ throws: new Error('the endpoint went away') });
+
+    await assert.rejects(() => compilePositions(NOTES, synthesiser), /the endpoint went away/);
+  });
+
+  it('sweeps a bounded number of times, so a stingy model cannot bill forever', async () => {
+    const many = Array.from({ length: 20 }, (_unused, index) => note(`post-${index}`));
+    // One claim per call, out of forty. Left unbounded this would run for thirty-nine sweeps.
+    const synthesiser = fakeSynthesiser({
+      positionsFor: (claims) => [{ slug: 'took-one', statement: 'One claim only.', claims: claims.slice(0, 1) }],
+    });
+
+    const set = await compilePositions(many, synthesiser);
+
+    assert.equal(set.sweeps, MAX_SWEEPS);
+    assert.equal(set.claims_read, 40);
+    assert.equal(set.claims_unabsorbed, 40 - MAX_SWEEPS, 'one claim taken per sweep, and the rest reported');
   });
 
   it('hands the merge wording and indices, and never a claim braintrust issued', async () => {

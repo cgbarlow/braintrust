@@ -624,17 +624,18 @@ export async function writePositions(
 export async function writeStatementVectors(
   db: TransactionalDb,
   model: string,
-  vectors: { positionId: string; vector: string }[],
+  vectors: { positionId: string; vector: string; background?: number | null }[],
 ): Promise<number> {
   if (vectors.length === 0) return 0;
 
   await db.transaction(async (tx) => {
     for (const one of vectors) {
       await tx.query(
-        `insert into braintrust_position_embeddings (position_id, model, embedding)
-         values ($1, $2, $3::vector)
-         on conflict (position_id, model) do update set embedding = excluded.embedding`,
-        [one.positionId, model, one.vector],
+        `insert into braintrust_position_embeddings (position_id, model, embedding, background)
+         values ($1, $2, $3::vector, $4)
+         on conflict (position_id, model) do update set embedding = excluded.embedding,
+                                                        background = excluded.background`,
+        [one.positionId, model, one.vector, one.background ?? null],
       );
     }
   });
