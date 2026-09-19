@@ -8,6 +8,8 @@ Static personas go stale. A prompt that says "respond like X" reflects X as they
 
 It is a personal tool: one person, their own council, not a service.
 
+<img width="1024" height="572" alt="braintrust" src="https://github.com/user-attachments/assets/3f47221f-cf28-418b-b4a1-a6c0896e9930" />
+
 ## How it works
 
 1. **Follow.** Paste the links you already have for someone. braintrust resolves them, prices the work, and shows you the plan before it fetches anything.
